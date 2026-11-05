@@ -1,14 +1,14 @@
-//! Threads in the document's flow, while the review loop keeps the document's comments. A
-//! comment someone answered, or resolved, is drawn as a box right under the block its passage
-//! starts in: the passage, its kind and its state at its head, then the comment and each reply
-//! with who wrote it. A thread opened on one of those messages is a box inside the box, under
-//! the line its passage starts on, at the same indent at every depth, its passage marked in the
-//! message's words as the document marks a comment's. One code draws them all, whatever the
-//! depth and the kind (`rows`): a blank row above and below each box, one passage not found
-//! at the end of the words it was on, marked so. A resolved box folds to one line once nothing
-//! under it, at any depth, is open; until then it stays open, marked resolved. A draft no one
-//! has answered stays a bubble in the rail only. Without the loop nothing is drawn here: a
-//! record's replies and resolved state change nothing on screen, as before the loop.
+//! Threads in the document's flow, while the review loop keeps the document's comments. Each
+//! comment the journal has, a draft (`Not sent`) included, is drawn as a box right under the
+//! block its passage starts in: the passage, its kind and its state at its head, then the
+//! comment and each reply with who wrote it. A thread opened on one of those messages is a box
+//! inside the box, under the paragraph its passage starts in, at the same indent at every
+//! depth, its passage marked in the message's words as the document marks a comment's. One code
+//! draws them all, whatever the depth and the kind (`rows`): a blank row above and below each
+//! box, one passage not found at the end of the words it was on, marked so. A resolved box
+//! folds to one line once nothing under it, at any depth, is open; until then it stays open,
+//! marked resolved. Without the loop nothing is drawn here: a record's replies and resolved
+//! state change nothing on screen, as before the loop.
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a

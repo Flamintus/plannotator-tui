@@ -4,8 +4,7 @@
 //! words are no longer found boxed at the end of the words it was on, marked so, in the words
 //! the Inbox's boxes use (`Round 2`, `Not sent`, `Replied`, `Live`, `New`, `Unanchored`). One
 //! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
-//! and its marks with it. The view decides what folds; a draft no one answered stays a bubble
-//! in the rail.
+//! and its marks with it, a draft's box `Not sent` at any depth. The view decides what folds.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -133,9 +132,6 @@ impl App {
             else {
                 continue;
             };
-            if node.draft && node.replies.is_empty() && node.sub_threads.is_empty() {
-                continue;
-            }
             threads.push((block, Thread::of_node(node, seen, Some(placed.range.clone()))));
         }
         let last = open.doc.blocks.len().checked_sub(1);

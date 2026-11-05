@@ -394,9 +394,9 @@ the agent answers with too:
   `Not sent` for a draft, as its bubble's title does; a message names its author alone, a reply
   with its status or `New`; and a bubble counts the replies under the passage (`↳ 1 reply under
   the passage`), its thread open or folded.
-- A comment answered, or resolved, is a box right under the block its passage is in (under a
-  whole list or table when the passage is inside one): the passage at its head, then the
-  comment and each reply by author. A resolved thread folds to one line (`✓ Resolved · 💬 "…"
+- Each comment the journal has, a draft included (`Not sent`), is a box right under the block
+  its passage is in (under a whole list or table when the passage is inside one): the passage
+  at its head, then the comment and each reply by author. A resolved thread folds to one line (`✓ Resolved · 💬 "…"
   · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
   `looks-good` colour (`[colors]`). Without the loop, the replies and the resolved state a
   record may carry change nothing on screen.
