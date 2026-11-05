@@ -205,6 +205,13 @@ impl Store {
         Some((&kept.inbox, kept.target.thread_id(), kept.view.as_ref()?))
     }
 
+    /// Have the Inbox's view read again at the next wake.
+    pub(crate) fn mark_inbox_stale(&mut self) {
+        if let Backing::Inbox(kept) = &mut self.backing {
+            kept.stale = true;
+        }
+    }
+
     /// Whether a write asks for the Inbox's view to be read again.
     pub(crate) fn inbox_stale(&self) -> bool {
         matches!(&self.backing, Backing::Inbox(kept) if kept.stale)

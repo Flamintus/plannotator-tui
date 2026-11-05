@@ -8,10 +8,10 @@
 use std::cell::RefCell;
 
 use plannotator_tui_inbox::{
-    Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, FileVersion,
-    Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Place, ProjectSessions, ReviewTarget,
-    SendMode, SendTarget, State as ThreadState, Status, Target, Thread, ThreadNode, ThreadRow, ThreadView,
-    Watch,
+    Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, Event,
+    FileVersion, Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Place, ProjectSessions,
+    ReviewTarget, SendMode, SendTarget, State as ThreadState, Status, Target, Thread, ThreadNode, ThreadRow,
+    ThreadView, Watch,
 };
 
 #[derive(Debug, Default)]
@@ -38,6 +38,9 @@ pub(crate) struct State {
     pub(crate) sends: Vec<(SendMode, Vec<String>, String)>,
     /// How many sends to come lose their connection.
     pub(crate) failing_sends: usize,
+    /// The threads each watch was asked to follow, and the stream of the last one.
+    pub(crate) watched: Vec<Option<String>>,
+    pub(crate) stream: Option<std::sync::mpsc::Sender<Event>>,
 }
 
 /// A comment as the stand-in keeps it.
@@ -344,7 +347,12 @@ impl Inbox for StandIn {
         }])
     }
 
-    fn watch(&self, _from: Option<u64>, _thread_id: Option<&str>) -> Result<Watch, Error> {
-        missing("events")
+    fn watch(&self, _from: Option<u64>, thread_id: Option<&str>) -> Result<Watch, Error> {
+        self.missing("events")?;
+        let (events, stream) = std::sync::mpsc::channel();
+        let mut state = self.state.borrow_mut();
+        state.watched.push(thread_id.map(str::to_owned));
+        state.stream = Some(events);
+        Ok(Watch::from_events(stream))
     }
 }

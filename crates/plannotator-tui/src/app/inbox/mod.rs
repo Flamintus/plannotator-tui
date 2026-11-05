@@ -1,10 +1,12 @@
 //! Reviewing through the Plannotator Inbox (`crate::inbox`): an Inbox thread's agent
 //! messages and attached files in the picker, each opened as a document whose comments the
 //! Inbox keeps (here), `last`'s replies deposited in their session's review thread
-//! (`deposit`), and the comments sent now or at the end of a round (`send`).
+//! (`deposit`), the comments sent now or at the end of a round (`send`), and the thread
+//! followed live on the Inbox's event stream (`watch`).
 
 mod deposit;
 mod send;
+mod watch;
 
 use anyhow::Result;
 use plannotator_tui_schema::Provenance;
@@ -28,11 +30,13 @@ pub(super) struct InboxReview {
     unlisted: Option<String>,
     /// The last send that did not reach the Inbox, to try again under its key.
     press: Option<send::Press>,
+    /// The thread whose event stream is followed.
+    following: Option<watch::Following>,
 }
 
 impl InboxReview {
     fn new(inbox: Shared, documents: Vec<Document>, depositor: Option<Depositor>) -> Self {
-        Self { inbox, documents, depositor, unlisted: None, press: None }
+        Self { inbox, documents, depositor, unlisted: None, press: None, following: None }
     }
 }
 
@@ -127,11 +131,22 @@ impl App {
         });
     }
 
-    /// Called from the event loop on every wake: after a write, read the Inbox's view again,
-    /// and say what it refused. Returns whether the screen needs a redraw.
+    /// Called from the event loop on every wake: read the Inbox's view again after a write
+    /// or when its stream told of a change, and say what it refused. Returns whether the
+    /// screen needs a redraw.
     pub(crate) fn poll_inbox(&mut self) -> bool {
-        if !self.open.store.inbox_stale() {
+        if self.inbox.is_none() {
             return false;
+        }
+        let told = self.read_stream();
+        if told.changed {
+            // The documents the picker keeps aside are read again when they are shown.
+            for open in self.pick_cache.values_mut() {
+                open.store.mark_inbox_stale();
+            }
+        }
+        if !told.changed && !self.open.store.inbox_stale() {
+            return told.said;
         }
         self.refresh_inbox();
         true
