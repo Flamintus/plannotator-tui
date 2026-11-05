@@ -2,7 +2,7 @@
 //! floating toolbar and compose box. Pure over `App` except for recording geometry for
 //! hit-testing.
 
-use plannotator_tui_schema::Kind;
+use plannotator_tui_schema::{Kind, State};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -10,11 +10,10 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, Focus, GUTTER, Geometry, Mode, TOOLBAR, glyph, label};
+use super::{App, Focus, GUTTER, Geometry, Mode, TOOLBAR, bubble, glyph, label};
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
-use crate::wrap::wrap_line;
 
 const RAIL_WIDTH: u16 = 36;
 const RAIL_MIN_WIDTH: u16 = 28;
@@ -349,14 +348,8 @@ impl App {
             let anchored_y = rail.y + anchor_row.saturating_sub(self.scroll) as u16;
             let y = anchored_y.max(next_y);
             let kind = placed.kind();
-            let body = if placed.annotation.body.is_empty() {
-                label(kind).to_owned()
-            } else {
-                placed.annotation.body.clone()
-            };
             let inner_width = usize::from(rail.width.saturating_sub(4));
-            let lines: Vec<Line<'static>> =
-                wrap_line(&Line::from(body.as_str()), &[], inner_width).into_iter().map(|r| r.line).collect();
+            let lines = bubble::lines(placed.annotation, label(kind), inner_width);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
                 break;
@@ -375,8 +368,9 @@ impl App {
                 1 => " · 1 image".to_owned(),
                 n => format!(" · {n} images"),
             };
+            let resolved = if placed.annotation.state == State::Resolved { " · resolved" } else { "" };
             let title = Span::styled(
-                format!(" {} {}{images}{sent} ", glyph(kind), short_id(&placed.annotation.id)),
+                format!(" {} {}{images}{sent}{resolved} ", glyph(kind), short_id(&placed.annotation.id)),
                 Style::new().fg(accent(kind)),
             );
             let bubble = Block::default()
@@ -387,10 +381,8 @@ impl App {
             let rect = Rect { x: rail.x, y, width: rail.width, height };
             let inner = bubble.inner(rect);
             frame.render_widget(bubble, rect);
-            let body_style =
-                if placed.annotation.body.is_empty() { Style::new().dim().italic() } else { Style::new() };
             let text_area = Rect { x: inner.x + 1, width: inner.width.saturating_sub(1), ..inner };
-            frame.render_widget(Paragraph::new(lines).style(body_style), text_area);
+            frame.render_widget(Paragraph::new(lines), text_area);
             bubbles.push((rect, placed.annotation.id.clone()));
             next_y = y + height;
         }

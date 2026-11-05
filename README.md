@@ -68,6 +68,12 @@ are accepted. The feedback lists each one as `Image: /absolute/path.png` under i
 agent opens it from your disk; nothing is copied or uploaded. `D` removes the last image added.
 Adding or removing an image makes a sent note pending again.
 
+A note's bubble also shows what its record says about it beyond your text: each reply under
+it, with who wrote it, and `· resolved` in its title once it is resolved, dimmed. Another
+client of the same record writes those; plannotator-tui reads them when the file opens and on
+`r`, and writes none itself. It saves the record as it last read it, so reload before a change
+of your own when someone may have answered since; removing a note removes its replies too.
+
 Copies go to the clipboard as OSC 52, which is the terminal you are looking at, so on Herdr 0.9.0
 they reach your own machine even when the app runs on a remote server; Herdr Annotate's global
 `copy-context` and `copy-archive` actions do not, because they run outside a pane.
