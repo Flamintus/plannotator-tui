@@ -20,6 +20,7 @@ mod words;
 pub(crate) use words::{draft_note, kind_of};
 
 use std::collections::HashMap;
+use std::ops::Range;
 
 use anyhow::{Context, Result};
 use plannotator_tui_journal::{ThreadNode, ThreadView, Viewed};
@@ -47,6 +48,9 @@ pub(crate) struct Kept {
     /// The notes on a passage of a message in a thread's box, by id: the sub-threads under
     /// the document's comments, which are not on its words.
     passages: HashMap<String, Passage>,
+    /// The document's last block, as last laid out: where a comment whose words are no longer
+    /// found is, its box under it and its bubble last.
+    last_block: Option<Range<usize>>,
     /// The document's words and its rendered characters with their source offsets, as last
     /// laid out: where quotes are found.
     source: String,
@@ -129,6 +133,7 @@ impl Store {
             view: None,
             anchors: HashMap::new(),
             passages: HashMap::new(),
+            last_block: None,
             source: String::new(),
             chars: Vec::new(),
             stale: false,
@@ -158,6 +163,7 @@ impl Store {
         kept.key = Some(viewed.review);
         let view = viewed.view;
         kept.source.clone_from(&doc.source);
+        kept.last_block = doc.blocks.last().map(|block| block.range.clone());
         kept.chars = layout.rendered_chars(&doc.source, &(0..doc.source.len()));
         let nodes: Vec<&ThreadNode> = kept.comments(&view);
         kept.place_passages(&nodes);
@@ -258,14 +264,18 @@ impl Store {
     }
 
     /// Every note in the document's order: each one placed in the document's words, then,
-    /// under the review loop, the notes on the passages of its thread's messages at any depth
-    /// (its sub-threads), in the order its box draws them; they take its range.
+    /// under the review loop, the ones whose words are no longer found, on the last block as
+    /// their boxes are; each followed by the notes on the passages of its thread's messages at
+    /// any depth (its sub-threads), in the order its box draws them, which take its range.
     pub(crate) fn notes(&self) -> Vec<Placed<'_>> {
         let placed = self.placed();
         let Backing::Journal(kept) = &self.backing else { return placed };
         let Some(view) = &kept.view else { return placed };
+        let lost = kept.last_block.as_ref().map_or_else(Vec::new, |range| {
+            self.orphaned().into_iter().map(|annotation| Placed { annotation, range }).collect()
+        });
         let mut notes = Vec::with_capacity(self.annotations.len());
-        for note in placed {
+        for note in placed.into_iter().chain(lost) {
             notes.push(note);
             let Some(thread) = view.threads.iter().find(|node| node.id == note.annotation.id) else {
                 continue;

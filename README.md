@@ -414,6 +414,7 @@ the agent answers with too:
   comment on the line's words, as on a block. A draft's words take none until it is sent.
 - The rail stacks its bubbles from the top in the document's order, as the column of
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
+  a comment whose words are no longer found last, as its box is under the last block, each
   drawn and acted on as any note's (edit, remove, image, reply, resolve); it scrolls only as far
   as keeps the rail's note, or the selected block's, in full. Without the loop each bubble sits
   level with its passage, as before.
