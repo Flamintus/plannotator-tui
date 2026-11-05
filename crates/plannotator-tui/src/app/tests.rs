@@ -765,6 +765,11 @@ fn recorded_message_app() -> (App, super::review_test_support::RecordingDelivery
     (app, delivery)
 }
 
+/// The id of the one note on a reply, as the feedback names it.
+fn note_id(open: &super::Open) -> String {
+    open.store.placed()[0].annotation.id.clone()
+}
+
 fn keys(app: &mut App, codes: &[KeyCode]) {
     for code in codes {
         app.handle_event(&Event::Key(KeyEvent::from(*code))).expect("key");
@@ -786,15 +791,19 @@ fn notes_on_every_reply_are_sent_together_each_under_its_own_reply() {
     app.add_block_annotation(1, Kind::Comment, "on the middle".to_owned()).expect("annotate");
     assert_eq!(app.send_count(), 2, "both replies' notes are waiting");
 
+    let newest = note_id(&app.pick_cache[&0]);
+    let middle = note_id(&app.open);
     keys(&mut app, &[KeyCode::Char('E')]);
     let calls = delivery.calls.borrow();
     assert_eq!(calls.len(), 1);
     assert_eq!(
         calls[0],
-        "# Annotations on claude · message 1 of 3 (\"Third\")\n\n\
-         ## Annotation 1 (line 1)\nComment on: \"# Third\"\n> on the newest\n\n\
-         \n# Annotations on claude · message 2 of 3 (\"Second\")\n\n\
-         ## Annotation 1 (line 3)\nComment on: \"middle message\"\n> on the middle\n\n"
+        format!(
+            "# Annotations on claude · message 1 of 3 (\"Third\")\n\n\
+             ## Annotation 1 (line 1) (id {newest})\nComment on: \"# Third\"\n> on the newest\n\n\
+             \n# Annotations on claude · message 2 of 3 (\"Second\")\n\n\
+             ## Annotation 1 (line 3) (id {middle})\nComment on: \"middle message\"\n> on the middle\n\n"
+        )
     );
     assert_eq!(app.send_state, SendState::Sent);
     assert!(!app.has_unsent(), "every reply's notes were delivered");
@@ -835,18 +844,24 @@ fn quitting_with_notes_only_on_a_reply_that_is_not_open_asks_first() {
 /// whichever reply happens to be open.
 #[test]
 fn a_single_annotated_reply_sends_the_same_body_as_before() {
-    let expected = "# Annotations on claude · last message\n\n\
-                    ## Annotation 1 (line 1)\nComment on: \"# Third\"\n> on the newest\n\n";
+    let expected = |id: &str| {
+        format!(
+            "# Annotations on claude · last message\n\n\
+             ## Annotation 1 (line 1) (id {id})\nComment on: \"# Third\"\n> on the newest\n\n"
+        )
+    };
     let (mut app, delivery) = recorded_message_app();
     keys(&mut app, &[KeyCode::Esc]);
     app.add_block_annotation(0, Kind::Comment, "on the newest".to_owned()).expect("annotate");
+    let id = note_id(&app.open);
     keys(&mut app, &[KeyCode::Char('E')]);
-    assert_eq!(delivery.calls.borrow().as_slice(), [expected]);
+    assert_eq!(delivery.calls.borrow().as_slice(), [expected(&id)]);
 
     let (mut app, delivery) = recorded_message_app();
     note_newest_then_open_middle(&mut app);
+    let id = note_id(&app.pick_cache[&0]);
     keys(&mut app, &[KeyCode::Char('E')]);
-    assert_eq!(delivery.calls.borrow().as_slice(), [expected]);
+    assert_eq!(delivery.calls.borrow().as_slice(), [expected(&id)]);
     assert_eq!(app.status.as_deref(), Some("sent 1 annotation(s) → test agent"));
 }
 

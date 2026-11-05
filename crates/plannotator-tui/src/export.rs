@@ -1,9 +1,10 @@
 //! Feedback export: annotations as numbered Markdown a coding agent reads without a schema.
 //!
-//! `# Annotations on <name>`, then one `## Annotation N (line X)` per annotation in document
-//! order: what kind of note it is, the quoted text, the body as a blockquote, and one
+//! `# Annotations on <name>`, then one `## Annotation N (line X) (id <id>)` per annotation in
+//! document order: what kind of note it is, the quoted text, the body as a blockquote, and one
 //! `Image: <absolute path>` line per attached image. Deleted text is fenced so quoted
-//! markdown cannot escape.
+//! markdown cannot escape. The number is the note's place in this export; the id is its own,
+//! the same from one send to the next, so an agent can name the note it answers.
 
 use std::fmt::Write as _;
 use std::ops::Range;
@@ -32,7 +33,7 @@ pub(crate) fn feedback(name: &str, entries: &[Entry<'_>]) -> String {
             Some((a, b)) => format!(" (lines {a}\u{2013}{b})"),
             None => String::new(),
         };
-        let _ = writeln!(out, "## Annotation {}{line_label}", i + 1);
+        let _ = writeln!(out, "## Annotation {}{line_label}{}", i + 1, id_label(&entry.annotation.id));
         let body = entry.annotation.body.trim();
         match entry.annotation.anchor.kind() {
             Kind::Delete => {
@@ -62,6 +63,15 @@ pub(crate) fn feedback(name: &str, entries: &[Entry<'_>]) -> String {
         out.push('\n');
     }
     out
+}
+
+/// ` (id <id>)` for a short id (`[A-Za-z0-9_.:-]`, at most 200), the shape Plannotator
+/// prints at the end of a comment's heading; nothing for any other id, so a record written
+/// by another tool can never add a line to the feedback.
+fn id_label(id: &str) -> String {
+    let short = (1..=200).contains(&id.len())
+        && id.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | ':' | '-'));
+    if short { format!(" (id {id})") } else { String::new() }
 }
 
 /// A fence longer than any backtick run inside the text, so quoted markdown cannot escape.
@@ -126,8 +136,9 @@ mod tests {
     #[test]
     fn export_matches_the_agent_facing_shape() {
         let source = "# Title\n\nShip the login page by Friday.\n\nDrop the `legacy` path.\n";
-        let (comment, r1) = annotation(source, "login page", Kind::Comment, "Which page?\nBe specific.");
+        let (mut comment, r1) = annotation(source, "login page", Kind::Comment, "Which page?\nBe specific.");
         let (delete, r2) = annotation(source, "Drop the `legacy` path.", Kind::Delete, "");
+        comment.id = "local_18a2b3c4d5e6f7".into();
         let entries = [
             Entry { annotation: &comment, lines: Some(line_span(source, &r1)), quote: source[r1].to_owned() },
             Entry { annotation: &delete, lines: Some(line_span(source, &r2)), quote: source[r2].to_owned() },
@@ -136,8 +147,8 @@ mod tests {
         assert_eq!(
             out,
             "# Annotations on plan.md\n\n\
-             ## Annotation 1 (line 3)\nComment on: \"login page\"\n> Which page?\n> Be specific.\n\n\
-             ## Annotation 2 (line 5)\nRemove this:\n```\nDrop the `legacy` path.\n```\n> I don't want this.\n\n"
+             ## Annotation 1 (line 3) (id local_18a2b3c4d5e6f7)\nComment on: \"login page\"\n> Which page?\n> Be specific.\n\n\
+             ## Annotation 2 (line 5) (id a)\nRemove this:\n```\nDrop the `legacy` path.\n```\n> I don't want this.\n\n"
         );
     }
 
@@ -148,7 +159,7 @@ mod tests {
         let entries = [Entry { annotation: &comment, lines: None, quote: source[range].to_owned() }];
         assert_eq!(
             feedback("terminal · w1:p1", &entries),
-            "# Annotations on terminal · w1:p1\n\n## Annotation 1\nComment on: \"ls\"\n> why\n\n"
+            "# Annotations on terminal · w1:p1\n\n## Annotation 1 (id a)\nComment on: \"ls\"\n> why\n\n"
         );
     }
 
@@ -160,9 +171,25 @@ mod tests {
         let entries = [Entry { annotation: &comment, lines: Some((1, 1)), quote: source[range].to_owned() }];
         assert_eq!(
             feedback("plan.md", &entries),
-            "# Annotations on plan.md\n\n## Annotation 1 (line 1)\nComment on: \"header\"\n> match this\n\
+            "# Annotations on plan.md\n\n## Annotation 1 (line 1) (id a)\nComment on: \"header\"\n> match this\n\
              Image: /shots/before.png\nImage: /shots/after shot.png\n\n"
         );
+    }
+
+    #[test]
+    fn an_id_that_is_not_a_short_id_prints_nothing() {
+        let source = "see the header\n";
+        let (mut comment, range) = annotation(source, "header", Kind::Comment, "match this");
+        for id in ["", "two words", "line\nbreak", &"x".repeat(201)] {
+            comment.id = id.to_owned();
+            let entries = [Entry {
+                annotation: &comment,
+                lines: Some((1, 1)),
+                quote: source[range.clone()].to_owned(),
+            }];
+            let out = feedback("plan.md", &entries);
+            assert!(out.contains("## Annotation 1 (line 1)\nComment on:"), "{id:?}: {out}");
+        }
     }
 
     #[test]

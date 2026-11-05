@@ -23,7 +23,7 @@ file is and ask them to review it.
    ```
    # Annotations on docs/plans/auth.md
 
-   ## Annotation 1 (line 12)
+   ## Annotation 1 (line 12) (id local_18f3a9c2b4d10e00)
    Comment on: "Rotate the token on every…"
    > Rotation on every privilege change will log people out…
    ```
