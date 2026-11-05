@@ -61,7 +61,7 @@ pub(crate) enum Action {
     #[serde(rename = "copy")]
     CopySelection,
     /// The current note's thread, while the review loop runs: reply under it, resolve it or
-    /// open it again; and draw folded threads open, or fold them again.
+    /// open it again; and draw folded threads open, or fold open ones.
     Reply,
     Resolve,
     ToggleThread,

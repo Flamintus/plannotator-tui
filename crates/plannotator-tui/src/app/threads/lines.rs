@@ -1,13 +1,12 @@
 //! The lines of the boxes' words as stops of `down` and `up`, as the blocks are: on the way
 //! from a block to the next, each line of a comment, a reply or a sub-thread, at any depth, is
 //! selected in turn and drawn as the selected block is, and so is a thread's fold line (its
-//! folded line, or the head of its box drawn open by hand, `fold`); the box's other rows (its
-//! head, its sides, the authors, the blank rows) are stepped over as the gaps between blocks
-//! are. On a line of words `comment` takes a sub-thread on them, as a block takes a comment,
-//! `visual` selects from its first word, and the thread keys act on its box; on a fold line
-//! the arrows fold or unfold its thread, and the thread keys act on it. Only while the boxes'
-//! words take a selection: otherwise `down` and `up` go from block to block, as they always
-//! did.
+//! folded line, or the head of its box, `fold`); the box's other rows (its sides, the authors,
+//! the blank rows) are stepped over as the gaps between blocks are. On a line of words
+//! `comment` takes a sub-thread on them, as a block takes a comment, `visual` selects from its
+//! first word, and the thread keys act on its box; on a fold line the arrows, or a click, fold
+//! or unfold its thread, and the thread keys act on it. Only while the boxes' words take a
+//! selection: otherwise `down` and `up` go from block to block, as they always did.
 
 use anyhow::Result;
 use plannotator_tui_schema::Kind;
@@ -75,8 +74,8 @@ impl App {
     }
 
     /// Select the stop of the boxes at document row `row`, the cursor on its first word if it
-    /// has words.
-    fn stand_on_line(&mut self, row: usize) {
+    /// has words: where `down` and `up` leave it, and a click on a fold line.
+    pub(super) fn stand_on_line(&mut self, row: usize) {
         self.clear_selection();
         self.roam = false;
         self.cursor = (row, self.row_start(row));

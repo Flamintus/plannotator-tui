@@ -1,14 +1,16 @@
-//! What a thread says of itself in one line, the same at every depth and for every kind: the
-//! head of its box (its kind's glyph, its passage, its state and marks, its id), `▾` first when
-//! drawn open by hand, or, settled, its folded line, `▸` first.
+//! What a thread says of itself in one line, the same at every depth, for every kind and in
+//! every state: the head of its box (its kind's glyph, its passage, its state and marks, its
+//! id), `▾` first, or, folded, its folded line, `▸` first, which says what the head says and
+//! what the box holds.
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::super::draw::short_id;
+use super::super::draw::{accent, short_id};
 use super::super::glyph;
 use super::Thread;
+use super::journal::NEW;
 use super::rows::{fit, one_line};
 use crate::theme::palette;
 
@@ -26,18 +28,22 @@ pub(in crate::app) fn resolved_style() -> Style {
 
 /// The border of a resolved thread, its box's or its folded line's rule: the resolved mark's
 /// colour, at every depth; a thread under it that is still open keeps its own.
-pub(super) fn resolved_border() -> Style {
+fn resolved_border() -> Style {
     Style::new().fg(palette().looks_good)
 }
 
-/// `╭ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit,
-/// the state, the marks and the tail of the note's id, which its bubble's title shows too;
-/// `╭ ▾ 💬 "passage"` for a thread drawn open by hand, which `left` folds again there.
-/// In a narrow box the marks go first, the last first, then the state, then the id, before the
-/// passage gets too short.
+/// The border of a thread's box, and its folded line's mark and rule: green once resolved
+/// (`resolved_border`), else its kind's colour.
+pub(super) fn border(thread: &Thread) -> Style {
+    if thread.resolved { resolved_border() } else { Style::new().fg(accent(thread.kind)) }
+}
+
+/// `╭ ▾ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: `▾`, where `left` or a
+/// click folds the box, the passage cut to fit, the state, the marks and the tail of the note's
+/// id, which its bubble's title shows too. In a narrow box the marks go first, the last first,
+/// then the state, then the id, before the passage gets too short.
 pub(super) fn head(thread: &Thread, width: usize, border: Style) -> Line<'static> {
-    let fold = if thread.by_hand { "\u{25be} " } else { "" };
-    let lead = format!("\u{256d} {fold}{} ", glyph(thread.kind));
+    let lead = format!("\u{256d} \u{25be} {} ", glyph(thread.kind));
     let id = short_id(&thread.id);
     let chips: Vec<&str> = thread
         .resolved
@@ -92,21 +98,25 @@ fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
     spans
 }
 
-/// A folded thread in one line:
-/// `▸ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`, which
-/// `right` draws open there; `╶` first for a box too narrow to draw, which does not open.
+/// A folded thread in one line, saying what the head of its box says, then what the box holds:
+/// `▸ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`,
+/// `▸ ✗ "passage" · Deletion · Replied · Round 2 · New · 2 messages · 3e05f ─╴` (`New` while a
+/// reply in it, at any depth, is), which `right` or a click draws open there; `╶` first for a
+/// box too narrow to draw, which does not open. `▸` and the rule take its box's border.
 pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let (messages, threads) = thread.size();
-    let state = if thread.resolved { RESOLVED } else { "\u{25b8} Open" };
+    let state = if thread.resolved { format!("{RESOLVED} \u{b7} ") } else { String::new() };
     let start = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
     let plural = |n: usize| if n == 1 { "" } else { "s" };
     let counts = match threads {
         0 => format!("{messages} message{}", plural(messages)),
         _ => format!("{messages} message{} \u{b7} {threads} sub-thread{}", plural(messages), plural(threads)),
     };
-    let lead = format!("{start}{state} \u{b7} {} ", glyph(thread.kind));
+    let lead = format!("{start}{state}{} ", glyph(thread.kind));
     let passage = one_line(&thread.quote);
-    let marks: String = thread.marks.iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect();
+    let new = thread.holds_new().then_some(NEW);
+    let marks: String =
+        thread.marks.iter().map(String::as_str).chain(new).flat_map(|mark| [" \u{b7} ", mark]).collect();
     // The passage tells folded threads apart better than the id and the marks: they go first.
     let tails = [
         format!("{marks} \u{b7} {counts} \u{b7} {} ", short_id(&thread.id)),
@@ -125,18 +135,19 @@ pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let fill = width.saturating_sub(lead.width() + quote.width() + tail.width() + 1);
     let line = fit(&format!("{lead}{quote}{tail}{}\u{2574}", "\u{2500}".repeat(fill)), width);
     let grey = Style::new().fg(Color::DarkGray);
-    match line.strip_prefix(start).and_then(|rest| rest.strip_prefix(RESOLVED)) {
+    let Some(rest) = line.strip_prefix(start) else { return Line::styled(line, grey) };
+    // The mark that opens the line and the rule that closes it are the folded box's border.
+    let border = border(thread);
+    let mut spans = vec![Span::styled(start, border)];
+    let rest = match rest.strip_prefix(RESOLVED) {
         Some(rest) if thread.resolved => {
-            // The rule that closes the line is the folded box's border, green as an open one's.
-            let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
-            let rule = &rest[words.len()..];
-            Line::from(vec![
-                Span::styled(start, resolved_border()),
-                Span::styled(RESOLVED, resolved_style()),
-                Span::styled(words.to_owned(), grey),
-                Span::styled(rule.to_owned(), resolved_border()),
-            ])
+            spans.push(Span::styled(RESOLVED, resolved_style()));
+            rest
         }
-        _ => Line::styled(line, grey),
-    }
+        _ => rest,
+    };
+    let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
+    spans.push(Span::styled(words.to_owned(), grey));
+    spans.push(Span::styled(rest[words.len()..].to_owned(), border));
+    Line::from(spans)
 }

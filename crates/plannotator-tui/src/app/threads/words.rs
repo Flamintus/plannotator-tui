@@ -38,7 +38,7 @@ pub(super) struct Said {
 pub(super) enum Kept {
     /// The words of message `id` at a byte of them.
     Words(String, usize),
-    /// Thread `id`'s fold line: its folded line, or the head of its box drawn open by hand.
+    /// Thread `id`'s fold line: its folded line, or the head of its box.
     Fold(String),
 }
 

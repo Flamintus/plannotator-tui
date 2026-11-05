@@ -286,8 +286,8 @@ impl App {
             // of a box's words, or a thread's fold line.
             Some(Action::Down) => self.step(true),
             Some(Action::Up) => self.step(false),
-            // On a thread's fold line, `right` and `confirm` draw it open, `left` folds it
-            // again: it has no words for the cursor or a sub-thread.
+            // On a thread's fold line, `right` and `confirm` draw it open, `left` folds it: it
+            // has no words for the cursor or a sub-thread.
             Some(action @ (Action::Left | Action::Right | Action::Confirm))
                 if self.selected_fold().is_some() =>
             {
@@ -514,6 +514,11 @@ impl App {
                 self.last_click = Some((now, mouse.column, mouse.row));
                 let Some(pos) = self.doc_position(mouse.column, mouse.row, false) else { return Ok(()) };
                 self.focus = Focus::Document;
+                // A thread's fold line, its folded line or the head of its box, has no words:
+                // a click there opens or folds the thread, the cursor on the line.
+                if self.fold_clicked(pos.0) {
+                    return Ok(());
+                }
                 if double
                     && let Some(block) = self.open.layout.block_at_row(pos.0)
                     && let Some(range) = self.open.doc.blocks.get(block).map(|b| b.range.clone())

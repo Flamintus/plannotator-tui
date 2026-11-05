@@ -1,15 +1,14 @@
 //! A thread's rows as drawn, at every depth and of every kind: its box, its head (`head`), each
 //! message under who wrote it, the threads on a message's words as boxes in the box, each under
 //! the paragraph its passage starts in, a blank row above and below each (`spaced`); or,
-//! settled, its folded line. Each row keeps, per column, the message's words it shows
+//! folded, its folded line. Each row keeps, per column, the message's words it shows
 //! (`words::Spot`), and a thread's first row says when it is its fold line.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::super::draw::accent;
-use super::head::{folded, head, resolved_border};
+use super::head::{border, folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
@@ -28,8 +27,8 @@ pub(super) struct BoxRow {
     /// it is in.
     pub(super) words: Vec<Option<Spot>>,
     /// The row is its thread's fold line, where `down` and `up` stop: whether the thread is
-    /// folded (its folded line, which `right` draws open) or drawn open by hand (its head,
-    /// which `left` folds again).
+    /// folded (its folded line, which `right` or a click draws open) or open (the head of its
+    /// box, which `left` or a click folds).
     pub(super) fold: Option<bool>,
 }
 
@@ -73,18 +72,16 @@ pub(super) fn spaced<'t>(
     rows
 }
 
-/// A thread's rows, `width` columns wide: its folded line once settled, else its box. The
+/// A thread's rows, `width` columns wide: its folded line once folded, else its box. The
 /// messages whose words the box shows join `said`, and its rows name them by their place there;
-/// each row names the innermost thread it is in. The first is its fold line while it folds:
-/// its folded line, or the head of its box drawn open by hand.
+/// each row names the innermost thread it is in. The first is its fold line: its folded line,
+/// or the head of its box; a box too narrow to draw shows its folded line, which is none.
 fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    let mut rows = if thread.is_folded() || width < MIN_BOX_WIDTH {
-        vec![BoxRow::plain(folded(thread, width))]
-    } else {
-        box_of(thread, width, said)
-    };
+    let boxed = !thread.is_folded() && width >= MIN_BOX_WIDTH;
+    let mut rows =
+        if boxed { box_of(thread, width, said) } else { vec![BoxRow::plain(folded(thread, width))] };
     if let Some(first) = rows.first_mut() {
-        first.fold = if thread.is_folded() { Some(true) } else { thread.by_hand.then_some(false) };
+        first.fold = if thread.is_folded() { Some(true) } else { boxed.then_some(false) };
     }
     for row in &mut rows {
         row.thread.get_or_insert_with(|| thread.id.clone());
@@ -96,7 +93,7 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 /// (`spaced`) under the paragraph their passage starts in, as a thread is under the block its
 /// passage starts in; one whose passage is not found there, after the message's words.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    let border = if thread.resolved { resolved_border() } else { Style::new().fg(accent(thread.kind)) };
+    let border = border(thread);
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
     let inner = width - 4;
     let mut rows = vec![BoxRow::plain(head(thread, width, border))];
@@ -270,7 +267,7 @@ mod tests {
             range: None,
             resolved,
             folded: None,
-            by_hand: false,
+            by_hand: None,
             marks: Vec::new(),
             messages,
         }

@@ -5,22 +5,24 @@
 //! inside the box, under the paragraph its passage starts in, at the same indent at every
 //! depth, its passage marked in the message's words as the document marks a comment's. One code
 //! draws them all, whatever the depth and the kind (`rows`): a blank row above and below each
-//! box, one passage not found at the end of the words it was on, marked so. A resolved box
-//! folds to one line, `▸` first, once nothing under it, at any depth, is open; until then it
-//! stays open, marked resolved. Drawn open by hand to be read, its head says so, `▾` first, and
-//! it stays resolved. Without the loop nothing is drawn here: a record's replies and resolved
-//! state change nothing on screen, as before the loop.
+//! box, one passage not found at the end of the words it was on, marked so. A box open has `▾`
+//! first at its head; folded, it is one line, `▸` first, saying what its head says. By default
+//! a resolved box folds once nothing under it, at any depth, is open, and every other box is
+//! open; any box, whatever its depth, kind and state, folds or opens by hand, and stays so
+//! (`fold`): folding resolves nothing and opening reopens nothing. Without the loop nothing is
+//! drawn here: a record's replies and resolved state change nothing on screen, as before the
+//! loop.
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
 //! thread or the width changes; how a thread is drawn in them is `rows`. Each row knows, per
 //! column, the message's words it shows, so a passage of them can be selected as the
 //! document's words are (`words`), and `down` and `up` stop on their lines as on the blocks
-//! (`lines`), and on a thread's fold line: its folded line, or its head once drawn open by hand.
+//! (`lines`), and on a thread's fold line: its folded line, or the head of its box.
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
-//! included; `toggle-thread` draws a folded thread open, or folds it again, and so do `right`
-//! (or `confirm`) on its folded line and `left` on its head drawn open (`fold`).
+//! included; one way folds a thread or opens it (`fold`), from `right` (or `confirm`) on its
+//! folded line, `left` on its head, a click on either, and `toggle-thread`.
 
 mod fold;
 mod head;
@@ -29,7 +31,7 @@ mod lines;
 mod rows;
 mod words;
 
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::ops::Range;
 
 use plannotator_tui_schema::Kind;
@@ -54,11 +56,10 @@ pub(super) struct Thread {
     /// the paragraph it starts in; `None` when the words no longer hold it.
     range: Option<Range<usize>>,
     resolved: bool,
-    /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.
+    /// Drawn folded by default: the review's view's word, else `settled`.
     folded: Option<bool>,
-    /// Drawn open by hand though it folds (`Flow::unfolded`): its head says so, and `left` on it
-    /// folds it again.
-    by_hand: bool,
+    /// Folded (`true`) or drawn open (`false`) by hand, over its default (`Flow::by_hand`).
+    by_hand: Option<bool>,
     /// What the head says after the state: its kind when not a comment, not found, then what
     /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
     marks: Vec<String>,
@@ -81,20 +82,23 @@ struct Message {
 }
 
 impl Thread {
-    /// Whether it is drawn folded.
+    /// Whether it is drawn folded: as folded or opened by hand, else by default.
     fn is_folded(&self) -> bool {
+        self.by_hand.unwrap_or_else(|| self.folds())
+    }
+
+    /// Whether it is drawn folded by default, nothing done by hand.
+    fn folds(&self) -> bool {
         self.folded.unwrap_or_else(|| self.settled())
     }
 
-    /// Draw open the threads `unfolded` names, at any depth; one that folds is drawn open by hand.
-    fn unfold(&mut self, unfolded: &HashSet<String>) {
-        if unfolded.contains(&self.id) {
-            self.by_hand = self.is_folded();
-            self.folded = Some(false);
-        }
+    /// Fold or open by hand the threads `by_hand` names, at any depth, the others as by
+    /// default.
+    fn by_hand(&mut self, by_hand: &HashMap<String, bool>) {
+        self.by_hand = by_hand.get(&self.id).copied();
         for message in &mut self.messages {
             for sub in &mut message.threads {
-                sub.unfold(unfolded);
+                sub.by_hand(by_hand);
             }
         }
     }
@@ -106,6 +110,13 @@ impl Thread {
 
     fn sub_threads(&self) -> impl Iterator<Item = &Self> {
         self.messages.iter().flat_map(|message| &message.threads)
+    }
+
+    /// Whether a reply in it, at any depth, is new: its folded line says so, as the line of its
+    /// author does in the box.
+    fn holds_new(&self) -> bool {
+        self.messages.iter().any(|message| message.tag.as_deref() == Some(journal::NEW))
+            || self.sub_threads().any(Self::holds_new)
     }
 
     /// Its messages and the threads under it, at every depth.
@@ -130,12 +141,12 @@ pub(super) struct Flow {
     said: Vec<words::Said>,
     /// How many rows that is per block: what the layout keeps free.
     under: Vec<(usize, usize)>,
-    /// Folded threads drawn open by hand, by id.
-    unfolded: HashSet<String>,
+    /// The threads folded (`true`) or drawn open (`false`) by hand, by id, unlike their default.
+    by_hand: HashMap<String, bool>,
 }
 
 impl Flow {
-    fn new(threads: Vec<(usize, Thread)>, width: usize, unfolded: HashSet<String>) -> Self {
+    fn new(threads: Vec<(usize, Thread)>, width: usize, by_hand: HashMap<String, bool>) -> Self {
         let mut said = Vec::new();
         let mut rows: Vec<(usize, Vec<BoxRow>)> = Vec::new();
         for group in threads.chunk_by(|(one, _), (other, _)| one == other) {
@@ -145,7 +156,7 @@ impl Flow {
             rows.push((*block, lines));
         }
         let under = rows.iter().map(|(block, lines)| (*block, lines.len())).collect();
-        Self { width, threads, rows, said, under, unfolded }
+        Self { width, threads, rows, said, under, by_hand }
     }
 }
 
@@ -158,11 +169,11 @@ impl App {
         let kept = self.kept_at_cursor();
         let open = &mut self.open;
         for (_, thread) in &mut threads {
-            thread.unfold(&open.flow.unfolded);
+            thread.by_hand(&open.flow.by_hand);
         }
         if threads != open.flow.threads || open.layout.width != open.flow.width {
-            let unfolded = std::mem::take(&mut open.flow.unfolded);
-            open.flow = Flow::new(threads, open.layout.width, unfolded);
+            let by_hand = std::mem::take(&mut open.flow.by_hand);
+            open.flow = Flow::new(threads, open.layout.width, by_hand);
         }
         if open.layout.reserve_under(&open.flow.under) {
             // Rows below a changed box moved, as on a reflow: a selection drawn by rows no

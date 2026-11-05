@@ -17,6 +17,10 @@ use super::{Message, Thread};
 use crate::journal::{passage, tree};
 use crate::store::kind_of;
 
+/// What the line of a reply's author adds while the person has not seen it, and what the folded
+/// line of a thread holding it says.
+pub(super) const NEW: &str = "New";
+
 /// What became of a send, in the words the Inbox's boxes use for it.
 fn status_word(status: Status) -> Option<&'static str> {
     Some(match status {
@@ -57,7 +61,7 @@ fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
     let after = match reply.author {
         Author::Person if reply.draft => None,
         Author::Person => reply.status.and_then(status_word),
-        Author::Agent { .. } => (!seen.contains(&reply.id)).then_some("New"),
+        Author::Agent { .. } => (!seen.contains(&reply.id)).then_some(NEW),
     };
     after.map(str::to_owned)
 }
@@ -110,7 +114,7 @@ impl Thread {
             range,
             resolved: node.state == ThreadState::Resolved,
             folded: Some(node.folded),
-            by_hand: false,
+            by_hand: None,
             marks,
             messages: std::iter::once(comment).chain(replies).collect(),
         }

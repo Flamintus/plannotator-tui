@@ -1,8 +1,9 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
 //! open it again, `send-now` sends its draft at once (`send`), `toggle-thread` draws a folded
-//! thread open, or folds it again, as `right` and `left` do on its fold line. These keys answer
-//! only while the review loop runs. A sub-thread has one way in: a passage selected in a
-//! message's words right in its box, noted as the document's words are (`App::annotate`).
+//! thread open, or folds an open one, as `right` and `left` do on its fold line, whatever the
+//! box (`threads::fold`). These keys answer only while the review loop runs. A sub-thread has
+//! one way in: a passage selected in a message's words right in its box, noted as the
+//! document's words are (`App::annotate`).
 
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 
@@ -141,7 +142,8 @@ impl App {
     }
 
     /// The thread keys the footer adds over a document of the journal, with nothing selected;
-    /// first, on a thread's fold line, the arrow that unfolds or folds it.
+    /// first, on a thread's fold line (any box's folded line or head), the arrow that unfolds
+    /// or folds it.
     pub(in crate::app) fn journal_help(&self) -> Vec<Option<String>> {
         if !self.open.store.is_journal() || self.pending.is_some() || self.focus == Focus::Tree {
             return Vec::new();
