@@ -46,7 +46,7 @@ fn an_answered_comment_is_a_box_right_under_the_block_its_passage_is_in() {
     let screen = draw(&mut app, 70, 30);
     let rows: Vec<&str> = screen.lines().collect();
     let row = |needle: &str| rows.iter().position(|row| row.contains(needle)).expect(needle);
-    assert_eq!(row("\u{256d}"), row("The on-call engineer") + 1, "{screen}");
+    assert_eq!(row("\u{256d}"), row("The on-call engineer") + 2, "a blank row, then the box: {screen}");
     assert!(row("\u{2502} You") < row("Who watches at night?"), "{screen}");
     assert!(row("\u{2502} Claude Code") < row("Nobody yet."), "{screen}");
     assert_eq!(row("We ship on Friday."), row("\u{2570}") + 2, "{screen}");
@@ -161,7 +161,7 @@ fn a_comment_whose_words_are_gone_is_boxed_under_the_last_block() {
     let rows: Vec<&str> = screen.lines().collect();
     let last = rows.iter().position(|row| row.contains("We ship on Friday.")).expect("last block");
     let head = rows.iter().position(|row| row.contains("Unanchored")).expect("marked");
-    assert_eq!(head, last + 1, "{screen}");
+    assert_eq!(head, last + 2, "a blank row, then the box: {screen}");
 }
 
 #[test]

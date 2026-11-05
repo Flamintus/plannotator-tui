@@ -26,6 +26,7 @@ use std::collections::HashSet;
 use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
+use ratatui::text::Line;
 
 use super::App;
 use rows::{BoxRow, lines_of};
@@ -121,7 +122,9 @@ impl Flow {
         let mut said = Vec::new();
         let mut rows: Vec<(usize, Vec<BoxRow>)> = Vec::new();
         for (block, thread) in &threads {
-            let lines = lines_of(thread, width, &mut said);
+            // A blank row above each box keeps it apart from the words over it.
+            let mut lines = vec![BoxRow { line: Line::default(), thread: None, words: Vec::new() }];
+            lines.extend(lines_of(thread, width, &mut said));
             match rows.last_mut() {
                 Some((last, stack)) if last == block => stack.extend(lines),
                 _ => rows.push((*block, lines)),
