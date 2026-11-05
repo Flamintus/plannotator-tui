@@ -1,0 +1,18 @@
+[package]
+name = "plannotator-tui-inbox"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+keywords = ["annotation", "review", "agents", "inbox"]
+categories = ["api-bindings"]
+description = "Client for the Plannotator Inbox's person API: threads, comments, sends and the event stream."
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# Plain HTTP on loopback: no TLS, no gzip. Pure Rust, so the static musl build stays static.
+ureq = { version = "3.5.1", default-features = false }
+
+[lints]
+workspace = true
