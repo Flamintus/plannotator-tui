@@ -62,6 +62,16 @@ pub(crate) fn drafts(node: &ThreadNode, out: &mut Vec<String>) {
     }
 }
 
+/// The drafts a send at once of `node` carries, as a box's Send does: the comment itself when it
+/// is a draft, else the person's replies waiting under it. The sub-threads on its words are
+/// threads of their own, sent from their boxes.
+pub(crate) fn now_drafts(node: &ThreadNode) -> Vec<String> {
+    if node.draft {
+        return vec![node.id.clone()];
+    }
+    node.replies.iter().filter(|reply| reply.draft).map(|reply| reply.id.clone()).collect()
+}
+
 /// Every draft of the review, in the view's order.
 pub(crate) fn all_drafts(view: &ThreadView) -> Vec<String> {
     let mut out = Vec::new();

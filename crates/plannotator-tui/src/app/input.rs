@@ -219,7 +219,7 @@ impl App {
             Some(Action::Remove) => self.remove_selected_annotation()?,
             Some(Action::AttachImage) => self.begin_attach_image(),
             Some(Action::RemoveImage) => self.remove_image()?,
-            Some(action @ (Action::Reply | Action::Resolve | Action::ToggleThread)) => {
+            Some(action @ (Action::Reply | Action::Resolve | Action::ToggleThread | Action::SendNow)) => {
                 self.thread_action(action);
             }
             Some(Action::Back) => self.focus = Focus::Document,
@@ -319,7 +319,7 @@ impl App {
             Some(Action::ClearAll) => self.request_clear_all(),
             Some(Action::AttachImage) => self.begin_attach_image(),
             Some(Action::RemoveImage) => self.remove_image()?,
-            Some(action @ (Action::Reply | Action::Resolve | Action::ToggleThread)) => {
+            Some(action @ (Action::Reply | Action::Resolve | Action::ToggleThread | Action::SendNow)) => {
                 self.thread_action(action);
             }
             _ => {}

@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -303,6 +303,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `copy` | `y` | copy the selection waiting in the toolbar |
 | `reply` `resolve` | `C` `V` | the current note's thread in the review loop: reply under it, resolve it or open it again (keys provisional) |
 | `toggle-thread` | `z` | in the review loop, draw the folded threads in the box the cursor is in, else the selected block's, open, or fold them again (key provisional) |
+| `send-now` | `s` | in the review loop, send the current note's draft alone, at once, the round going on (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -376,6 +377,14 @@ the agent answers with too:
   screens: `Round 2 · Send Feedback (3) ▸ claude in w1:p2`, and the footer says `Round 2 sent`
   once it went. A round carries every draft of the review, drafts left by an earlier pane
   included, which the footer counts when the pane opens.
+- `s` sends the current note's draft alone, at once, as a box's Send does on Plannotator's
+  screens: on its bubble in the rail, or with the cursor on its block or in its box, a
+  sub-thread's at any depth; on a sent comment, the replies of yours waiting under it. The
+  round goes on: the journal sends it in `now` mode, the text it composes is pasted into the
+  agent's pane as a round's is, the thread is `Live` from then on, and the footer says
+  `Sent now · Round 2 still open · 1 comment(s) → claude in w1:p2`. A paste the agent did not
+  get goes again first, with `s` or `E`, as for a round. The footer offers `s send now` where
+  there is a draft to send.
 - A folder's tree counts the review's comments on each file. The Review menu acts on the
   review's threads, a finished note being a resolved thread: `F` resolves the sent threads
   still open (drafts stay), `U` opens again what it resolved, `H` lists the resolved threads
@@ -415,13 +424,13 @@ the agent answers with too:
 - The rail stacks its bubbles from the top in the document's order, as the column of
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
   a comment whose words are no longer found last, as its box is under the last block, each
-  drawn and acted on as any note's (edit, remove, image, reply, resolve); it scrolls only as far
-  as keeps the rail's note, or the selected block's, in full. Without the loop each bubble sits
-  level with its passage, as before.
+  drawn and acted on as any note's (edit, remove, image, reply, resolve, send now); it scrolls
+  only as far as keeps the rail's note, or the selected block's, in full. Without the loop each
+  bubble sits level with its passage, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
-  block's note, as for the image keys), a draft the next `E` sends; `V` resolves it or opens it
-  again. `z` draws a folded thread open, in the box the cursor is in or under the block, or
-  folds again what it drew open. These keys answer only while the loop runs, and are
+  block's note, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves
+  it or opens it again. `z` draws a folded thread open, in the box the cursor is in or under the
+  block, or folds again what it drew open. These keys answer only while the loop runs, and are
   provisional, to be confirmed in use; like every key they can be rebound under `[keys]`.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could

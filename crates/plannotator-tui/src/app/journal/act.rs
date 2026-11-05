@@ -1,7 +1,8 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
-//! open it again, `toggle-thread` draws a folded thread open, or folds it again. These keys
-//! answer only while the review loop runs. A sub-thread has one way in: a passage selected in a
-//! message's words right in its box, noted as the document's words are (`App::annotate`).
+//! open it again, `send-now` sends its draft at once (`send`), `toggle-thread` draws a folded
+//! thread open, or folds it again. These keys answer only while the review loop runs. A
+//! sub-thread has one way in: a passage selected in a message's words right in its box, noted
+//! as the document's words are (`App::annotate`).
 
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 
@@ -22,6 +23,7 @@ impl App {
             Action::ToggleThread => self.toggle_threads(),
             Action::Reply => self.begin_reply(),
             Action::Resolve => self.resolve_current(),
+            Action::SendNow => self.send_current(),
             _ => {}
         }
     }
@@ -38,7 +40,7 @@ impl App {
             self.status = Some(if self.open.store.is_journal() {
                 "no comment here".to_owned()
             } else {
-                "replies, resolving and sub-threads go through the review's journal, which does not keep this document's notes"
+                "replies, resolving, sending at once and sub-threads go through the review's journal, which does not keep this document's notes"
                     .to_owned()
             });
         }
@@ -48,8 +50,11 @@ impl App {
     fn begin_reply(&mut self) {
         let Some((_, node)) = self.current_thread() else { return };
         if node.draft {
-            self.status =
-                Some(format!("a draft takes no reply: {} sends it first", self.keys.hint(Action::Send)));
+            self.status = Some(format!(
+                "a draft takes no reply: {} sends it now, {} with the round",
+                self.keys.hint(Action::SendNow),
+                self.keys.hint(Action::Send)
+            ));
             return;
         }
         self.compose = super::super::compose::Compose::default();
@@ -108,6 +113,14 @@ impl App {
         self.refresh_journal();
     }
 
+    /// The current note's draft sent alone, at once: the note itself, or the person's replies
+    /// waiting under it.
+    fn send_current(&mut self) {
+        let Some((_, node)) = self.current_thread() else { return };
+        self.saw(&node);
+        self.send_journal_now(&node.id);
+    }
+
     /// The person acted on `node`'s thread: its replies are no longer new.
     fn saw(&mut self, node: &ThreadNode) {
         if let Some(review_loop) = self.review_loop.as_mut() {
@@ -132,7 +145,12 @@ impl App {
         if !self.open.store.is_journal() || self.pending.is_some() || self.focus == Focus::Tree {
             return Vec::new();
         }
+        // Sending at once is offered only where the current note has a draft to send.
+        let draft = self.open.store.journal_view().zip(self.current_note()).is_some_and(|((_, view), id)| {
+            tree::find(&view.threads, &id).is_some_and(|node| !tree::now_drafts(node).is_empty())
+        });
         vec![
+            draft.then(|| self.keys.labelled(Action::SendNow, "send now")).flatten(),
             self.keys.labelled(Action::Reply, "reply"),
             self.keys.labelled(Action::Resolve, "resolve"),
             self.keys.labelled(Action::ToggleThread, "fold"),

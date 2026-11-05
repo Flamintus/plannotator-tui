@@ -159,8 +159,10 @@ impl App {
         }
         let said = self.open.flow.said.get(message)?;
         if said.draft {
-            let send = self.keys.hint(Action::Send);
-            return Some(Err(format!("a draft takes no sub-thread: {send} sends it first")));
+            let (now, send) = (self.keys.hint(Action::SendNow), self.keys.hint(Action::Send));
+            return Some(Err(format!(
+                "a draft takes no sub-thread: {now} sends it now, {send} with the round"
+            )));
         }
         let first = spots.iter().map(|spot| spot.byte).min()?;
         let last = spots.iter().map(|spot| spot.byte).max()?;

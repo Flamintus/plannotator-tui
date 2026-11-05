@@ -1,10 +1,12 @@
 //! Sending through the review journal: `send` (`E`) sends every draft of the review and ends
-//! the round, `send-and-close` (`S`) does the same and closes. The journal marks the drafts
-//! sent and composes what the agent reads, with how to answer under each id through
-//! `plannotator reply`; that text goes to the agent's pane by the app's own delivery, as any
-//! feedback does, and the journal is told it was delivered. The send is archived as today's
-//! feedback is. A send the agent did not get goes again first: this pane's under its press's
-//! key, one an earlier pane left pending by its id.
+//! the round, `send-and-close` (`S`) does the same and closes, and `send-now` (`s`) sends the
+//! current note's draft alone, at once, the round going on, as a box's Send does on
+//! Plannotator's screens. The journal marks the drafts sent and composes what the agent reads,
+//! with how to answer under each id through `plannotator reply`; that text goes to the agent's
+//! pane by the app's own delivery, as any feedback does, and the journal is told it was
+//! delivered. The send is archived as today's feedback is. A send the agent did not get goes
+//! again first, whichever key: this pane's under its press's key, one an earlier pane left
+//! pending by its id.
 
 use std::fmt::Write as _;
 
@@ -14,19 +16,21 @@ use crate::journal::Review;
 use plannotator_tui_schema::{Annotation, Kind};
 
 use super::super::App;
+use super::super::draw::short_id;
 use super::super::feedback::Feedback;
 use super::super::send::SendState;
 use crate::archive::AnnotationRecord;
 use crate::delivery::DeliveryError;
-use crate::journal::tree::{all_drafts, carried_by, find};
+use crate::journal::tree::{all_drafts, carried_by, find, now_drafts};
 use crate::keys::Action;
 
 /// A send the agent has not got yet. The journal gives the same send back, its text
 /// included, rather than send twice.
 #[derive(Debug)]
 pub(super) enum Press {
-    /// A press of this pane's, tried again under its key.
-    Key(IdempotencyKey),
+    /// A press of this pane's, tried again under its key with what it asked: the round, or
+    /// drafts at once, by id.
+    Key { key: IdempotencyKey, mode: SendMode, ids: Vec<String> },
     /// A send an earlier pane left pending (the journal wrote it, the agent did not get it),
     /// by its id.
     Left(String),
@@ -35,7 +39,9 @@ pub(super) enum Press {
 /// The press tried again: under its key, or a left send by its id.
 fn press_again(review: &Review, press: &Press) -> Result<Sent, Error> {
     match press {
-        Press::Key(key) => review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), key),
+        Press::Key { key, mode, ids } => {
+            review.journal.send(&review.target, *mode, ids, review.to.as_ref(), key)
+        }
         Press::Left(id) => review.journal.resend(&review.target, id),
     }
 }
@@ -50,6 +56,15 @@ fn passing(err: &Error) -> bool {
     }
 }
 
+/// What a press asks the journal to send.
+enum Ask {
+    /// Every draft, ending the round; `named`: a round even with no draft, which names the
+    /// threads still open to the agent.
+    Round { named: bool },
+    /// The drafts of thread `id` at once (`now_drafts`), the round going on.
+    Now(String),
+}
+
 impl App {
     /// `E`: every draft of the review sent, ending the round, and the journal's text pasted
     /// into the agent's pane; a send the agent did not get yet goes again first.
@@ -60,8 +75,21 @@ impl App {
     /// The same; `named`: a round even with no draft, which names the threads still open to
     /// the agent (the Review menu's resend all).
     pub(in crate::app) fn send_journal_round(&mut self, named: bool) {
+        self.press_send(&Ask::Round { named });
+    }
+
+    /// `s`: thread `id`'s draft sent alone, at once, the round going on, and pasted into the
+    /// agent's pane as a round is; a send the agent did not get yet goes again first.
+    pub(in crate::app) fn send_journal_now(&mut self, id: &str) {
+        self.press_send(&Ask::Now(id.to_owned()));
+    }
+
+    fn press_send(&mut self, ask: &Ask) {
         let Some(review) = self.loop_review() else { return };
-        let retry = self.keys.hint(Action::Send);
+        let retry = self.keys.hint(match ask {
+            Ask::Round { .. } => Action::Send,
+            Ask::Now(_) => Action::SendNow,
+        });
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
         let (press, sent) = if let Some(press) = press {
             let sent = press_again(&review, &press);
@@ -71,14 +99,11 @@ impl App {
             let Some(view) = self.waiting_view(&review) else { return };
             if let Some(left) = self.left_pending(&review, &view) {
                 left
-            } else if !named && all_drafts(&view).is_empty() {
-                self.status = Some("nothing to send".into());
-                return;
             } else {
+                let Some((mode, ids)) = self.asked(ask, &view) else { return };
                 let key = IdempotencyKey::new();
-                let sent =
-                    review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), &key);
-                (Press::Key(key), sent)
+                let sent = review.journal.send(&review.target, mode, &ids, review.to.as_ref(), &key);
+                (Press::Key { key, mode, ids }, sent)
             }
         };
         let sent = match sent {
@@ -114,12 +139,15 @@ impl App {
                     .map(|(_, view)| carried_by(view, &sent.send.id))
                     .unwrap_or_default();
                 self.archive_journal_send(&sent, &carried);
-                let again = if matches!(press, Press::Left(_)) { " again" } else { "" };
-                let mut status = format!(
-                    "Round {} sent{again} \u{b7} {} comment(s) \u{2192} {target}",
-                    sent.send.round,
-                    carried.len()
-                );
+                let round = sent.send.round;
+                // A send at once leaves the round open, as the agent reads it too.
+                let head = match (sent.send.mode, matches!(press, Press::Left(_))) {
+                    (SendMode::Round, false) => format!("Round {round} sent"),
+                    (SendMode::Round, true) => format!("Round {round} sent again"),
+                    (SendMode::Now, false) => format!("Sent now \u{b7} Round {round} still open"),
+                    (SendMode::Now, true) => format!("Sent again \u{b7} Round {round} still open"),
+                };
+                let mut status = format!("{head} \u{b7} {} comment(s) \u{2192} {target}", carried.len());
                 if let Some(err) = delivered {
                     let _ = write!(status, " \u{b7} not marked delivered: {err}");
                 } else {
@@ -151,6 +179,26 @@ impl App {
                 if let DeliveryError::Blocked(msg) = error {
                     self.send_state = SendState::Blocked(msg);
                 }
+            }
+        }
+    }
+
+    /// What `ask` sends of `view`, the review's drafts as they wait now; nothing, the footer
+    /// saying so, when there is nothing to send.
+    fn asked(&mut self, ask: &Ask, view: &ThreadView) -> Option<(SendMode, Vec<String>)> {
+        match ask {
+            Ask::Round { named: false } if all_drafts(view).is_empty() => {
+                self.status = Some("nothing to send".into());
+                None
+            }
+            Ask::Round { .. } => Some((SendMode::Round, Vec::new())),
+            Ask::Now(id) => {
+                let ids = find(&view.threads, id).map(now_drafts).unwrap_or_default();
+                if ids.is_empty() {
+                    self.status = Some(format!("nothing to send now: {} has no draft", short_id(id)));
+                    return None;
+                }
+                Some((SendMode::Now, ids))
             }
         }
     }

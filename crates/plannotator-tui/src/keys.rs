@@ -65,6 +65,8 @@ pub(crate) enum Action {
     Reply,
     Resolve,
     ToggleThread,
+    /// The current note's draft sent at once, while the review loop runs: the round goes on.
+    SendNow,
     Yes,
     No,
 }
@@ -73,8 +75,8 @@ use Action::{
     Approve, Archive, AttachImage, Back, Bottom, ClearAll, ClearBlock, Comment, Confirm, CopySelection,
     CycleFocus, Delete, Down, Edit, FinishReview, Interrupt, Left, LineEnd, LineStart, LooksGood, MoveCursor,
     No, OpenInEditor, PageDown, PageUp, PickMessage, QuickOpen, Quit, Reload, Remove, RemoveImage, Reply,
-    ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, ToggleHidden, ToggleThread, ToggleTree, Top,
-    UndoFinish, Up, Visual, WordBack, WordForward, Yes,
+    ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, SendNow, ToggleHidden, ToggleThread,
+    ToggleTree, Top, UndoFinish, Up, Visual, WordBack, WordForward, Yes,
 };
 
 /// Browsing, before the focused pane gets the key.
@@ -98,7 +100,7 @@ pub(crate) const GLOBAL: &[Action] = &[
 ];
 pub(crate) const TREE: &[Action] = &[Down, Up, Confirm, Right, ToggleHidden, Back];
 pub(crate) const RAIL: &[Action] =
-    &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, Back];
+    &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, SendNow, Back];
 /// `attach-image` and `remove-image` act on the selected block's note here.
 pub(crate) const DOCUMENT: &[Action] = &[
     Back,
@@ -121,6 +123,7 @@ pub(crate) const DOCUMENT: &[Action] = &[
     Reply,
     Resolve,
     ToggleThread,
+    SendNow,
 ];
 /// Cursor motions, in visual mode and while moving the cursor (`move-cursor`).
 pub(crate) const MOTION: &[Action] = &[Left, Right, Down, Up, WordForward, WordBack, LineStart, LineEnd];
@@ -298,13 +301,14 @@ const DEFAULTS: &[(Action, &[Key])] = &[
     (Reply, &[ch('C')]),
     (Resolve, &[ch('V')]),
     (ToggleThread, &[ch('z')]),
+    (SendNow, &[ch('s')]),
     (Yes, &[ch('y'), ch('Y')]),
     (No, &[ch('n'), ch('N')]),
 ];
 
 /// Actions added after configs were written: `approve` (live only in a gated review),
 /// `copy` (on a waiting selection) and the thread actions.
-const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread];
+const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow];
 
 /// The keys bound to each action. A `[keys]` entry replaces that action's keys and leaves the
 /// others at their defaults; an empty list unbinds the action.
@@ -451,6 +455,7 @@ impl Action {
             Self::Reply => "reply",
             Self::Resolve => "resolve",
             Self::ToggleThread => "toggle-thread",
+            Self::SendNow => "send-now",
             Self::Yes => "yes",
             Self::No => "no",
         }
