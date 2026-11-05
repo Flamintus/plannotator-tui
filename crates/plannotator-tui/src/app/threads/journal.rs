@@ -33,17 +33,15 @@ fn round(draft: bool, round: u64) -> String {
 
 /// What a reply's author line adds: its round, then what became of the person's send, or the
 /// agent's reply new.
-fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> String {
+/// What a reply says beside its author: its status or New, never its round or Not sent, which
+/// the box's head says already.
+fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
     let after = match reply.author {
         Author::Person if reply.draft => None,
         Author::Person => reply.status.and_then(status_word),
         Author::Agent { .. } => (!seen.contains(&reply.id)).then_some("New"),
     };
-    let round = round(reply.draft, reply.round);
-    match after {
-        Some(after) => format!("{round} \u{b7} {after}"),
-        None => round,
-    }
+    after.map(str::to_owned)
 }
 
 /// Where `sub`'s passage is in `words`, the message it is on: the bytes of the occurrence
@@ -67,7 +65,8 @@ impl Thread {
         let comment = Message {
             id: node.id.clone(),
             author: "You".to_owned(),
-            tag: Some(round(node.draft, node.round)),
+            // Its round, or Not sent, is in the box's head already: the author stands alone.
+            tag: None,
             body: node.text.clone(),
             draft: node.draft,
             threads: threads(&node.sub_threads, &node.text),
@@ -75,7 +74,7 @@ impl Thread {
         let replies = node.replies.iter().map(|reply| Message {
             id: reply.id.clone(),
             author: tree::author(reply),
-            tag: Some(reply_tag(reply, seen)),
+            tag: reply_tag(reply, seen),
             body: reply.text.clone(),
             draft: reply.draft,
             threads: threads(&reply.sub_threads, &reply.text),
