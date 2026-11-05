@@ -1,6 +1,6 @@
 //! What a thread says of itself in one line, the same at every depth and for every kind: the
-//! head of its box (its kind's glyph, its passage, its state and marks, its id), or, settled,
-//! its folded line.
+//! head of its box (its kind's glyph, its passage, its state and marks, its id), `▾` first when
+//! drawn open by hand, or, settled, its folded line, `▸` first.
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -25,11 +25,13 @@ pub(in crate::app) fn resolved_style() -> Style {
 }
 
 /// `╭ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit,
-/// the state, the marks and the tail of the note's id, which its bubble's title shows too.
+/// the state, the marks and the tail of the note's id, which its bubble's title shows too;
+/// `╭ ▾ 💬 "passage"` for a thread drawn open by hand, which `left` folds again there.
 /// In a narrow box the marks go first, the last first, then the state, then the id, before the
 /// passage gets too short.
 pub(super) fn head(thread: &Thread, width: usize, border: Style) -> Line<'static> {
-    let lead = format!("\u{256d} {} ", glyph(thread.kind));
+    let fold = if thread.by_hand { "\u{25be} " } else { "" };
+    let lead = format!("\u{256d} {fold}{} ", glyph(thread.kind));
     let id = short_id(&thread.id);
     let chips: Vec<&str> = thread
         .resolved
@@ -85,16 +87,18 @@ fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
 }
 
 /// A folded thread in one line:
-/// `╶ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`.
+/// `▸ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`, which
+/// `right` draws open there; `╶` first for a box too narrow to draw, which does not open.
 pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let (messages, threads) = thread.size();
     let state = if thread.resolved { RESOLVED } else { "\u{25b8} Open" };
+    let start = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
     let plural = |n: usize| if n == 1 { "" } else { "s" };
     let counts = match threads {
         0 => format!("{messages} message{}", plural(messages)),
         _ => format!("{messages} message{} \u{b7} {threads} sub-thread{}", plural(messages), plural(threads)),
     };
-    let lead = format!("\u{2576} {state} \u{b7} {} ", glyph(thread.kind));
+    let lead = format!("{start}{state} \u{b7} {} ", glyph(thread.kind));
     let passage = one_line(&thread.quote);
     let marks: String = thread.marks.iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect();
     // The passage tells folded threads apart better than the id and the marks: they go first.
@@ -115,9 +119,9 @@ pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let fill = width.saturating_sub(lead.width() + quote.width() + tail.width() + 1);
     let line = fit(&format!("{lead}{quote}{tail}{}\u{2574}", "\u{2500}".repeat(fill)), width);
     let grey = Style::new().fg(Color::DarkGray);
-    match line.strip_prefix("\u{2576} ").and_then(|rest| rest.strip_prefix(RESOLVED)) {
+    match line.strip_prefix(start).and_then(|rest| rest.strip_prefix(RESOLVED)) {
         Some(rest) if thread.resolved => Line::from(vec![
-            Span::styled("\u{2576} ", grey),
+            Span::styled(start, grey),
             Span::styled(RESOLVED, resolved_style()),
             Span::styled(rest.to_owned(), grey),
         ]),

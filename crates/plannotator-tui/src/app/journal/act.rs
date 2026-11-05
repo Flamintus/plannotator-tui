@@ -1,8 +1,8 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
 //! open it again, `send-now` sends its draft at once (`send`), `toggle-thread` draws a folded
-//! thread open, or folds it again. These keys answer only while the review loop runs. A
-//! sub-thread has one way in: a passage selected in a message's words right in its box, noted
-//! as the document's words are (`App::annotate`).
+//! thread open, or folds it again, as `right` and `left` do on its fold line. These keys answer
+//! only while the review loop runs. A sub-thread has one way in: a passage selected in a
+//! message's words right in its box, noted as the document's words are (`App::annotate`).
 
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 
@@ -140,16 +140,22 @@ impl App {
         state_marks(node).iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect()
     }
 
-    /// The thread keys the footer adds over a document of the journal, with nothing selected.
+    /// The thread keys the footer adds over a document of the journal, with nothing selected;
+    /// first, on a thread's fold line, the arrow that unfolds or folds it.
     pub(in crate::app) fn journal_help(&self) -> Vec<Option<String>> {
         if !self.open.store.is_journal() || self.pending.is_some() || self.focus == Focus::Tree {
             return Vec::new();
         }
+        let fold = self.selected_fold().and_then(|(_, folded)| {
+            let (action, label) = if folded { (Action::Right, "unfold") } else { (Action::Left, "fold") };
+            self.keys.labelled(action, label)
+        });
         // Sending at once is offered only where the current note has a draft to send.
         let draft = self.open.store.journal_view().zip(self.current_note()).is_some_and(|((_, view), id)| {
             tree::find(&view.threads, &id).is_some_and(|node| !tree::now_drafts(node).is_empty())
         });
         vec![
+            fold,
             draft.then(|| self.keys.labelled(Action::SendNow, "send now")).flatten(),
             self.keys.labelled(Action::Reply, "reply"),
             self.keys.labelled(Action::Resolve, "resolve"),

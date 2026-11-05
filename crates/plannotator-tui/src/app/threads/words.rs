@@ -33,6 +33,15 @@ pub(super) struct Said {
     pub(super) passages: Vec<(Range<usize>, Kind)>,
 }
 
+/// Where the cursor stood in the boxes, found again once they move.
+#[derive(Debug)]
+pub(super) enum Kept {
+    /// The words of message `id` at a byte of them.
+    Words(String, usize),
+    /// Thread `id`'s fold line: its folded line, or the head of its box drawn open by hand.
+    Fold(String),
+}
+
 /// A column of a box that shows a message's words: the message, by its place in the flow's
 /// `said`, and the byte of its words shown there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +68,7 @@ impl App {
     }
 
     /// The block whose boxes are drawn at document row `row`, and the row of them there.
-    fn box_row(&self, row: usize) -> Option<(usize, &BoxRow)> {
+    pub(super) fn box_row(&self, row: usize) -> Option<(usize, &BoxRow)> {
         let layout = &self.open.layout;
         self.open.flow.rows.iter().find_map(|(block, rows)| {
             let rendered = layout.blocks.get(*block)?;
@@ -78,10 +87,10 @@ impl App {
         drawn.words.iter().any(Option::is_some).then_some(drawn.words.as_slice())
     }
 
-    /// The block a box's words at document row `row` are under: the block whose thread they
-    /// are.
+    /// The block a box's words, or a thread's fold line, at document row `row` are under: the
+    /// block whose thread they are.
     pub(in crate::app) fn box_block(&self, row: usize) -> Option<usize> {
-        self.box_words(row)?;
+        self.box_stop(row).then_some(())?;
         self.box_row(row).map(|(block, _)| block)
     }
 
@@ -95,18 +104,19 @@ impl App {
         self.box_row(self.cursor.0).and_then(|(_, drawn)| drawn.thread.clone())
     }
 
-    /// Whether the cursor stands in a box's words: `comment` there wants a passage selected.
-    pub(in crate::app) fn cursor_in_box_words(&self) -> bool {
-        self.open.layout.row(self.cursor.0).is_none() && self.box_words(self.cursor.0).is_some()
-    }
-
     /// The nearest row from `row` on, going down (or up), that the cursor can stand on: the
     /// document's text, and the words in its boxes while they take a selection.
     pub(in crate::app) fn text_row_from(&self, row: usize, down: bool) -> Option<usize> {
         if !self.box_words_selectable() {
             return self.open.layout.text_row_from(row, down);
         }
-        let shows = |row: &usize| self.open.layout.row(*row).is_some() || self.box_words(*row).is_some();
+        self.row_from(row, down, |row| self.box_words(row).is_some())
+    }
+
+    /// The nearest row from `row` on, going down (or up), of the document's text, or of the
+    /// boxes where `boxes` holds.
+    pub(super) fn row_from(&self, row: usize, down: bool, boxes: impl Fn(usize) -> bool) -> Option<usize> {
+        let shows = |row: &usize| self.open.layout.row(*row).is_some() || boxes(*row);
         if down { (row..self.open.layout.total_rows).find(shows) } else { (0..=row).rev().find(shows) }
     }
 
@@ -184,13 +194,29 @@ impl App {
         Some(Ok(Passage { on, start }))
     }
 
-    /// The words the cursor stands on in a box: their message's id and byte, to find them
-    /// again once the boxes move.
-    pub(super) fn words_at_cursor(&self) -> Option<(String, usize)> {
+    /// Where the cursor stands in a box, to find it again once the boxes move: the words it is
+    /// on, or a thread's fold line.
+    pub(super) fn kept_at_cursor(&self) -> Option<Kept> {
+        if let Some((id, _)) = self.fold_line(self.cursor.0) {
+            return Some(Kept::Fold(id.to_owned()));
+        }
         let words = self.box_words(self.cursor.0)?;
         let spot =
             words.get(self.cursor.1).copied().flatten().or_else(|| words.iter().flatten().next().copied())?;
-        Some((self.open.flow.said.get(spot.message)?.id.clone(), spot.byte))
+        Some(Kept::Words(self.open.flow.said.get(spot.message)?.id.clone(), spot.byte))
+    }
+
+    /// Where the fold line of thread `id` is drawn: its document row, and the column the
+    /// cursor stands on there.
+    fn find_fold(&self, id: &str) -> Option<(usize, usize)> {
+        let layout = &self.open.layout;
+        self.open.flow.rows.iter().find_map(|(block, rows)| {
+            let rendered = layout.blocks.get(*block)?;
+            let top = rendered.first_row + rendered.rows.len();
+            let index =
+                rows.iter().position(|drawn| drawn.fold.is_some() && drawn.thread.as_deref() == Some(id))?;
+            Some((top + index, 0))
+        })
     }
 
     /// Where the words of message `id` at `byte` are drawn: their document row and column.
@@ -212,15 +238,20 @@ impl App {
     /// After the boxes moved, while their words take a selection: a passage waiting for its
     /// action follows its words, the cursor with it, or goes when they are no longer drawn (its
     /// thread folded, or gone); a cursor that stood in a box's words (`kept`, before they
-    /// moved) follows them too, or, when they are no longer drawn, goes back to the selected
-    /// block, so the thread keys never act on a box it is no longer in.
-    pub(in crate::app) fn boxes_moved(&mut self, kept: Option<(String, usize)>) {
+    /// moved) follows them too, or, on a thread's fold line, follows it as the thread folds or
+    /// opens; when they are no longer drawn, it goes back to the selected block, so the thread
+    /// keys never act on a box it is no longer in.
+    pub(super) fn boxes_moved(&mut self, kept: Option<Kept>) {
         if !self.box_words_selectable() {
             return;
         }
         let Some(Selected::Passage(passage)) = self.pending.as_ref().map(|pending| &pending.on) else {
             let in_box = kept.is_some() || self.open.layout.row(self.cursor.0).is_none();
-            match kept.and_then(|(id, byte)| self.find_words(&id, byte)) {
+            let found = kept.and_then(|kept| match kept {
+                Kept::Words(id, byte) => self.find_words(&id, byte),
+                Kept::Fold(id) => self.find_fold(&id),
+            });
+            match found {
                 Some(at) => {
                     self.cursor = at;
                     self.selected = self.box_block(at.0).unwrap_or(self.selected);

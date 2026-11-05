@@ -95,7 +95,7 @@ fn resolve_folds_the_thread_and_opens_it_again() {
     press(&mut app, KeyCode::Char('V'));
     assert!(journal.state.borrow().comments[0].resolved);
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "\u{2576} \u{2713} Resolved").contains("\u{b7} 1 message"), "{screen}");
+    assert!(row_with(&screen, "\u{25b8} \u{2713} Resolved").contains("\u{b7} 1 message"), "{screen}");
     press(&mut app, KeyCode::Char('V'));
     assert!(!journal.state.borrow().comments[0].resolved);
     assert!(draw(&mut app, 80, 30).contains("Who watches at night?"));
@@ -235,7 +235,7 @@ fn a_folded_threads_bubble_counts_its_replies_rather_than_repeat_them() {
     journal.state.borrow_mut().comments[0].resolved = true;
     app.poll_journal();
     let screen = draw(&mut app, 110, 30);
-    assert!(screen.contains("\u{2576} \u{2713} Resolved \u{b7}"), "folded: {screen}");
+    assert!(screen.contains("\u{25b8} \u{2713} Resolved \u{b7}"), "folded: {screen}");
     assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
     assert!(!screen.contains("Nobody yet"), "nor in the bubble: {screen}");
     assert!(screen.contains("\u{b7} \u{2713} Resolved \u{2500}"), "the bubble's title says so: {screen}");

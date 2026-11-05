@@ -110,6 +110,7 @@ impl Thread {
             range,
             resolved: node.state == ThreadState::Resolved,
             folded: Some(node.folded),
+            by_hand: false,
             marks,
             messages: std::iter::once(comment).chain(replies).collect(),
         }

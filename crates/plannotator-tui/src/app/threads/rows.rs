@@ -2,7 +2,7 @@
 //! message under who wrote it, the threads on a message's words as boxes in the box, each under
 //! the paragraph its passage starts in, a blank row above and below each (`spaced`); or,
 //! settled, its folded line. Each row keeps, per column, the message's words it shows
-//! (`words::Spot`).
+//! (`words::Spot`), and a thread's first row says when it is its fold line.
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -24,13 +24,19 @@ pub(super) struct BoxRow {
     pub(super) line: Line<'static>,
     /// The id of the thread whose box (or folded line) the row is in, the innermost one.
     pub(super) thread: Option<String>,
+    /// Per column, the words shown; a row that shows none has a column per side of the boxes
+    /// it is in.
     pub(super) words: Vec<Option<Spot>>,
+    /// The row is its thread's fold line, where `down` and `up` stop: whether the thread is
+    /// folded (its folded line, which `right` draws open) or drawn open by hand (its head,
+    /// which `left` folds again).
+    pub(super) fold: Option<bool>,
 }
 
 impl BoxRow {
     /// A row that shows no message's words: a head, a rule, an author, a folded line.
     fn plain(line: Line<'static>) -> Self {
-        Self { line, thread: None, words: Vec::new() }
+        Self { line, thread: None, words: Vec::new(), fold: None }
     }
 
     /// A row that shows nothing: a blank line of a message's words.
@@ -41,7 +47,7 @@ impl BoxRow {
     /// The row between the sides of a box `inner` columns wide.
     fn in_box(self, inner: usize, border: Style) -> Self {
         let words = [None, None].into_iter().chain(self.words).collect();
-        Self { line: framed(self.line, inner, border), thread: self.thread, words }
+        Self { line: framed(self.line, inner, border), thread: self.thread, words, fold: self.fold }
     }
 }
 
@@ -69,13 +75,17 @@ pub(super) fn spaced<'t>(
 
 /// A thread's rows, `width` columns wide: its folded line once settled, else its box. The
 /// messages whose words the box shows join `said`, and its rows name them by their place there;
-/// each row names the innermost thread it is in.
+/// each row names the innermost thread it is in. The first is its fold line while it folds:
+/// its folded line, or the head of its box drawn open by hand.
 fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let mut rows = if thread.is_folded() || width < MIN_BOX_WIDTH {
         vec![BoxRow::plain(folded(thread, width))]
     } else {
         box_of(thread, width, said)
     };
+    if let Some(first) = rows.first_mut() {
+        first.fold = if thread.is_folded() { Some(true) } else { thread.by_hand.then_some(false) };
+    }
     for row in &mut rows {
         row.thread.get_or_insert_with(|| thread.id.clone());
     }
@@ -127,7 +137,7 @@ fn words_of(message: &Message, inner: usize, text: Style, said: &mut Vec<Said>) 
             paragraph.into_iter().map(|(ch, byte)| (ch, Some(byte))).unzip();
         for row in wrap_line(&Line::styled(words, text), &bytes, inner) {
             let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot { message: spoken, byte }));
-            lines.push(BoxRow { line: row.line, thread: None, words: spots.collect() });
+            lines.push(BoxRow { line: row.line, thread: None, words: spots.collect(), fold: None });
         }
     }
     lines
@@ -261,6 +271,7 @@ mod tests {
             range: None,
             resolved,
             folded: None,
+            by_hand: false,
             marks: Vec::new(),
             messages,
         }

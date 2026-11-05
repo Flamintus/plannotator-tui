@@ -6,8 +6,9 @@
 //! depth, its passage marked in the message's words as the document marks a comment's. One code
 //! draws them all, whatever the depth and the kind (`rows`): a blank row above and below each
 //! box, one passage not found at the end of the words it was on, marked so. A resolved box
-//! folds to one line once nothing under it, at any depth, is open; until then it stays open,
-//! marked resolved. Without the loop nothing is drawn here: a record's replies and resolved
+//! folds to one line, `▸` first, once nothing under it, at any depth, is open; until then it
+//! stays open, marked resolved. Drawn open by hand to be read, its head says so, `▾` first, and
+//! it stays resolved. Without the loop nothing is drawn here: a record's replies and resolved
 //! state change nothing on screen, as before the loop.
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
@@ -15,10 +16,11 @@
 //! thread or the width changes; how a thread is drawn in them is `rows`. Each row knows, per
 //! column, the message's words it shows, so a passage of them can be selected as the
 //! document's words are (`words`), and `down` and `up` stop on their lines as on the blocks
-//! (`lines`).
+//! (`lines`), and on a thread's fold line: its folded line, or its head once drawn open by hand.
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
-//! included; `toggle-thread` draws a folded thread open, or folds it again (`fold`).
+//! included; `toggle-thread` draws a folded thread open, or folds it again, and so do `right`
+//! (or `confirm`) on its folded line and `left` on its head drawn open (`fold`).
 
 mod fold;
 mod head;
@@ -54,6 +56,9 @@ pub(super) struct Thread {
     resolved: bool,
     /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.
     folded: Option<bool>,
+    /// Drawn open by hand though it folds (`Flow::unfolded`): its head says so, and `left` on it
+    /// folds it again.
+    by_hand: bool,
     /// What the head says after the state: its kind when not a comment, not found, then what
     /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
     marks: Vec<String>,
@@ -81,9 +86,10 @@ impl Thread {
         self.folded.unwrap_or_else(|| self.settled())
     }
 
-    /// Draw open the threads `unfolded` names, at any depth.
+    /// Draw open the threads `unfolded` names, at any depth; one that folds is drawn open by hand.
     fn unfold(&mut self, unfolded: &HashSet<String>) {
         if unfolded.contains(&self.id) {
+            self.by_hand = self.is_folded();
             self.folded = Some(false);
         }
         for message in &mut self.messages {
@@ -149,7 +155,7 @@ impl App {
     /// threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
-        let kept = self.words_at_cursor();
+        let kept = self.kept_at_cursor();
         let open = &mut self.open;
         for (_, thread) in &mut threads {
             thread.unfold(&open.flow.unfolded);
@@ -162,8 +168,8 @@ impl App {
             // Rows below a changed box moved, as on a reflow: a selection drawn by rows no
             // longer covers what it did. The selection waiting for an action is a source
             // range, which has not moved: it only follows its first row. A passage of a box's
-            // words follows its words, or goes with them, and so does the cursor in them
-            // (`boxes_moved`).
+            // words follows its words, or goes with them, and so does the cursor in them, or on
+            // a thread's fold line (`boxes_moved`).
             self.selection = None;
             if let Some(pending) = self.pending.as_mut()
                 && let Some(range) = pending.range()
@@ -220,7 +226,7 @@ mod tests {
         let words = |row: &str| row.trim_start_matches(['\u{258d}', ' ']).trim_end().to_owned();
         let row = |needle: &str| rows.iter().position(|row| words(row) == needle).expect(needle);
         assert_eq!(row("three"), row("two") + 2, "the gap alone, no box: {screen}");
-        for gone in ["\u{256d}", "\u{2576}", "Two keeps it short.", "Resolved"] {
+        for gone in ["\u{256d}", "\u{25b8} \u{2713}", "Two keeps it short.", "Resolved"] {
             assert!(!screen.contains(gone), "{gone}: {screen}");
         }
         app.select_block(2);

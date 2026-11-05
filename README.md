@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold it again · `l` or `Enter` on a folded thread's line (`▸`) draws it open to read, `h` on its head (`▾`) folds it again (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -278,7 +278,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 
 | Action | Default | Does |
 |---|---|---|
-| `up` `down` `left` `right` | `k` `j` `h` `l`, arrows | move; `left`/`right` in the document start the cursor, `right` in the tree opens |
+| `up` `down` `left` `right` | `k` `j` `h` `l`, arrows | move; `left`/`right` in the document start the cursor, `right` in the tree opens; in the review loop, `right` on a folded thread's line draws it open, `left` on its head folds it again |
 | `word-forward` `word-back` | `w` `b` | cursor to the next or previous word |
 | `line-start` `line-end` | `0` `$`, `Home` `End` | cursor to the start or end of the line |
 | `page-down` `page-up` | `ctrl+d` `ctrl+u`, `PageDown` `PageUp` | half a page |
@@ -405,13 +405,18 @@ the agent answers with too:
   the passage`), its thread open or folded.
 - Each comment the journal has, a draft included (`Not sent`), is a box right under the block
   its passage is in (under a whole list or table when the passage is inside one): the passage
-  at its head, then the comment and each reply by author. A resolved thread folds to one line (`✓ Resolved · 💬 "…"
+  at its head, then the comment and each reply by author. A resolved thread folds to one line (`▸ ✓ Resolved · 💬 "…"
   · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
   `looks-good` colour (`[colors]`). Without the loop, the replies and the resolved state a
   record may carry change nothing on screen.
 - `j`/`k` stop on each line of the boxes' words on the way from a block to the next, a
-  sub-thread's at any depth, drawn as a selected block; heads, sides and blank rows are stepped
-  over as the gaps between blocks are.
+  sub-thread's at any depth, drawn as a selected block, and on a folded thread's line; heads,
+  sides and blank rows are stepped over as the gaps between blocks are.
+- `l` or `Enter` on a folded thread's line draws it open to read it, still resolved, its head
+  marked `▾` and a stop of `j`/`k`; `h` there folds it again. The cursor stays on the line,
+  which turns from one to the other. Reading is not reopening: `V` does that. `h` on a line of
+  the words keeps its meaning (the cursor starts there). The same at any depth and for any
+  kind.
 - A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
   to start elsewhere) as in the document, takes what the document's words take: the same
   toolbar (`a` looks good, `c` comment, `d` delete), each a sub-thread of that kind, a draft

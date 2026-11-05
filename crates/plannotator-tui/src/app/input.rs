@@ -282,9 +282,17 @@ impl App {
                 ));
             }
             Some(Action::MoveCursor) => self.start_roaming(),
-            // The next block, or a line of a box's words on the way under the review loop.
+            // The next block, or a stop of the boxes on the way under the review loop: a line
+            // of a box's words, or a thread's fold line.
             Some(Action::Down) => self.step(true),
             Some(Action::Up) => self.step(false),
+            // On a thread's fold line, `right` and `confirm` draw it open, `left` folds it
+            // again: it has no words for the cursor or a sub-thread.
+            Some(action @ (Action::Left | Action::Right | Action::Confirm))
+                if self.selected_fold().is_some() =>
+            {
+                self.fold_key(action);
+            }
             // A cursor that moves must be visible, so a column move in block mode is a
             // roaming move: the same key, with the cursor drawn.
             Some(Action::Left | Action::Right) => {
