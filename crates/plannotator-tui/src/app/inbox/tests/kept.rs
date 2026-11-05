@@ -10,7 +10,7 @@ use ratatui::crossterm::event::KeyCode;
 use serde_json::json;
 
 use super::super::super::App;
-use super::{last_app, press, thread_app_of, thread_inbox};
+use super::{press, thread_app_of, thread_inbox};
 use crate::inbox::stand_in::{Comment, StandIn, thread};
 
 /// `inbox`'s thread with its newest message open.
@@ -112,13 +112,6 @@ fn a_comment_on_an_attached_file_names_the_file_and_its_version() {
         on,
         On::File { path: "/repo/plan.md".into(), version: FileVersion::Current, lines: None, at: None }
     );
-}
-
-#[test]
-fn a_reply_deposited_by_last_keeps_its_comments_in_the_inbox() {
-    let (mut app, inbox) = last_app(true);
-    app.add_quote_annotation("reply", Kind::Comment, "Say more.".into()).expect("comment");
-    assert_eq!(inbox.state.borrow().comments[0].on, On::Message { message_id: "msg_r1".into() });
 }
 
 #[test]

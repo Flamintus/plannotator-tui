@@ -19,7 +19,6 @@ use serde_json::json;
 
 use super::super::App;
 use crate::delivery::Discard;
-use crate::inbox::import::Depositor;
 use crate::inbox::source::thread_documents;
 use crate::inbox::stand_in::{StandIn, attached, thread};
 
@@ -62,29 +61,4 @@ pub(super) fn thread_app() -> (App, Rc<StandIn>) {
 
 pub(super) fn press(app: &mut App, code: KeyCode) {
     app.handle_event(&Event::Key(KeyEvent::from(code))).expect("key");
-}
-
-/// `last` on two replies, newest first, of the Inbox's live session `ses_a`.
-pub(super) fn last_app(newest: bool) -> (App, Rc<StandIn>) {
-    let inbox = Rc::new(StandIn::with_session());
-    let reply = |id: &str, text: &str| plannotator_tui_hosts::Message {
-        id: id.into(),
-        role: plannotator_tui_hosts::Role::Assistant,
-        text: text.into(),
-        at: None,
-    };
-    let replies = vec![reply("m2", "Second reply.\n"), reply("m1", "First reply.\n")];
-    let mut app = App::open_message(
-        "claude",
-        "/tmp/transcript.jsonl",
-        Some("ses_a"),
-        replies,
-        80,
-        Box::new(Discard),
-        newest,
-    )
-    .expect("app");
-    let depositor = Depositor::find(inbox.clone(), "ses_a").expect("the session is live");
-    app.review_in_inbox(Ok(Some(depositor)));
-    (app, inbox)
 }

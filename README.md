@@ -364,12 +364,10 @@ pairs with it as a terminal device on the first run, keeping the device token 06
 `clients/plannotator-tui/inbox-device.json` there.
 
 It needs an Inbox whose device door serves terminals: local pairing, and the person's
-routes for comment threads, sends and the review-target deposit (Plannotator's contract
-E7). Against an Inbox without them, `last` goes on as it does with the setting off, the
-footer saying why (notes in memory, feedback to the agent's pane), and `plannotator-tui
-inbox` stops with the Inbox's reason; a thread it can read but whose comments it cannot
-list keeps its notes in memory, says so, and copies its feedback rather than paste it into
-an agent's pane.
+routes for comment threads and sends (Plannotator's contract E7). Against an Inbox without
+them, `plannotator-tui inbox` stops with the Inbox's reason; a thread it can read but whose
+comments it cannot list keeps its notes in memory, says so, and copies its feedback rather
+than paste it into an agent's pane.
 
 ```sh
 plannotator-tui inbox                  # the Inbox's threads: id, section, subject
@@ -378,12 +376,7 @@ plannotator-tui inbox <thread> [--sent] # review one: its agent messages and att
 
 A thread's documents are its agent messages, newest first, each followed by the text files
 attached to it (`--sent`: the files as the agent sent them, not as they are now), in the
-reply picker. `last` (and `annotate.last` in Herdr Annotate) deposits the reply under review
-in its session's review thread when it is opened for review, never while the picker only
-previews it: the agent's chat message becomes a message of that thread, the same one again
-for the same words, so comments from an earlier round come back. Only a session the Inbox
-lists live, found by the session id the agent's host reported, goes there; a transcript
-found by its folder is a guess and stays with the agent's pane.
+reply picker.
 
 On an Inbox document:
 

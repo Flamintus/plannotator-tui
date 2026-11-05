@@ -6,14 +6,12 @@
 //! All of it waits behind `[inbox] enabled`, off by default: off, nothing here runs.
 //!
 //! - `command`: `plannotator-tui inbox`, the threads or one thread to review.
-//! - `import`: `last`'s reviewed reply, deposited in its session's review thread.
 //! - `passage`: a comment's quote found in a document's words as drawn.
 //! - `source`: a thread's agent messages and attached text files, as documents.
 //! - `tree`: what is in the Inbox's view of a thread's comments, and a comment's thread
 //!   as a document.
 
 pub(crate) mod command;
-pub(crate) mod import;
 pub(crate) mod passage;
 pub(crate) mod source;
 #[cfg(test)]

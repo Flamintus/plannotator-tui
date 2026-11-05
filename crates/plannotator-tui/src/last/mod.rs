@@ -84,12 +84,6 @@ pub(crate) fn run(options: &LastOptions) -> Result<()> {
     let transcript = located.transcript.display().to_string();
     let session_id = located.session_id;
     let messages = located.messages;
-    // Only an exactly identified session reaches the Inbox: a folder's newest is a guess.
-    let known = session_id.as_deref().filter(|_| located.discovery == Discovery::Exact);
-    let inbox = crate::inbox::import::depositor(
-        crate::config::Config::load().unwrap_or_default().inbox.enabled,
-        known,
-    );
     let note = discovery_note(located.discovery, crate::herdr::context::HerdrEnv::from_env().in_herdr);
     let newest = options.newest;
     cli::run_ui(|width| {
@@ -105,7 +99,6 @@ pub(crate) fn run(options: &LastOptions) -> Result<()> {
         if let Some(note) = note {
             app.set_status(note);
         }
-        app.review_in_inbox(inbox);
         Ok(app)
     })
 }

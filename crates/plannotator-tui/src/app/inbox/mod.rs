@@ -1,12 +1,10 @@
 //! Reviewing through the Plannotator Inbox (`crate::inbox`): an Inbox thread's agent
 //! messages and attached files in the picker, each opened as a document whose comments the
-//! Inbox keeps (here), `last`'s replies deposited in their session's review thread
-//! (`deposit`), the comments sent now or at the end of a round (`send`), the thread
+//! Inbox keeps (here), the comments sent now or at the end of a round (`send`), the thread
 //! followed live on the Inbox's event stream (`watch`), and replies, resolution and
 //! sub-threads on the current note's thread (`act`).
 
 mod act;
-mod deposit;
 mod send;
 mod watch;
 
@@ -18,7 +16,6 @@ use plannotator_tui_schema::Provenance;
 
 use super::{App, Mode, Open};
 use crate::delivery::Delivery;
-use crate::inbox::import::Depositor;
 use crate::inbox::source::{Document, ThreadDocuments};
 use crate::inbox::{Shared, Target, tree};
 use crate::store::Store;
@@ -29,8 +26,6 @@ pub(super) struct InboxReview {
     /// What each picker candidate opens, by candidate index, when the candidates are an
     /// Inbox thread's documents.
     documents: Vec<Document>,
-    /// `last`: where its replies are deposited.
-    depositor: Option<Depositor>,
     /// Why the Inbox could not list the comments of the document opened last.
     unlisted: Option<String>,
     /// The last send that did not reach the Inbox, to try again under its key.
@@ -46,11 +41,10 @@ pub(super) struct InboxReview {
 }
 
 impl InboxReview {
-    fn new(inbox: Shared, documents: Vec<Document>, depositor: Option<Depositor>) -> Self {
+    fn new(inbox: Shared, documents: Vec<Document>) -> Self {
         Self {
             inbox,
             documents,
-            depositor,
             unlisted: None,
             press: None,
             following: None,
@@ -108,7 +102,7 @@ impl App {
         if !found.unreadable.is_empty() {
             app.status = Some(format!("could not read {}", found.unreadable.join("; ")));
         }
-        app.inbox = Some(InboxReview::new(inbox, found.documents, None));
+        app.inbox = Some(InboxReview::new(inbox, found.documents));
         if let Some(open) = app.inbox_candidate(0)? {
             app.open = open;
         }
@@ -135,10 +129,8 @@ impl App {
         }
     }
 
-    /// After the picker opened a document: deposit `last`'s reply, and say when the Inbox
-    /// keeps nothing of the document open.
+    /// After the picker opened a document: say when the Inbox keeps nothing of it.
     pub(in crate::app) fn picked(&mut self) {
-        self.deposit_open();
         self.say_unlisted();
     }
 

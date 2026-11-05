@@ -1,5 +1,5 @@
-//! A stand-in for the Inbox, for the app's tests: threads, attached files, live sessions,
-//! deposits and comments held in memory, the comments with their replies and sub-threads
+//! A stand-in for the Inbox, for the app's tests: threads, attached files and comments held
+//! in memory, the comments with their replies and sub-threads
 //! listed by a view of the Inbox's shape (`comments.rs`). A route it does not hold, or one a test lists in
 //! `missing`, answers as an Inbox without that route would.
 
@@ -12,7 +12,7 @@ use std::cell::RefCell;
 use plannotator_tui_inbox::{
     Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, Event,
     FileVersion, Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Passage, ProjectSessions,
-    ReviewTarget, SendMode, SendTarget, Status, Target, Thread, ThreadRow, ThreadView, Watch,
+    ReviewTarget, SendMode, SendTarget, Status, Thread, ThreadRow, ThreadView, Watch,
 };
 
 pub(crate) use comments::Comment;
@@ -28,9 +28,6 @@ pub(crate) struct State {
     pub(crate) threads: Vec<Thread>,
     /// Attached files' words by attachment id.
     pub(crate) files: Vec<(String, AttachmentText)>,
-    pub(crate) sessions: Vec<ProjectSessions>,
-    /// Every deposit asked for, and where it landed.
-    pub(crate) deposits: Vec<(ReviewTarget, Deposit)>,
     /// Routes answered as missing.
     pub(crate) missing: Vec<&'static str>,
     pub(crate) comments: Vec<Comment>,
@@ -72,17 +69,6 @@ fn refused(route: &str, code: &str) -> Error {
 }
 
 impl StandIn {
-    /// An Inbox with one live session, `ses_a` of `claude-code`, in `/repo`.
-    pub(crate) fn with_session() -> Self {
-        let sessions = serde_json::from_value(serde_json::json!([{
-            "project": { "id": "prj_1", "name": "repo", "root": "/repo" },
-            "sessions": [{ "session": "ses_a", "host": "claude-code", "busy": false, "last_thread": null }],
-        }]));
-        let inbox = Self::default();
-        inbox.state.borrow_mut().sessions = sessions.expect("sessions");
-        inbox
-    }
-
     /// A new comment on `on`, or an edit of the draft of the same id.
     fn write(&self, on: On, comment: &NewComment) -> Result<CommentRecord, Error> {
         let mut state = self.state.borrow_mut();
@@ -151,8 +137,7 @@ impl Inbox for StandIn {
     }
 
     fn sessions(&self) -> Result<Vec<ProjectSessions>, Error> {
-        self.missing("sessions")?;
-        Ok(self.state.borrow().sessions.clone())
+        missing("sessions")
     }
 
     fn threads(&self) -> Result<Vec<ThreadRow>, Error> {
@@ -201,33 +186,8 @@ impl Inbox for StandIn {
         })
     }
 
-    /// One review thread for all deposits; the same words again land on the same message.
-    fn deposit(&self, target: &ReviewTarget) -> Result<Deposit, Error> {
-        self.missing("review-targets")?;
-        let mut state = self.state.borrow_mut();
-        if let Some((_, landed)) = state.deposits.iter().find(|(asked, _)| asked == target) {
-            let landed = Deposit { created: false, ..landed.clone() };
-            state.deposits.push((target.clone(), landed.clone()));
-            return Ok(landed);
-        }
-        let Target::ChatMessage { text, .. } = &target.target else { return missing("review-targets") };
-        let message_id = format!("msg_r{}", state.deposits.len() + 1);
-        if !state.threads.iter().any(|thread| thread.thread_id == "thr_review") {
-            state.threads.push(thread("thr_review", "Review", &[]));
-        }
-        let message = thread("thr_review", "Review", &[(&message_id, true, text, serde_json::json!([]))]);
-        if let Some(review) = state.threads.iter_mut().find(|thread| thread.thread_id == "thr_review") {
-            review.messages.extend(message.messages);
-        }
-        let landed = Deposit {
-            thread_id: "thr_review".into(),
-            message_id,
-            attachment_id: None,
-            created: true,
-            other: serde_json::Map::new(),
-        };
-        state.deposits.push((target.clone(), landed.clone()));
-        Ok(landed)
+    fn deposit(&self, _target: &ReviewTarget) -> Result<Deposit, Error> {
+        missing("review-targets")
     }
 
     fn comment_on_message(&self, message_id: &str, comment: &NewComment) -> Result<CommentRecord, Error> {
