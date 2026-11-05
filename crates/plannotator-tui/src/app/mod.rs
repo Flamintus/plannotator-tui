@@ -12,6 +12,7 @@ mod feedback;
 mod file_search;
 mod header;
 mod images;
+mod inbox;
 mod input;
 mod menu;
 mod pick;
@@ -208,6 +209,8 @@ pub(crate) struct App {
     /// review's annotations live only in memory, so the one being left is kept here
     /// rather than dropped.
     pick_cache: HashMap<usize, Open>,
+    /// Set when the review goes through the Plannotator Inbox.
+    inbox: Option<inbox::InboxReview>,
     message_host: String,
     /// The transcript path, for the archive's `transcript`; never the session id.
     message_transcript: String,
@@ -293,6 +296,7 @@ impl App {
             pick_open: 0,
             pick_return: 0,
             pick_cache: HashMap::new(),
+            inbox: None,
             message_host: String::new(),
             message_transcript: String::new(),
             message_session: None,

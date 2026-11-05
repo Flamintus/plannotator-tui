@@ -41,7 +41,8 @@ const USAGE: &str = "usage:
   plannotator-tui herdr terminal [--lines N] [--placement P] [--deliver-to <pane>] [--print]
   plannotator-tui herdr pane
   plannotator-tui last [--host claude|codex|pi|omp|copilot|droid|hermes|opencode|cmd|agy] [--pid N] [--session <transcript>]
-                       [--session-id <id>] [--stdin] [--print] [--pick N] [--newest]";
+                       [--session-id <id>] [--stdin] [--print] [--pick N] [--newest]
+  plannotator-tui inbox [<thread-id> [--sent]]";
 
 /// Width the document gets when nothing else is known: gutter + rail + gap subtracted.
 fn doc_width(cols: u16) -> usize {
@@ -138,6 +139,7 @@ fn wants_decision(args: &[String]) -> bool {
         Some(first) if first.starts_with('-') || matches!(first.as_str(), "config" | "herdr" | "last") => {
             false
         }
+        Some(first) if first == "inbox" => false,
         Some(_) => args.iter().skip(1).any(decision_flag),
         None => false,
     }
@@ -190,6 +192,7 @@ fn tool(args: &[String]) -> Result<()> {
         Some("config") => show_config(),
         Some("herdr") => herdr_command(args.get(1..).unwrap_or_default()),
         Some("last") => last_command(args.get(1..).unwrap_or_default()),
+        Some("inbox") => crate::inbox::command::run(args.get(1..).unwrap_or_default()),
         Some(flag) if flag.starts_with("--") => anyhow::bail!("unknown flag {flag}\n{USAGE}"),
         Some(_) => interactive(&path(0)?),
         None => anyhow::bail!(USAGE),

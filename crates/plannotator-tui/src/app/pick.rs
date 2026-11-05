@@ -62,6 +62,8 @@ impl App {
         }
         let next = if let Some(open) = self.pick_cache.remove(&index) {
             open
+        } else if let Some(open) = self.inbox_candidate(index)? {
+            open
         } else {
             let Some(message) = self.candidates.get(index) else { return Ok(()) };
             let source = message_source(&self.message_host, self.message_session.as_deref(), message);

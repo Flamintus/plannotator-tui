@@ -1325,6 +1325,7 @@ version = "0.9.9"
 dependencies = [
  "anyhow",
  "plannotator-tui-hosts",
+ "plannotator-tui-inbox",
  "plannotator-tui-schema",
  "pulldown-cmark",
  "ratatui",
