@@ -104,7 +104,7 @@ impl App {
                 return self.run_review_action(ReviewAction::ResendAll);
             }
             Some(Action::FinishReview) if self.open.store.is_inbox() => {
-                self.send_inbox(plannotator_tui_inbox::SendMode::Round);
+                self.send_inbox(plannotator_tui_journal::SendMode::Round);
                 return Ok(());
             }
             Some(Action::FinishReview) if self.is_file_review() => {

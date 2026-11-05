@@ -12,7 +12,7 @@ mod export;
 mod file_search;
 mod gate;
 mod herdr;
-mod inbox;
+mod journal;
 mod keys;
 mod last;
 mod layout;

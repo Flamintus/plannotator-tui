@@ -192,7 +192,7 @@ fn tool(args: &[String]) -> Result<()> {
         Some("config") => show_config(),
         Some("herdr") => herdr_command(args.get(1..).unwrap_or_default()),
         Some("last") => last_command(args.get(1..).unwrap_or_default()),
-        Some("inbox") => crate::inbox::command::run(args.get(1..).unwrap_or_default()),
+        Some("inbox") => crate::journal::command::run(args.get(1..).unwrap_or_default()),
         Some(flag) if flag.starts_with("--") => anyhow::bail!("unknown flag {flag}\n{USAGE}"),
         Some(_) => interactive(&path(0)?),
         None => anyhow::bail!(USAGE),

@@ -19,9 +19,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::doc::Document;
 
-mod inbox;
+mod journal;
 mod review;
-use inbox::Kept;
+use journal::Kept;
 use review::timestamp;
 
 #[derive(Debug, Clone)]

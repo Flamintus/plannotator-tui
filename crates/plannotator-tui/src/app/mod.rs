@@ -12,8 +12,8 @@ mod feedback;
 mod file_search;
 mod header;
 mod images;
-mod inbox;
 mod input;
+mod journal;
 mod menu;
 mod pick;
 mod replies;
@@ -212,7 +212,7 @@ pub(crate) struct App {
     /// rather than dropped.
     pick_cache: HashMap<usize, Open>,
     /// Set when the review goes through the Plannotator Inbox.
-    inbox: Option<inbox::InboxReview>,
+    inbox: Option<journal::InboxReview>,
     message_host: String,
     /// The transcript path, for the archive's `transcript`; never the session id.
     message_transcript: String,

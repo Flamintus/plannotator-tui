@@ -25,7 +25,7 @@ pub(super) enum SendState {
 impl App {
     pub(super) fn send_feedback(&mut self) -> Result<()> {
         if self.open.store.is_inbox() {
-            self.send_inbox(plannotator_tui_inbox::SendMode::Now);
+            self.send_inbox(plannotator_tui_journal::SendMode::Now);
             return Ok(());
         }
         let scope = if self.is_file_review() { SendScope::Pending } else { SendScope::All };

@@ -14,7 +14,7 @@
 //! or folds it again (`fold`).
 
 mod fold;
-mod inbox;
+mod journal;
 
 use std::collections::HashSet;
 
