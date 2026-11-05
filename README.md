@@ -117,6 +117,8 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
+| threads in the flow | `z` draws the selected block's folded threads open, or folds them again |
+| Inbox review | `E` send now · `F` finish the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back (see [Plannotator Inbox](#plannotator-inbox)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -313,6 +315,8 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `clear-all` | `X` | every annotation on the document, after `yes` |
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
+| `reply` `resolve` `open-thread` | `C` `V` `O` | the current note's Inbox thread: reply under it, resolve it or open it again, open it as a document (keys provisional) |
+| `toggle-thread` | `z` | draw the selected block's folded threads open, or fold them again (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -342,6 +346,66 @@ started after `herdr integration install claude`; a session that was already run
 integration was installed reports none. Without an id, `last` shows the newest transcript for
 the folder, which is a guess when several sessions share one directory, and says so in the
 status line.
+
+## Plannotator Inbox
+
+Experimental, and off unless the config turns it on:
+
+```toml
+[inbox]
+enabled = true
+```
+
+Plannotator's Inbox is the local server that keeps threads between you and your coding
+agents. With this on, plannotator-tui reviews through it: comments are the Inbox's, kept on
+the thread, sent to the agent's own session, and answered there, round after round. It
+finds the Inbox under the Plannotator data directory (`PLANNOTATOR_DATA_DIR` moves it) and
+pairs with it as a terminal device on the first run, keeping the device token 0600 in
+`clients/plannotator-tui/inbox-device.json` there.
+
+It needs an Inbox whose device door serves terminals: local pairing, and the person's
+routes for comment threads, sends and the review-target deposit (Plannotator's contract
+E7). Against an Inbox without them, `last` goes on as it does with the setting off, the
+footer saying why (notes in memory, feedback to the agent's pane), and `plannotator-tui
+inbox` stops with the Inbox's reason; a thread it can read but whose comments it cannot
+list keeps its notes in memory, and says so.
+
+```sh
+plannotator-tui inbox                  # the Inbox's threads: id, section, subject
+plannotator-tui inbox <thread> [--sent] # review one: its agent messages and attached text files
+```
+
+A thread's documents are its agent messages, newest first, each followed by the text files
+attached to it (`--sent`: the files as the agent sent them, not as they are now), in the
+reply picker. `last` (and `annotate.last` in Herdr Annotate) deposits the reply under review
+in its session's review thread when it is opened for review, never while the picker only
+previews it: the agent's chat message becomes a message of that thread, the same one again
+for the same words, so comments from an earlier round come back. Only a session the Inbox
+lists live, found by the session id the agent's host reported, goes there; a transcript
+found by its folder is a guess and stays with the agent's pane.
+
+On an Inbox document:
+
+- A comment is written to the Inbox the moment you make it, as a draft, one write per
+  action: editing or removing a draft writes that draft only. A sent comment is not edited
+  or removed; reply under it, or resolve it. The Inbox takes no images. `a` and `d` leave a
+  comment that says looks good or delete this.
+- `E` (or the Send button) sends the selected note's drafts, its replies and sub-threads
+  included, or every draft waiting in the thread when the selected note has none, now: the
+  round stays open. `F` finishes the round. The Inbox composes what the agent reads and
+  wakes its session; nothing is pasted into its pane. The button shows the round under way
+  and the drafts waiting: `round 2 · Send 3 now ▸ Inbox (E)`.
+- The thread is followed live: the agent's reply appears in its box under the passage,
+  marked new until you act on that thread. Each box's head says what became of its send
+  (pending, delivered, read, working, replied) and whether the thread is live, in which
+  case your replies under it go on their own. A sent comment has its box before any answer;
+  a comment whose words are no longer found is boxed under the last block, marked so.
+- `C` replies under the current note's comment, `V` resolves it or opens it again, `O`
+  opens its thread as a document: select a passage of one of its messages and `c` starts a
+  sub-thread on it, a box in the box once back (`Esc`). `z` draws a folded thread open.
+
+These keys are provisional, to be confirmed in use; like every key they can be rebound
+under `[keys]`.
 
 ## Where annotations live
 
