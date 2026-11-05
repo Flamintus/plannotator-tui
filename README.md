@@ -416,12 +416,12 @@ the agent answers with too:
   as keeps the rail's note, or the selected block's, in full. Without the loop each bubble sits
   level with its passage, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
-  block's note), a draft the next `E` sends; `V` resolves it or opens it again; `O` opens its
-  thread as a document: a passage of one of its messages selected, `c` starts a sub-thread on
-  it, a box in the box once back (`Esc`). `z` draws a folded thread open, in the box the cursor
-  is in or under the block, or folds again what it drew open. These keys answer only while the
-  loop runs, and are provisional, to be confirmed in use; like every key they can be rebound
-  under `[keys]`.
+  block's note, as for the image keys), a draft the next `E` sends; `V` resolves it or opens it
+  again; `O` opens its thread as a document: a passage of one of its messages selected, `c`
+  starts a sub-thread on it, a box in the box once back (`Esc`). `z` draws a folded thread open,
+  in the box the cursor is in or under the block, or folds again what it drew open. These keys
+  answer only while the loop runs, and are provisional, to be confirmed in use; like every key
+  they can be rebound under `[keys]`.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

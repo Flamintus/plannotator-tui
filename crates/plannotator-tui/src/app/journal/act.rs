@@ -42,11 +42,12 @@ impl App {
         }
     }
 
-    /// The current note's thread in the review's view, with the review: the box the cursor is
-    /// in, else the rail's note or the selected block's. The footer says why when there is none.
+    /// The current note's thread in the review's view, with the review (`current_note`: the
+    /// box the cursor is in, the rail's note or the selected block's). The footer says why when
+    /// there is none.
     fn current_thread(&mut self) -> Option<(Review, ThreadNode)> {
         let found = self.open.store.journal_view().and_then(|(review, view)| {
-            let id = self.thread_at_cursor().or_else(|| self.current_note())?;
+            let id = self.current_note()?;
             Some((review.clone(), tree::find(&view.threads, &id)?.clone()))
         });
         if found.is_none() {

@@ -86,7 +86,8 @@ impl App {
     }
 
     /// The thread whose box the cursor is in, the innermost one, while the boxes take a
-    /// selection: the thread keys act on it rather than on the block's first note.
+    /// selection: the keys that act on a note act on it rather than on the block's first note
+    /// (`current_note`).
     pub(in crate::app) fn thread_at_cursor(&self) -> Option<String> {
         if self.focus != Focus::Document || !self.box_words_selectable() {
             return None;

@@ -17,12 +17,16 @@ use crate::workspace_paths;
 const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"];
 
 impl App {
-    /// The note `attach-image` and `remove-image` act on: the rail's selected note, or in
-    /// the document the selected block's note (the rail's selection when it is in the block).
+    /// The note `attach-image`, `remove-image` and the thread keys act on: the rail's selected
+    /// note; in the document, the thread whose box the cursor is in, at any depth, else the
+    /// selected block's note (the rail's selection when it is in the block).
     pub(super) fn current_note(&self) -> Option<String> {
         let placed = self.open.store.notes();
         if self.focus == Focus::Rail {
             return placed.get(self.rail_cursor).map(|p| p.annotation.id.clone());
+        }
+        if let Some(id) = self.thread_at_cursor() {
+            return Some(id);
         }
         let in_block = |index: &usize| {
             placed
