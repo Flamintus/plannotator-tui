@@ -46,7 +46,10 @@ fn e_sends_every_draft_ends_the_round_and_pastes_the_journals_text() {
     assert_eq!(pasted, [format!("# Comments on your work\n\nround 1: {first}, {second}")]);
     assert_eq!(journal.state.borrow().delivered, ["snd_1"], "the journal is told it was delivered");
     assert!(!app.quit, "the review stays open for the next round");
-    assert_eq!(app.status.as_deref(), Some("Round 1 sent \u{b7} 2 comment(s) \u{2192} test agent \u{b7} replies will show here"));
+    assert_eq!(
+        app.status.as_deref(),
+        Some("Round 1 sent \u{b7} 2 comment(s) \u{2192} test agent \u{b7} replies will show here")
+    );
     assert_eq!(header(&mut app), "Round 2 \u{b7} Sent \u{25b8} test agent");
 }
 
