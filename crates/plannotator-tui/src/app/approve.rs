@@ -25,7 +25,7 @@ impl App {
         let scope = if self.is_file_review() { SendScope::Pending } else { SendScope::All };
         // Under the review loop the notes not sent yet are the journal's drafts.
         let mut feedback = match self.path_approval() {
-            Some(drafts) => drafts?,
+            Some(drafts) => drafts,
             None => self.prepare_feedback(scope)?,
         };
         if self.tree.is_some() {
@@ -38,15 +38,17 @@ impl App {
             Ok(()) => {
                 let decision = Decision::Approved { feedback: feedback.text.clone(), count: feedback.count };
                 self.archive_submission(&mut feedback, decision.archive_decision());
-                // Under the review loop the approval ends the review: its journal goes.
-                if !self.close_path_review() {
+                // Under the review loop the approval ends the review: its journal goes; one
+                // that stays keeps the window open, the footer saying so, until `q`.
+                let closed = self.close_path_review();
+                if closed.is_none() {
                     // The notes reached the agent with the approval, so they count as sent. The
                     // review is ending; a record that cannot say so only re-offers them next time.
                     let _ = self.remember_delivery(&mut feedback, &target);
                 }
                 self.derive_send_state();
                 self.decision = Some(decision);
-                self.quit = true;
+                self.quit = closed != Some(false);
             }
             Err(DeliveryError::Blocked(msg)) => {
                 self.status = Some(format!("{target} is at a dialog · {retry}"));

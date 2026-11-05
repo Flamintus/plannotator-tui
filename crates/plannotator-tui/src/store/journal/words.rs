@@ -163,6 +163,35 @@ impl Kept {
     }
 }
 
+/// A draft of the review's view as a note on `quote`, with no place in a document: its images
+/// taken from its words; a deletion's anchor says so.
+pub(crate) fn draft_note(id: &str, quote: &str, text: &str, deletion: bool) -> Annotation {
+    let extras =
+        deletion.then(|| plannotator_tui_schema::Extras { kind: Kind::Delete, ..Default::default() });
+    let anchor = Anchor {
+        original_text: quote.to_owned(),
+        quote: quote.to_owned(),
+        plannotator_tui: extras,
+        other: BTreeMap::new(),
+    };
+    let (body, images) = split_images(text);
+    Annotation {
+        id: id.to_owned(),
+        document_id: String::new(),
+        anchor,
+        body,
+        author: None,
+        author_name: None,
+        state: State::Open,
+        attachments: Vec::new(),
+        plannotator_tui: NoteExtras { images, ..NoteExtras::default() },
+        created_at: String::new(),
+        updated_at: String::new(),
+        replies: Vec::new(),
+        other: BTreeMap::new(),
+    }
+}
+
 /// A comment of the review's view as a note: its images taken from its words, its replies
 /// flat under it, by who wrote them.
 pub(super) fn note(node: &ThreadNode, anchor: Anchor) -> Annotation {

@@ -22,6 +22,7 @@ use crate::doc::Document;
 mod journal;
 mod review;
 use journal::Kept;
+pub(crate) use journal::draft_note;
 use review::timestamp;
 
 #[derive(Debug, Clone)]

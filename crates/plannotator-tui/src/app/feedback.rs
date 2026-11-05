@@ -91,10 +91,16 @@ impl Feedback {
         if entries.is_empty() {
             return;
         }
+        let ids = self.push_entries(name, &entries);
+        self.parts.push(FeedbackPart { path, reply, store, ids });
+    }
+
+    /// The block of `entries` on `name`, after what is already there; their ids.
+    pub(super) fn push_entries(&mut self, name: &str, entries: &[export::Entry<'_>]) -> Vec<String> {
         if !self.text.is_empty() {
             self.text.push('\n');
         }
-        self.text.push_str(&export::feedback(name, &entries, self.ids));
+        self.text.push_str(&export::feedback(name, entries, self.ids));
         let ids = entries.iter().map(|e| e.annotation.id.clone()).collect();
         self.count += entries.len();
         self.images += entries.iter().map(|e| e.annotation.plannotator_tui.images.len()).sum::<usize>();
@@ -114,7 +120,7 @@ impl Feedback {
                 original_text: (!a.anchor.original_text.is_empty()).then(|| a.anchor.original_text.clone()),
             }
         }));
-        self.parts.push(FeedbackPart { path, reply, store, ids });
+        ids
     }
 
     fn exported_text(self) -> String {

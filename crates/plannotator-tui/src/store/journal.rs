@@ -12,6 +12,8 @@
 
 mod words;
 
+pub(crate) use words::draft_note;
+
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
@@ -113,32 +115,6 @@ impl Store {
         store.backing = Backing::Journal(Box::new(kept));
         store.refresh_journal(doc, layout)?;
         Ok(store)
-    }
-
-    /// The same, from the review's view `viewed` as already read: no call to the journal.
-    pub(crate) fn journal_viewed(
-        review: Review,
-        target: Target,
-        viewed: Viewed,
-        doc: &Document,
-        layout: &DocLayout,
-    ) -> Self {
-        let mut store = Self::transient();
-        store.backing = Backing::Journal(Box::new(Kept {
-            review,
-            target,
-            key: None,
-            listed: Vec::new(),
-            view: None,
-            anchors: HashMap::new(),
-            source: String::new(),
-            chars: Vec::new(),
-            stale: false,
-            refused: Vec::new(),
-            unsaved: Vec::new(),
-        }));
-        store.take_view(viewed, doc, layout);
-        store
     }
 
     /// Read the review's view again and take this document's comments from it.

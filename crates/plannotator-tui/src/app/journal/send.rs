@@ -18,7 +18,7 @@ use super::super::feedback::Feedback;
 use super::super::send::SendState;
 use crate::archive::AnnotationRecord;
 use crate::delivery::DeliveryError;
-use crate::journal::tree::{all_drafts, carried_by, find, pending_sends};
+use crate::journal::tree::{all_drafts, carried_by, find};
 use crate::keys::Action;
 
 /// A send the agent has not got yet. The journal gives the same send back, its text
@@ -30,6 +30,14 @@ pub(super) enum Press {
     /// A send an earlier pane left pending (the journal wrote it, the agent did not get it),
     /// by its id.
     Left(String),
+}
+
+/// The press tried again: under its key, or a left send by its id.
+fn press_again(review: &Review, press: &Press) -> Result<Sent, Error> {
+    match press {
+        Press::Key(key) => review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), key),
+        Press::Left(id) => review.journal.resend(&review.target, id),
+    }
 }
 
 /// Whether a refused send may go through when tried again: the CLI did not run or answer,
@@ -50,7 +58,7 @@ impl App {
         let retry = self.keys.hint(Action::Send);
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
         let (press, sent) = if let Some(press) = press {
-            let sent = Self::press_again(&review, &press);
+            let sent = press_again(&review, &press);
             (press, sent)
         } else {
             // What waits now, the agent's and other panes' writes included.
@@ -144,16 +152,6 @@ impl App {
         }
     }
 
-    /// The press tried again: under its key, or a left send by its id.
-    fn press_again(review: &Review, press: &Press) -> Result<Sent, Error> {
-        match press {
-            Press::Key(key) => {
-                review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), key)
-            }
-            Press::Left(id) => review.journal.resend(&review.target, id),
-        }
-    }
-
     /// The review `E` sends: the open document's, or the file's or folder's under way.
     fn loop_review(&self) -> Option<Review> {
         let open = self.open.store.journal_view().map(|(review, _)| review);
@@ -172,48 +170,6 @@ impl App {
                 self.status = Some(format!("review loop: {err}"));
                 None
             }
-        }
-    }
-
-    /// What an earlier pane left, when the review loop starts: the sends nothing marked
-    /// delivered (written, the pane closed before the agent got them), kept to go again
-    /// first; and the drafts the next round carries, which the footer counts, since they may
-    /// be on a reply or a file not open here.
-    pub(in crate::app) fn strand_pending(&mut self) {
-        let view = self.open.store.journal_view().map(|(_, view)| view);
-        let view = view.or_else(|| self.review_loop.as_ref()?.view.as_ref());
-        let mut left = view.map(pending_sends).unwrap_or_default();
-        let drafts = view.map_or(0, |view| all_drafts(view).len());
-        // The oldest is handed over first.
-        left.reverse();
-        if let Some(review_loop) = self.review_loop.as_mut() {
-            review_loop.left = left;
-        }
-        if drafts > 0 {
-            let send = self.keys.hint(Action::Send);
-            self.add_status(&format!(
-                "review loop: {drafts} draft(s) left by an earlier pane go with the next {send}"
-            ));
-        }
-    }
-
-    /// The next send an earlier pane left that is still pending in `view` and went to this
-    /// review's session, given back by the journal with its text; the others are dropped.
-    fn left_pending(&mut self, review: &Review, view: &ThreadView) -> Option<(Press, Result<Sent, Error>)> {
-        let pending = pending_sends(view);
-        loop {
-            let id = self.review_loop.as_mut()?.left.pop()?;
-            if !pending.contains(&id) {
-                continue;
-            }
-            let sent = review.journal.resend(&review.target, &id);
-            // A send to another session (a screen's) is not this pane's to hand over.
-            if let Ok(found) = &sent
-                && review.session().is_some_and(|session| session != found.send.to.session)
-            {
-                continue;
-            }
-            return Some((Press::Left(id), sent));
         }
     }
 

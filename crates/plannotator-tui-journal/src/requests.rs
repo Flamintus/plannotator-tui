@@ -20,13 +20,22 @@ impl IdempotencyKey {
     pub fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-        Self(format!("tui_{nanos:x}_{:x}_{:x}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)))
+        Self(format!("{PREFIX}{nanos:x}_{:x}_{:x}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
     }
+
+    /// Whether `key`, a send's as the journal keeps it, was minted by a terminal client
+    /// (this crate's `new`): a Plannotator screen's sends have keys of their own, or none.
+    pub fn is_terminals(key: Option<&Value>) -> bool {
+        key.and_then(Value::as_str).is_some_and(|key| key.starts_with(PREFIX))
+    }
 }
+
+/// How this crate's keys start.
+const PREFIX: &str = "tui_";
 
 impl Default for IdempotencyKey {
     fn default() -> Self {

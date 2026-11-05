@@ -380,17 +380,19 @@ the agent answers with too:
   and composes what the agent reads, each comment under its id with how to answer through
   `plannotator reply`; plannotator-tui pastes that text into the agent's pane as it pastes any
   feedback, keeps the window open for the next round, and archives the send as a feedback.
-  `S` does the same and closes; `F` is unchanged. A paste the agent did not get (a dialog, no
-  agent) goes again with the next `E`, as the same send; one an earlier pane left goes again
-  first, before any draft. The button shows the round under way: `round 2 · Send 3 to claude
+  On a reply, `S` does the same and closes, and `F` is unchanged. A paste the agent did not get
+  (a dialog, no agent) goes again with the next `E`, as the same send; one an earlier pane of
+  plannotator-tui left goes again first, before any draft (a Plannotator screen's is its
+  host's to hand over). The button shows the round under way: `round 2 · Send 3 to claude
   in w1:p2 ▸`. A round carries every draft of the review, drafts left by an earlier pane
   included, which the footer counts when the pane opens.
 - A folder's tree counts the review's comments on each file. The Review menu (resend all,
   finish, undo, the archive) acts on the notes a file's own record keeps, so it does nothing
   while the loop runs, and says so.
 - A gated review (`--gate`, `annotate.gate`) keeps its Approve: `E` ends a round and the review
-  stays open; Approve carries the drafts as its notes, as it carries unsent notes, ends the
-  review with its decision, and closes the review in the journal.
+  stays open, so a review closed without approving after its rounds is dismissed; Approve
+  carries every draft (comments, replies, sub-threads) as its notes, as it carries unsent
+  notes, ends the review with its decision, and closes the review in the journal.
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked new until that thread is acted on, and each box's head says what became of its send
@@ -401,9 +403,9 @@ the agent answers with too:
   folded thread open. These keys answer only while the loop runs, and are provisional, to be
   confirmed in use; like every key they can be rebound under `[keys]`.
 
-While the loop runs, the feedback plannotator-tui still composes itself (an approval's notes,
-a reply the journal could not list) names each note by its own id:
-`## Annotation 1 (line 12) (id local_…)`.
+While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
+not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's
+notes name none: the review closes with it.
 
 Each read or write runs `plannotator` once, a few hundred milliseconds.
 

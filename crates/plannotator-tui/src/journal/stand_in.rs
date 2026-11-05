@@ -59,7 +59,7 @@ impl State {
     /// Send `index` (from 0) as the journal answers it: its round, what it carried, where it
     /// went and the text for the agent.
     fn sent(&self, index: usize, replayed: bool) -> Sent {
-        let (mode, carried, _) = self.sends.get(index).cloned().expect("a send");
+        let (mode, carried, key) = self.sends.get(index).cloned().expect("a send");
         let before = self.sends.iter().take(index).filter(|(mode, _, _)| *mode == SendMode::Round).count();
         let round = before as u64 + 1;
         let to = self.sent_to.get(index).cloned().flatten();
@@ -73,7 +73,7 @@ impl State {
                 mode,
                 comments: carried,
                 to,
-                other: serde_json::Map::new(),
+                other: serde_json::Map::from_iter([("idempotency_key".to_owned(), key.into())]),
             },
             replayed,
         }

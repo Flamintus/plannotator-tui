@@ -6,6 +6,7 @@
 //! (`act`).
 
 mod act;
+mod left;
 mod paths;
 mod send;
 mod watch;
@@ -170,6 +171,9 @@ impl App {
     /// The open document's comments as the journal has them now. What it read may be newer
     /// than what the replies the picker keeps aside last read: they read it again when shown.
     fn refresh_journal(&mut self) {
+        if self.refresh_path_view() {
+            return;
+        }
         self.note_stamp();
         for open in self.pick_cache.values_mut() {
             open.store.mark_journal_stale();

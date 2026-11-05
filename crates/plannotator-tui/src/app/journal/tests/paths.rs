@@ -8,11 +8,11 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use plannotator_tui_journal::{Anchor as On, ReviewTarget, SendMode, SendTo, Status};
-use plannotator_tui_schema::{Kind, Provenance};
+use plannotator_tui_schema::{DocumentSource, Kind, Provenance};
 use ratatui::crossterm::event::KeyCode;
 
-use super::super::super::App;
 use super::super::super::review_test_support::{RecordingDelivery, draw, file_app, folder_app};
+use super::super::super::{App, Open};
 use super::{press, writes};
 use crate::gate::{Decision, Gate};
 use crate::journal::real_path;
@@ -148,28 +148,105 @@ fn a_folders_tree_counts_the_reviews_comments_by_file() {
 }
 
 #[test]
-fn a_send_an_earlier_pane_left_pending_goes_again_before_the_drafts() {
+fn a_send_an_earlier_pane_left_pending_goes_again_before_the_drafts_a_screens_does_not() {
     let journal = Rc::new(StandIn::default());
     let (root, mut app, delivery) = file_app("left");
     let path = file_of(&app).display().to_string();
     {
-        // An earlier pane sent c1; the agent never got it.
+        // A Plannotator screen sent c1, an earlier pane c2; neither reached the agent.
         let mut state = journal.state.borrow_mut();
-        let mut sent = Comment::draft("c1", On::File { path, lines: Some([3, 3]) }, "one", "First.");
-        (sent.draft, sent.status, sent.send) = (false, Some(Status::Pending), Some("snd_1".into()));
-        state.comments.push(sent);
-        state.sends.push((SendMode::Round, vec!["c1".into()], "gone".into()));
-        state.sent_to.push(Some(to()));
-        state.finished = 1;
+        for (n, (id, key)) in [("c1", "press-1"), ("c2", "tui_1_2_3")].into_iter().enumerate() {
+            let on = On::File { path: path.clone(), lines: Some([3, 3]) };
+            let mut sent = Comment::draft(id, on, "one", "Words.");
+            (sent.draft, sent.status) = (false, Some(Status::Pending));
+            sent.send = Some(format!("snd_{}", n + 1));
+            state.comments.push(sent);
+            state.sends.push((SendMode::Now, vec![id.into()], key.into()));
+            state.sent_to.push(Some(to()));
+        }
     }
     app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
     app.add_quote_annotation("two", Kind::Comment, "Second.".into()).expect("draft");
     press(&mut app, KeyCode::Char('E'));
-    assert_eq!(journal.state.borrow().resent, ["snd_1"]);
-    assert_eq!(delivery.calls.borrow().as_slice(), ["# Comments on your work\n\nround 1: c1"]);
-    assert_eq!(journal.state.borrow().sends.len(), 1, "the draft waits for the next press");
+    assert_eq!(journal.state.borrow().resent, ["snd_1", "snd_2"], "the screen's is left to its host");
+    assert_eq!(delivery.calls.borrow().as_slice(), ["# Comments on your work\n\nround 1: c2"]);
+    assert_eq!(journal.state.borrow().sends.len(), 2, "the draft waits for the next press");
     press(&mut app, KeyCode::Char('E'));
-    assert_eq!(journal.state.borrow().sends.len(), 2);
+    assert_eq!(journal.state.borrow().sends.len(), 3);
+    assert_eq!(delivery.calls.borrow().len(), 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_approval_carries_every_draft_even_on_a_file_the_agent_removed() {
+    let journal = Rc::new(StandIn::default());
+    let (root, mut app, delivery) = folder_app("approve-all");
+    app.gate = Gate::Approve;
+    let gone = root.join("docs/gone.md");
+    std::fs::write(&gone, "# Gone\n\nOld words.\n").expect("gone.md");
+    let gone_path = real_path(&gone).display().to_string();
+    let here = file_of(&app).display().to_string();
+    {
+        let mut state = journal.state.borrow_mut();
+        let mut sent = Comment::draft("c1", On::File { path: here, lines: Some([3, 3]) }, "one", "Sent.");
+        (sent.draft, sent.send) = (false, Some("snd_0".into()));
+        state.comments.push(sent.clone());
+        let mut reply = Comment::draft("r1", sent.on.clone(), "", "A reply of mine.");
+        reply.re = Some("c1".into());
+        state.comments.push(reply);
+        let mut sub = Comment::draft("s1", sent.on.clone(), "Sent", "On the passage.");
+        sub.parent = Some("c1".into());
+        state.comments.push(sub);
+        let on_gone = On::File { path: gone_path, lines: Some([3, 3]) };
+        state.comments.push(Comment::draft("g1", on_gone, "Old words.", "Drop this file."));
+    }
+    std::fs::remove_file(&gone).expect("the agent removed it");
+    app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
+    press(&mut app, KeyCode::Char('A'));
+    let approval = delivery.calls.borrow().last().cloned().expect("the approval");
+    for words in ["A reply of mine.", "On the passage.", "Drop this file.", "# Annotations on gone.md"] {
+        assert!(approval.contains(words), "{words}: {approval}");
+    }
+    assert!(!approval.contains("(id "), "the review closes: no id to answer under");
+    assert!(app.quit && journal.state.borrow().closed);
+    assert!(matches!(app.take_decision(), Some(Decision::Approved { count: 3, .. })));
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn an_approval_the_journal_does_not_close_keeps_the_window_and_says_so() {
+    let journal = Rc::new(StandIn::default());
+    let (root, mut app, delivery) = file_app("close-refused");
+    app.gate = Gate::Approve;
+    app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
+    journal.state.borrow_mut().refused.push("close");
+    press(&mut app, KeyCode::Char('A'));
+    assert_eq!(delivery.calls.borrow().as_slice(), ["The user approved."]);
+    assert!(!app.quit, "the footer can say it");
+    assert!(app.status.as_deref().unwrap_or_default().contains("the review stays in the journal"));
+    assert!(matches!(app.take_decision(), Some(Decision::Approved { .. })), "the decision stands");
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_folder_opened_on_no_file_of_its_own_sends_its_round_and_counts_it_sent() {
+    let journal = Rc::new(StandIn::default());
+    let (root, mut app, delivery) = folder_app("placeholder");
+    let on = On::File { path: file_of(&app).display().to_string(), lines: Some([3, 3]) };
+    journal.state.borrow_mut().comments.push(Comment::draft("d1", on, "one", "Left before."));
+    let source = DocumentSource::new("# docs\n\nNo Markdown file.\n".into(), "docs", true, Provenance::Stdin);
+    app.open = Open::new(source, 100, &app.data_dir, &app.project).expect("placeholder");
+    app.gate = Gate::Approve;
+    app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
+    press(&mut app, KeyCode::Char('E'));
+    assert_eq!(delivery.calls.borrow().as_slice(), ["# Comments on your work\n\nround 1: d1"]);
+    assert_eq!(app.send_count(), 0, "the view was read again");
+    press(&mut app, KeyCode::Char('A'));
+    assert_eq!(
+        delivery.calls.borrow().last().map(String::as_str),
+        Some("The user approved."),
+        "nothing twice"
+    );
     let _ = std::fs::remove_dir_all(root);
 }
 
