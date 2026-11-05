@@ -4,12 +4,12 @@
 //! settled, its folded line. Each row keeps, per column, the message's words it shows
 //! (`words::Spot`), and a thread's first row says when it is its fold line.
 
-use ratatui::style::{Color, Modifier, Style};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use super::super::draw::accent;
-use super::head::{folded, head};
+use super::head::{folded, head, resolved_border};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
@@ -96,8 +96,7 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 /// (`spaced`) under the paragraph their passage starts in, as a thread is under the block its
 /// passage starts in; one whose passage is not found there, after the message's words.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    let border =
-        if thread.resolved { Style::new().fg(Color::DarkGray) } else { Style::new().fg(accent(thread.kind)) };
+    let border = if thread.resolved { resolved_border() } else { Style::new().fg(accent(thread.kind)) };
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
     let inner = width - 4;
     let mut rows = vec![BoxRow::plain(head(thread, width, border))];

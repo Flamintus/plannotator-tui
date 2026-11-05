@@ -24,6 +24,12 @@ pub(in crate::app) fn resolved_style() -> Style {
     Style::new().fg(palette().looks_good).add_modifier(Modifier::BOLD)
 }
 
+/// The border of a resolved thread, its box's or its folded line's rule: the resolved mark's
+/// colour, at every depth; a thread under it that is still open keeps its own.
+pub(super) fn resolved_border() -> Style {
+    Style::new().fg(palette().looks_good)
+}
+
 /// `╭ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit,
 /// the state, the marks and the tail of the note's id, which its bubble's title shows too;
 /// `╭ ▾ 💬 "passage"` for a thread drawn open by hand, which `left` folds again there.
@@ -120,11 +126,17 @@ pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let line = fit(&format!("{lead}{quote}{tail}{}\u{2574}", "\u{2500}".repeat(fill)), width);
     let grey = Style::new().fg(Color::DarkGray);
     match line.strip_prefix(start).and_then(|rest| rest.strip_prefix(RESOLVED)) {
-        Some(rest) if thread.resolved => Line::from(vec![
-            Span::styled(start, grey),
-            Span::styled(RESOLVED, resolved_style()),
-            Span::styled(rest.to_owned(), grey),
-        ]),
+        Some(rest) if thread.resolved => {
+            // The rule that closes the line is the folded box's border, green as an open one's.
+            let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
+            let rule = &rest[words.len()..];
+            Line::from(vec![
+                Span::styled(start, resolved_border()),
+                Span::styled(RESOLVED, resolved_style()),
+                Span::styled(words.to_owned(), grey),
+                Span::styled(rule.to_owned(), resolved_border()),
+            ])
+        }
         _ => Line::styled(line, grey),
     }
 }
