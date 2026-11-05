@@ -118,9 +118,10 @@ impl Store {
     /// Read the review's view again and take this document's comments from it.
     pub(crate) fn refresh_journal(&mut self, doc: &Document, layout: &DocLayout) -> Result<()> {
         let Backing::Journal(kept) = &mut self.backing else { return Ok(()) };
-        kept.stale = false;
+        // Still stale when the read fails: the next wake tries again.
         let viewed =
             kept.review.journal.view(&kept.review.target).context("reading the review's comments")?;
+        kept.stale = false;
         kept.key = Some(viewed.review);
         let view = viewed.view;
         kept.source.clone_from(&doc.source);
@@ -131,8 +132,15 @@ impl Store {
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
             .collect();
         self.annotations = nodes.iter().map(|node| words::note(node, kept.anchor(node, doc))).collect();
-        // A note the journal did not take stays as the person left it; one it now lists as
-        // left is saved.
+        kept.view = Some(view);
+        self.keep_unsaved(doc);
+        Ok(())
+    }
+
+    /// The notes the journal did not take, as the person left them, over what it lists; one
+    /// it now lists as left is saved.
+    fn keep_unsaved(&mut self, doc: &Document) {
+        let Backing::Journal(kept) = &mut self.backing else { return };
         let listed = &kept.listed;
         kept.unsaved.retain(|unsaved| {
             !listed.iter().any(|listed| listed.id == unsaved.id && listed.text == Kept::text(unsaved))
@@ -143,9 +151,20 @@ impl Store {
                 None => self.annotations.push(unsaved.clone()),
             }
         }
-        kept.view = Some(view);
         self.resolve_all(doc);
-        Ok(())
+    }
+
+    /// Take over what `from`, the store of the same document written again, knew beyond the
+    /// journal: where this review put its comments, and the notes the journal did not take.
+    pub(crate) fn carry_over(&mut self, from: &Store, doc: &Document) {
+        let (Backing::Journal(kept), Backing::Journal(old)) = (&mut self.backing, &from.backing) else {
+            return;
+        };
+        for (id, anchor) in &old.anchors {
+            kept.anchors.entry(id.clone()).or_insert_with(|| anchor.clone());
+        }
+        kept.unsaved.clone_from(&old.unsaved);
+        self.keep_unsaved(doc);
     }
 
     pub(crate) fn is_journal(&self) -> bool {

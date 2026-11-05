@@ -9,6 +9,7 @@ mod send;
 mod watch;
 
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use plannotator_tui_journal::{Stamp, ThreadNode, ThreadView};
@@ -33,7 +34,13 @@ pub(super) struct ReviewLoop {
     seeded: bool,
     /// The documents left for comments' threads opened as documents, the last one last.
     parents: Vec<act::Parked>,
+    /// When the view could not be read last: it is tried again after `RETRY`, not on every
+    /// wake, since each try runs the CLI.
+    failed: Option<Instant>,
 }
+
+/// How long a view that could not be read waits before it is read again.
+const RETRY: Duration = Duration::from_secs(2);
 
 impl ReviewLoop {
     fn new(review: Review) -> Self {
@@ -45,6 +52,7 @@ impl ReviewLoop {
             seen: HashSet::new(),
             seeded: false,
             parents: Vec::new(),
+            failed: None,
         }
     }
 
@@ -134,26 +142,30 @@ impl App {
             return false;
         }
         if self.journal_moved() {
-            // The replies the picker keeps aside are read again when they are shown.
-            for open in self.pick_cache.values_mut() {
-                open.store.mark_journal_stale();
-            }
             self.open.store.mark_journal_stale();
         }
-        if !self.open.store.journal_stale() {
+        let waiting = self.review_loop.as_ref().and_then(|review_loop| review_loop.failed);
+        if !self.open.store.journal_stale() || waiting.is_some_and(|failed| failed.elapsed() < RETRY) {
             return false;
         }
         self.refresh_journal();
         true
     }
 
-    /// The open document's comments as the journal has them now.
+    /// The open document's comments as the journal has them now. What it read may be newer
+    /// than what the replies the picker keeps aside last read: they read it again when shown.
     fn refresh_journal(&mut self) {
         self.note_stamp();
+        for open in self.pick_cache.values_mut() {
+            open.store.mark_journal_stale();
+        }
         let refused = self.open.store.take_refusals();
         let refreshed = self.open.store.refresh_journal(&self.open.doc, &self.open.layout);
         if refreshed.is_ok() {
             self.rewrite_thread_document();
+        }
+        if let Some(review_loop) = self.review_loop.as_mut() {
+            review_loop.failed = refreshed.is_err().then(Instant::now);
         }
         match refreshed {
             Ok(()) if refused.is_empty() => {}

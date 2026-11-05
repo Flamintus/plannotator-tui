@@ -7,7 +7,7 @@
 
 use std::fmt::Write as _;
 
-use plannotator_tui_journal::{IdempotencyKey, SendMode, Sent, ThreadView};
+use plannotator_tui_journal::{Error, IdempotencyKey, SendMode, Sent, ThreadView};
 use plannotator_tui_schema::{Annotation, Kind};
 
 use super::super::App;
@@ -15,8 +15,7 @@ use super::super::feedback::Feedback;
 use super::super::send::SendState;
 use crate::archive::AnnotationRecord;
 use crate::delivery::DeliveryError;
-use crate::gate::{Decision, Gate};
-use crate::journal::tree::{all_drafts, find};
+use crate::journal::tree::{all_drafts, carried_by, find};
 use crate::keys::Action;
 
 /// A send the agent has not got yet: the press is tried again under its key, and the journal
@@ -24,84 +23,100 @@ use crate::keys::Action;
 #[derive(Debug)]
 pub(super) struct Press {
     key: IdempotencyKey,
-    /// The drafts it carried.
-    carried: Vec<String>,
+}
+
+/// Whether a refused send may go through when tried again: the CLI did not run or answer,
+/// or the journal was locked for a moment. Any other refusal would only repeat.
+fn passing(err: &Error) -> bool {
+    match err {
+        Error::Spawn { .. } | Error::Timeout { .. } | Error::Failed { .. } => true,
+        Error::Refused { code, .. } => code == "locked",
+        _ => false,
+    }
 }
 
 impl App {
     /// `E`: every draft of the review sent, ending the round, and the journal's text pasted
     /// into the agent's pane; a send the agent did not get yet goes again first.
     pub(in crate::app) fn send_journal(&mut self) {
-        // A write in the same burst of keys has not been read back yet: its draft counts.
-        if self.open.store.journal_stale() {
-            self.refresh_journal();
-        }
-        let Some((review, view)) = self.open.store.journal_view() else { return };
-        let review = review.clone();
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
         let press = if let Some(press) = press {
             press
         } else {
-            let carried = all_drafts(view);
-            if carried.is_empty() {
+            // What waits now, the agent's and other panes' writes included.
+            self.refresh_journal();
+            let Some((_, view)) = self.open.store.journal_view() else { return };
+            if all_drafts(view).is_empty() {
                 self.status = Some("nothing to send".into());
-                self.derive_send_state();
                 return;
             }
-            Press { key: IdempotencyKey::new(), carried }
+            Press { key: IdempotencyKey::new() }
         };
+        let Some(review) = self.open.store.journal_view().map(|(review, _)| review.clone()) else { return };
         let retry = self.keys.hint(Action::Send);
         let sent = match review.journal.send(&review.target, SendMode::Round, &[], &press.key) {
             Ok(sent) => sent,
             Err(err) => {
-                self.status = Some(format!("send failed: {err} \u{b7} {retry} retry"));
-                self.keep_press(press);
+                if passing(&err) {
+                    self.keep_press(press);
+                }
                 self.refresh_journal();
+                self.status = Some(format!("send failed: {err} \u{b7} {retry} retry"));
                 return;
             }
         };
         let target = self.delivery.describe();
         match self.delivery.deliver(&sent.text) {
             Ok(()) => {
+                // A copy reaches the agent when the person pastes it: the journal is not told.
+                let delivered = if self.delivery.is_agent() {
+                    review.journal.delivered(&review.target, std::slice::from_ref(&sent.send.id)).err()
+                } else {
+                    None
+                };
+                self.refresh_journal();
+                let carried = self
+                    .open
+                    .store
+                    .journal_view()
+                    .map(|(_, view)| carried_by(view, &sent.send.id))
+                    .unwrap_or_default();
+                self.archive_journal_send(&sent, &carried);
                 let mut status = format!(
                     "sent {} comment(s) \u{b7} round {} ended \u{2192} {target}",
-                    press.carried.len(),
+                    carried.len(),
                     sent.send.round
                 );
-                // A copy reaches the agent when the person pastes it: the journal is not told.
-                if self.delivery.is_agent()
-                    && let Err(err) =
-                        review.journal.delivered(&review.target, std::slice::from_ref(&sent.send.id))
-                {
+                if let Some(err) = delivered {
                     let _ = write!(status, " \u{b7} not marked delivered: {err}");
                 }
-                self.archive_journal_send(&sent, &press.carried);
                 self.status = Some(status);
-                if self.gate != Gate::Off {
-                    self.decision =
-                        Some(Decision::Annotated { feedback: sent.text, count: press.carried.len() });
-                    self.quit = true;
-                }
             }
-            Err(DeliveryError::Blocked(msg)) => {
-                let copied = if self.copy_fallback(&sent.text) { " \u{b7} copied to clipboard" } else { "" };
-                self.status = Some(format!("{target} is at a dialog{copied} \u{b7} {retry} retry"));
+            Err(error) => {
+                // The journal wrote the send: it waits for the next press, under the same key.
+                let copied = match &error {
+                    DeliveryError::Failed(_) => false,
+                    DeliveryError::Blocked(_) | DeliveryError::Unavailable(_) => {
+                        self.copy_fallback(&sent.text)
+                    }
+                };
+                let copied = if copied { " \u{b7} copied to clipboard" } else { "" };
                 self.keep_press(press);
                 self.refresh_journal();
-                self.send_state = SendState::Blocked(msg);
-                return;
-            }
-            Err(DeliveryError::Unavailable(msg)) => {
-                let copied = if self.copy_fallback(&sent.text) { " \u{b7} copied to clipboard" } else { "" };
-                self.status = Some(format!("no agent to send to ({msg}){copied} \u{b7} {retry} retry"));
-                self.keep_press(press);
-            }
-            Err(DeliveryError::Failed(err)) => {
-                self.status = Some(format!("send failed: {err:#} \u{b7} {retry} retry"));
-                self.keep_press(press);
+                self.status = Some(match &error {
+                    DeliveryError::Blocked(_) => {
+                        format!("{target} is at a dialog{copied} \u{b7} {retry} retry")
+                    }
+                    DeliveryError::Unavailable(msg) => {
+                        format!("no agent to send to ({msg}){copied} \u{b7} {retry} retry")
+                    }
+                    DeliveryError::Failed(err) => format!("send failed: {err:#} \u{b7} {retry} retry"),
+                });
+                if let DeliveryError::Blocked(msg) = error {
+                    self.send_state = SendState::Blocked(msg);
+                }
             }
         }
-        self.refresh_journal();
     }
 
     fn keep_press(&mut self, press: Press) {

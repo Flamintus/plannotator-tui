@@ -60,7 +60,9 @@ fn a_send_reads_with_the_text_for_the_agent() {
 #[test]
 fn a_stamp_is_read_only_for_a_reviews_key() {
     let data = scratch("stamp");
-    let cli = Cli::new("plannotator", &data);
+    let mut cli = Cli::new("plannotator");
+    assert_eq!(cli.stamp("last-0123456789abcdef01234567"), None, "no data directory known before the probe");
+    cli.data_dir = Some(data.clone());
     let key = "last-0123456789abcdef01234567";
     assert_eq!(cli.stamp(key), None, "no journal yet");
     let path = journal_path(&data, key).expect("a key");
@@ -94,7 +96,7 @@ fn plannotator_is_found_on_the_path_only_where_it_runs() {
 
 #[test]
 fn a_program_that_is_not_there_is_said() {
-    let err = Cli::new("/nonexistent/plannotator", "/tmp").view(&target()).expect_err("no program");
+    let err = Cli::new("/nonexistent/plannotator").view(&target()).expect_err("no program");
     assert!(matches!(err, Error::Spawn { .. }), "{err:?}");
 }
 
@@ -105,12 +107,12 @@ fn stand_in(name: &str, body: &str) -> (Cli, PathBuf) {
     let dir = scratch(name);
     let program = dir.join("plannotator");
     let script = format!(
-        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{dir}/args\"\ncat > \"{dir}/stdin\"\nprintf '%s' \"$PLANNOTATOR_DATA_DIR\" > \"{dir}/data\"\n{body}\n",
+        "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"{dir}/args\"\ncat > \"{dir}/stdin\"\n{body}\n",
         dir = dir.display()
     );
     std::fs::write(&program, script).expect("script");
     std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    (Cli::new(&program, dir.join("data-dir")), dir)
+    (Cli::new(&program), dir)
 }
 
 #[cfg(unix)]
@@ -130,7 +132,6 @@ fn a_call_names_its_action_and_gives_its_json_on_stdin() {
     assert_eq!(read(&dir, "args"), "threads\nview\n-\n");
     let sent: Value = serde_json::from_str(&read(&dir, "stdin")).expect("JSON on stdin");
     assert_eq!(sent, json!({ "target": { "kind": "last", "host": "claude-code", "session": "ses_a" } }));
-    assert_eq!(read(&dir, "data"), dir.join("data-dir").display().to_string(), "one data directory for both");
     let comment = NewComment {
         id: "local_1".into(),
         text: "Why?".into(),
@@ -197,9 +198,11 @@ fn a_call_that_does_not_answer_is_stopped() {
 #[cfg(unix)]
 #[test]
 fn only_a_plannotator_with_the_journals_actions_passes_the_probe() {
-    let (cli, dir) = stand_in("probe", "echo '  plannotator threads <action> [<json> | -]'");
-    cli.probe().expect("has them");
-    assert_eq!(read(&dir, "args"), "threads\n--help\n");
+    let script = "case \"$1\" in\n  data-dir) echo /data/plannotator ;;\n  *) echo '  plannotator threads <action> [<json> | -]' ;;\nesac";
+    let (cli, dir) = stand_in("probe", script);
+    let cli = cli.probe().expect("has them");
+    assert_eq!(read(&dir, "args"), "data-dir\n", "then asks where its journals are");
+    assert_eq!(cli.data_dir.as_deref(), Some(std::path::Path::new("/data/plannotator")));
     std::fs::remove_dir_all(dir).expect("cleanup");
     let (cli, dir) = stand_in("old", "echo 'Usage: plannotator [file]'");
     assert!(matches!(cli.probe(), Err(Error::Usage { .. })));

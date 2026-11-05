@@ -72,19 +72,21 @@ pub trait Journal {
     fn stamp(&self, review: &str) -> Option<Stamp>;
 }
 
-/// Plannotator's CLI, writing the journals under one data directory.
+/// Plannotator's CLI, over the journals under its own data directory.
 #[derive(Debug, Clone)]
 pub struct Cli {
     program: PathBuf,
-    data_dir: PathBuf,
+    /// Where the CLI keeps its journals, as it said (`plannotator data-dir`): where `stamp`
+    /// looks. `None` until `probe`.
+    data_dir: Option<PathBuf>,
     timeout: Duration,
 }
 
 impl Cli {
-    /// `program`, the `plannotator` to run, over the journals under `data_dir`, which the
-    /// CLI is given as `PLANNOTATOR_DATA_DIR` so both read the same folder.
-    pub fn new(program: impl Into<PathBuf>, data_dir: impl Into<PathBuf>) -> Self {
-        Self { program: program.into(), data_dir: data_dir.into(), timeout: TIMEOUT }
+    /// `program`, the `plannotator` to run. It resolves its data directory itself, as the
+    /// agent's `plannotator reply` does, so both reach the same journals.
+    pub fn new(program: impl Into<PathBuf>) -> Self {
+        Self { program: program.into(), data_dir: None, timeout: TIMEOUT }
     }
 
     /// The same, a call stopped after `timeout`.
@@ -100,17 +102,24 @@ impl Cli {
         std::env::split_paths(path).map(|dir| dir.join(name)).find(|candidate| runnable(candidate))
     }
 
-    /// Whether this Plannotator has the review journal's client actions: its
-    /// `threads --help` names them. A Plannotator without them never gets a call.
-    pub fn probe(&self) -> Result<(), Error> {
+    /// This Plannotator, once it showed it has the review journal's client actions (its
+    /// `threads --help` names them) and said where its data directory is
+    /// (`plannotator data-dir`). A Plannotator without them never gets a call.
+    pub fn probe(mut self) -> Result<Self, Error> {
         let done = self.run("--help", &["threads", "--help"], &[])?;
-        if done.status.success() && String::from_utf8_lossy(&done.stdout).contains(CLIENT_USAGE) {
-            return Ok(());
+        if !done.status.success() || !String::from_utf8_lossy(&done.stdout).contains(CLIENT_USAGE) {
+            return Err(Error::Usage {
+                action: "--help".to_owned(),
+                detail: format!("{} has no review journal (`threads` actions)", self.program.display()),
+            });
         }
-        Err(Error::Usage {
-            action: "--help".to_owned(),
-            detail: format!("{} has no review journal (`threads` actions)", self.program.display()),
-        })
+        let done = self.run("data-dir", &["data-dir"], &[])?;
+        let dir = first_line(&done.stdout);
+        if !done.status.success() || dir.is_empty() {
+            return Err(Error::Failed { action: "data-dir".to_owned(), detail: first_line(&done.stderr) });
+        }
+        self.data_dir = Some(PathBuf::from(dir));
+        Ok(self)
     }
 
     fn call<T: DeserializeOwned>(
@@ -140,7 +149,6 @@ impl Cli {
     fn run(&self, action: &str, args: &[&str], input: &[u8]) -> Result<Finished, Error> {
         let mut child = Command::new(&self.program)
             .args(args)
-            .env("PLANNOTATOR_DATA_DIR", &self.data_dir)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -271,7 +279,7 @@ impl Journal for Cli {
     }
 
     fn stamp(&self, review: &str) -> Option<Stamp> {
-        let meta = std::fs::metadata(journal_path(&self.data_dir, review)?).ok()?;
+        let meta = std::fs::metadata(journal_path(self.data_dir.as_deref()?, review)?).ok()?;
         Some(Stamp::new(meta.len(), meta.modified().ok()))
     }
 }

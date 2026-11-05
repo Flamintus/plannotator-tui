@@ -28,6 +28,8 @@ pub(crate) struct Comment {
     pub(crate) quote_offset: Option<u64>,
     /// The person asks for the words to go.
     pub(crate) deletion: bool,
+    /// The send that carried it.
+    pub(crate) send: Option<String>,
     /// An agent's reply.
     pub(crate) agent: bool,
 }
@@ -47,6 +49,7 @@ impl Comment {
             parent: None,
             quote_offset: None,
             deletion: false,
+            send: None,
             agent: false,
         }
     }
@@ -56,6 +59,7 @@ impl Comment {
         let mut comment = Self::draft(id, On::Message { message_id: message_id.into() }, quote, text);
         comment.draft = draft;
         comment.status = (!draft).then_some(Status::Delivered);
+        comment.send = (!draft).then(|| "snd_0".to_owned());
         comment
     }
 
@@ -92,7 +96,7 @@ fn node(comment: &Comment, comments: &[Comment]) -> ThreadNode {
         .map(|id| Parent { id, quote_offset: comment.quote_offset.unwrap_or_default() });
     ThreadNode {
         id: comment.id.clone(),
-        reply_id: if comment.draft { String::new() } else { "snd_1".into() },
+        reply_id: comment.send.clone().unwrap_or_default(),
         round: 1,
         state: if comment.resolved { ThreadState::Resolved } else { ThreadState::Open },
         place: Place { on: comment.on.clone(), quote: comment.quote.clone(), unanchored: false, parent },
@@ -121,7 +125,7 @@ fn reply(comment: &Comment, comments: &[Comment]) -> ReplyNode {
         id: comment.id.clone(),
         author,
         round: 1,
-        message_id: String::new(),
+        message_id: comment.send.clone().unwrap_or_default(),
         text: comment.text.clone(),
         at: "2026-11-05T10:30:00.000Z".into(),
         author_name: comment.agent.then(|| "Claude Code".into()),

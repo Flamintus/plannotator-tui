@@ -64,8 +64,7 @@ pub(crate) fn connect(session: Option<&str>) -> Result<Option<Shared>> {
     session.context("this agent's session is not identified exactly, so it has no review of its own")?;
     let path = std::env::var_os("PATH").unwrap_or_default();
     let program = Cli::find(&path).context("no `plannotator` on the PATH")?;
-    let cli = Cli::new(program, crate::workspace_paths::data_dir());
-    cli.probe().context("plannotator")?;
+    let cli = Cli::new(program).probe().context("plannotator")?;
     Ok(Some(Rc::new(cli)))
 }
 

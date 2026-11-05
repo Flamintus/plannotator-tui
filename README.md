@@ -354,7 +354,7 @@ Herdr Annotate):
 export PLANNOTATOR_TUI_REVIEW_LOOP=1
 ```
 
-It also needs a `plannotator` on the `PATH` whose `plannotator threads` has the review
+For `annotate.last`, it has to be in the environment Herdr itself starts from. It also needs a `plannotator` on the `PATH` whose `plannotator threads` has the review
 journal's commands, which no Plannotator release has yet. The config file is not involved, so
 the released binary keeps reading the same one. Without such a `plannotator`, or for a session
 found only by its folder (a guess), `last` is what it always was, and the footer says why.
@@ -376,8 +376,9 @@ too:
   `plannotator reply`; plannotator-tui pastes that text into the agent's pane as it pastes any
   feedback, keeps the window open for the next round, and archives the send as a feedback.
   `S` does the same and closes; `F` is unchanged. A paste the agent did not get (a dialog, no
-  agent) goes again with the next `E`, as the same send. The button shows the round under
-  way: `round 2 · Send 3 to claude in w1:p2 ▸`.
+  agent) goes again with the next `E`, as the same send, while the pane stays open. The
+  button shows the round under way: `round 2 · Send 3 to claude in w1:p2 ▸`. A round carries
+  every draft of the session's review, drafts left by an earlier pane included.
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked new until that thread is acted on, and each box's head says what became of its send

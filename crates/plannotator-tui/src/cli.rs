@@ -474,6 +474,7 @@ fn run_review(build: impl FnOnce(usize) -> Result<App>) -> Result<Option<Decisio
     let width = doc_width(terminal.size().map_or(120, |s| s.width));
     let result = build(width).and_then(|mut app| {
         app.shift_enter = shift_enter;
+        app.ids_in_feedback = crate::journal::switched_on(|key| std::env::var(key).ok());
         app.keys = config.keys;
         app.ui = config.ui;
         app.editor = crate::editor::from_env(|key| std::env::var(key).ok());

@@ -13,11 +13,12 @@ This crate runs that CLI, synchronously, with no runtime and no network.
 - `Journal` is the seam: `Cli` runs Plannotator's CLI; an application's tests put a stand-in.
 - `Cli::find` takes `plannotator` from a `PATH` value;
   `Cli::probe` checks that its `threads --help` names the client's actions,
-  so a Plannotator without the review journal never gets a call.
+  so a Plannotator without the review journal never gets a call,
+  and asks it where its data directory is (`plannotator data-dir`).
 - Every call is `plannotator threads <action> -`, its JSON object on stdin
   (a comment's words can be longer than a command line takes),
   naming the review by its target, `{ "kind": "last", "host", "session" }`.
-  The CLI is given the caller's data directory as `PLANNOTATOR_DATA_DIR`.
+  The CLI resolves its data directory itself, as the agent's `plannotator reply` does.
   A call that does not answer in time is stopped.
 - Exit 0 is one JSON value on stdout; exit 1 a refusal, `<code>: <message>` on stderr
   (`Error::Refused`, its code `not_found`, `invalid`, `conflict` or `locked`);
@@ -27,8 +28,9 @@ This crate runs that CLI, synchronously, with no runtime and no network.
   and the journal gives the first send back with its text instead of sending twice.
 - The thread view is computed by Plannotator (`ReviewThreadView`, `v: 1`):
   a view in a newer contract is refused (`Error::Newer`), never guessed at.
-- `stamp` reads the size and time of `reviews/<key>/journal.jsonl` under the data directory,
-  without running anything, so a client reads the view again only when the journal moved.
+- `stamp` reads the size and time of `reviews/<key>/journal.jsonl` under the data directory
+  the probe was told, without running anything,
+  so a client reads the view again only when the journal moved.
 
 ## Calls
 

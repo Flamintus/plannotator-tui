@@ -464,18 +464,15 @@ mod tests {
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 
+    /// `toggle-thread` answers only while the review loop runs (`app/journal`).
     #[test]
-    fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
+    fn without_the_review_loop_z_leaves_a_folded_thread_folded() {
         let (root, mut app) = answered_app("threads-unfold", "resolved");
         draw(&mut app, 70, 20);
         app.select_block(1);
         press(&mut app, &[KeyCode::Char('z')]);
-        let screen = draw(&mut app, 70, 20);
-        assert!(screen.contains("Nobody today."), "{screen}");
-        let rows: Vec<&str> = screen.lines().collect();
-        assert!(rows[row_of(&rows, "\u{256d}")].contains("resolved"), "still resolved: {screen}");
-        press(&mut app, &[KeyCode::Char('z')]);
-        assert!(!draw(&mut app, 70, 20).contains("Nobody today."), "folded again");
+        assert!(!draw(&mut app, 70, 20).contains("Nobody today."), "still folded");
+        assert_eq!(app.status, None, "and nothing said");
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 

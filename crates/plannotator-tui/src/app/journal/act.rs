@@ -205,7 +205,8 @@ impl App {
         }
         match self.thread_document(review, &node) {
             Ok(open) => {
-                self.open = open;
+                let old = std::mem::replace(&mut self.open, open);
+                self.open.store.carry_over(&old.store, &self.open.doc);
                 self.clear_selection();
             }
             Err(err) => self.status = Some(format!("review loop: {err:#}")),

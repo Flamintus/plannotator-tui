@@ -4,8 +4,12 @@
 //! review journal, so it runs only when asked:
 //!
 //! ```sh
-//! PLANNOTATOR_TUI_TRIAL_BIN=<plannotator> cargo test -p plannotator-tui -- --ignored real_cli
+//! PLANNOTATOR_DATA_DIR=<an empty folder> PLANNOTATOR_TUI_TRIAL_BIN=<plannotator> \
+//!   cargo test -p plannotator-tui -- --ignored real_cli
 //! ```
+//!
+//! Both this app and the agent's `plannotator` resolve the data directory themselves, so the
+//! test runs only with a `PLANNOTATOR_DATA_DIR` of its own, never on the person's.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
@@ -22,22 +26,17 @@ use super::super::super::App;
 use super::super::super::review_test_support::{RecordingDelivery, draw};
 use super::{last_app, press};
 
-fn cli(program: &Path, data: &Path) -> Cli {
-    let cli = Cli::new(program, data);
-    cli.probe().expect("a Plannotator with the review journal");
-    cli
-}
-
-fn open(program: &Path, data: &Path, delivery: &RecordingDelivery) -> App {
+fn open(program: &Path, delivery: &RecordingDelivery) -> App {
+    let cli = Cli::new(program).probe().expect("a Plannotator with the review journal");
     let mut app = last_app(true, delivery.clone());
-    app.review_in_journal(Ok(Some(Rc::new(cli(program, data)))));
+    app.review_in_journal(Ok(Some(Rc::new(cli))));
     assert!(app.open.store.is_journal(), "{:?}", app.status);
     app
 }
 
-/// What the agent's `plannotator` does, in the same data directory.
-fn plannotator(program: &Path, data: &Path, args: &[&str]) -> String {
-    let out = Command::new(program).args(args).env("PLANNOTATOR_DATA_DIR", data).output().expect("runs");
+/// What the agent's `plannotator` does, in the same environment.
+fn plannotator(program: &Path, args: &[&str]) -> String {
+    let out = Command::new(program).args(args).output().expect("runs");
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     String::from_utf8_lossy(&out.stdout).into_owned()
 }
@@ -53,11 +52,11 @@ fn row_with<'a>(screen: &'a str, needle: &str) -> &'a str {
 fn real_cli_two_rounds_and_a_pane_opened_again() {
     let program =
         PathBuf::from(std::env::var("PLANNOTATOR_TUI_TRIAL_BIN").expect("PLANNOTATOR_TUI_TRIAL_BIN"));
-    let data = std::env::temp_dir().join(format!("plannotator-tui-trial-{}", std::process::id()));
-    drop(std::fs::remove_dir_all(&data));
-    std::fs::create_dir_all(&data).expect("data dir");
+    let data =
+        PathBuf::from(std::env::var("PLANNOTATOR_DATA_DIR").expect("a PLANNOTATOR_DATA_DIR of its own"));
+    assert!(std::fs::read_dir(&data).map_or(true, |mut entries| entries.next().is_none()), "an empty one");
     let delivery = RecordingDelivery::default();
-    let mut app = open(&program, &data, &delivery);
+    let mut app = open(&program, &delivery);
 
     // Round 1: a comment and a deletion with an image, sent; the agent's pane gets the text.
     app.add_quote_annotation("turns the new checkout off", Kind::Comment, "Who watches at night?".into())
@@ -91,12 +90,8 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     assert!(!app.quit);
 
     // The agent answers under both ids through the CLI, another process.
-    plannotator(
-        &program,
-        &data,
-        &["reply", "--review", &key, &comment, "A pager rotation; see the runbook."],
-    );
-    plannotator(&program, &data, &["reply", "--review", &key, &deletion, "Removed."]);
+    plannotator(&program, &["reply", "--review", &key, &comment, "A pager rotation; see the runbook."]);
+    plannotator(&program, &["reply", "--review", &key, &deletion, "Removed."]);
     assert!(app.poll_journal(), "the journal moved");
     let screen = draw(&mut app, 80, 40);
     assert!(row_with(&screen, "\"turns the new checkout").contains("replied"), "{screen}");
@@ -124,8 +119,7 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
 
     // The agent's view: delivered, read and replied as the journal says.
     let view: Value =
-        serde_json::from_str(&plannotator(&program, &data, &["threads", "--review", &key, "--json"]))
-            .expect("JSON");
+        serde_json::from_str(&plannotator(&program, &["threads", "--review", &key, "--json"])).expect("JSON");
     let threads = view["threads"].as_array().expect("threads");
     let state =
         |id: &str| threads.iter().find(|t| t["id"] == id).map(|t| (t["state"].clone(), t["status"].clone()));
@@ -140,12 +134,11 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     assert_eq!(state(&deletion).map(|(state, _)| state), Some(Value::from("resolved")), "{view}");
 
     // The pane closed and opened again: the review is the session's, kept by the journal.
-    let mut again = open(&program, &data, &delivery);
+    let mut again = open(&program, &delivery);
     let screen = draw(&mut again, 80, 40);
     assert!(screen.contains("A pager rotation; see the runbook."), "{screen}");
     assert!(row_with(&screen, "round 3").contains("Sent"), "{screen}");
     let notes = again.open.store.placed();
     let image = notes.iter().find(|p| p.annotation.id == deletion).expect("the deletion");
     assert_eq!(image.annotation.plannotator_tui.images, ["/tmp/shot.png"]);
-    std::fs::remove_dir_all(&data).expect("cleanup");
 }

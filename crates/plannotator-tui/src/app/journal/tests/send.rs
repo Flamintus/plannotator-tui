@@ -118,3 +118,45 @@ fn quitting_with_drafts_waiting_asks_and_yes_sends_them() {
     assert_eq!(sends(&journal).len(), 1);
     assert!(app.quit, "nothing is left waiting");
 }
+
+#[test]
+fn a_round_sent_from_one_reply_is_sent_on_the_others_too() {
+    let journal = Rc::new(StandIn::default());
+    let delivery = RecordingDelivery::default();
+    let mut app = super::last_app(false, delivery.clone());
+    app.review_in_journal(Ok(Some(journal.clone())));
+    press(&mut app, KeyCode::Esc);
+    app.add_quote_annotation("We ship", Kind::Comment, "Why Friday?".into()).expect("on the newest");
+    app.poll_journal();
+    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Enter);
+    app.add_quote_annotation("First", Kind::Comment, "Shorter.".into()).expect("on the other");
+    press(&mut app, KeyCode::Char('E'));
+    assert_eq!(sends(&journal)[0].1.len(), 2, "the round carries both replies' drafts");
+    press(&mut app, KeyCode::Char('p'));
+    press(&mut app, KeyCode::Up);
+    press(&mut app, KeyCode::Enter);
+    app.poll_journal();
+    assert_eq!(
+        header(&mut app),
+        "round 2 \u{b7} Sent \u{25b8} test agent",
+        "the reply kept aside reads its send"
+    );
+    press(&mut app, KeyCode::Char('E'));
+    assert_eq!(app.status.as_deref(), Some("nothing to send"));
+    assert_eq!(sends(&journal).len(), 1, "no empty round");
+}
+
+#[test]
+fn a_send_the_journal_refuses_for_good_is_not_kept_to_try_again() {
+    let (mut app, journal, _, _) = two_drafts();
+    {
+        let mut state = journal.state.borrow_mut();
+        state.refused.push("send");
+        state.refused_as = Some("invalid");
+    }
+    press(&mut app, KeyCode::Char('E'));
+    assert!(app.status.clone().unwrap_or_default().starts_with("send failed"));
+    assert!(!app.journal_retry_waiting(), "nothing to try again: quitting does not wait on it");
+}

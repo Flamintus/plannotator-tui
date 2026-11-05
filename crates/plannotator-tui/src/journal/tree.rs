@@ -44,6 +44,31 @@ pub(crate) fn all_drafts(view: &ThreadView) -> Vec<String> {
     out
 }
 
+/// The person's comments, replies and sub-threads that send `send` carried, at any depth.
+pub(crate) fn carried_by(view: &ThreadView, send: &str) -> Vec<String> {
+    fn walk(node: &ThreadNode, send: &str, out: &mut Vec<String>) {
+        if node.reply_id == send {
+            out.push(node.id.clone());
+        }
+        for reply in &node.replies {
+            if matches!(reply.author, Author::Person) && reply.message_id == send {
+                out.push(reply.id.clone());
+            }
+            for sub in &reply.sub_threads {
+                walk(sub, send, out);
+            }
+        }
+        for sub in &node.sub_threads {
+            walk(sub, send, out);
+        }
+    }
+    let mut out = Vec::new();
+    for node in &view.threads {
+        walk(node, send, &mut out);
+    }
+    out
+}
+
 /// The agent's replies under `node`, at any depth.
 pub(crate) fn agent_replies(node: &ThreadNode, out: &mut Vec<String>) {
     for reply in &node.replies {

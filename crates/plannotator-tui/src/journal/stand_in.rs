@@ -37,6 +37,8 @@ pub(crate) struct State {
     pub(crate) delivered: Vec<String>,
     /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `send`, `delivered`.
     pub(crate) refused: Vec<&'static str>,
+    /// The code they are refused with: `locked` unless a test names another.
+    pub(crate) refused_as: Option<&'static str>,
     /// A view to answer as it is, in place of the one the comments make: one computed by
     /// Plannotator's own code (the client crate's fixture).
     pub(crate) view: Option<ThreadView>,
@@ -68,7 +70,7 @@ impl StandIn {
         let mut state = self.state.borrow_mut();
         state.targets.push(target.clone());
         if state.refused.contains(&action) {
-            return Err(refused(action, "locked"));
+            return Err(refused(action, state.refused_as.unwrap_or("locked")));
         }
         Ok(())
     }
@@ -92,17 +94,15 @@ impl Journal for StandIn {
         Ok(Viewed { review: REVIEW.to_owned(), view })
     }
 
+    /// A draft written as the journal writes one: the same id again replaces the whole
+    /// draft, its place and kind with it; a sent one is not edited.
     fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<(), Error> {
         self.call("comment", target)?;
         let mut state = self.state.borrow_mut();
         state.writes.push(format!("comment {}", comment.id));
-        if let Some(kept) = state.comments.iter_mut().find(|kept| kept.id == comment.id) {
-            if !kept.draft {
-                return Err(refused("comment", "conflict"));
-            }
-            kept.text.clone_from(&comment.text);
-            state.written += 1;
-            return Ok(());
+        let known = state.comments.iter().position(|kept| kept.id == comment.id);
+        if known.and_then(|at| state.comments.get(at)).is_some_and(|kept| !kept.draft) {
+            return Err(refused("comment", "conflict"));
         }
         let sent = |state: &State, id: &str| state.comments.iter().find(|c| c.id == id && !c.draft).cloned();
         let kept = match &comment.placement {
@@ -125,19 +125,45 @@ impl Journal for StandIn {
                 kept
             }
         };
-        state.comments.push(kept);
+        match known.and_then(|at| state.comments.get_mut(at)) {
+            Some(slot) => *slot = kept,
+            None => state.comments.push(kept),
+        }
         state.written += 1;
         Ok(())
     }
 
+    /// Removes a draft and everything of the person's under it, at any depth.
     fn remove(&self, target: &ReviewTarget, id: &str) -> Result<(), Error> {
         self.call("remove", target)?;
         let mut state = self.state.borrow_mut();
         state.writes.push(format!("remove {id}"));
-        let Some(index) = state.comments.iter().position(|comment| comment.id == id) else {
+        if !state.comments.iter().any(|comment| comment.id == id) {
             return Err(refused("remove", "not_found"));
-        };
-        state.comments.remove(index);
+        }
+        let mut gone = vec![id.to_owned()];
+        loop {
+            let under: Vec<String> = state
+                .comments
+                .iter()
+                .filter(|c| !c.agent && !gone.contains(&c.id))
+                .filter(|c| {
+                    let up = c.re.as_ref().or(c.parent.as_ref());
+                    up.is_some_and(|up| {
+                        gone.contains(up)
+                            || state.comments.iter().any(|r| {
+                                r.agent && &r.id == up && r.re.as_ref().is_some_and(|re| gone.contains(re))
+                            })
+                    })
+                })
+                .map(|c| c.id.clone())
+                .collect();
+            if under.is_empty() {
+                break;
+            }
+            gone.extend(under);
+        }
+        state.comments.retain(|comment| comment.agent || !gone.contains(&comment.id));
         state.written += 1;
         Ok(())
     }
@@ -177,12 +203,14 @@ impl Journal for StandIn {
             return Ok(sent(format!("snd_{}", index + 1), state.finished, carried, true));
         }
         let round = state.finished + 1;
+        let send_id = format!("snd_{}", state.sends.len() + 1);
         let mut carried = Vec::new();
         for comment in
             state.comments.iter_mut().filter(|c| c.draft && (mode == SendMode::Round || ids.contains(&c.id)))
         {
             comment.draft = false;
             comment.status = Some(Status::Pending);
+            comment.send = Some(send_id.clone());
             carried.push(comment.id.clone());
         }
         if mode == SendMode::Round {
@@ -190,7 +218,7 @@ impl Journal for StandIn {
         }
         state.sends.push((mode, carried.clone(), key.as_str().to_owned()));
         state.written += 1;
-        Ok(sent(format!("snd_{}", state.sends.len()), round, carried, false))
+        Ok(sent(send_id, round, carried, false))
     }
 
     fn delivered(&self, target: &ReviewTarget, sends: &[String]) -> Result<(), Error> {

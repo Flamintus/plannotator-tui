@@ -223,8 +223,8 @@ pub(crate) struct App {
     /// token. Feedback quotes rejoin them and carry no line labels.
     terminal_breaks: Option<Vec<usize>>,
     /// The review loop is switched on (`crate::journal`): each feedback heading names its
-    /// note's id, so an agent can name the note it answers.
-    ids_in_feedback: bool,
+    /// note's id, so an agent can name the note it answers. Set by the UI's entry.
+    pub(crate) ids_in_feedback: bool,
     compose: Compose,
     /// Whether the terminal reports Shift+Enter distinctly (kitty keyboard protocol).
     pub(super) shift_enter: bool,
@@ -307,7 +307,7 @@ impl App {
             message_transcript: String::new(),
             message_session: None,
             terminal_breaks: None,
-            ids_in_feedback: crate::journal::switched_on(|key| std::env::var(key).ok()),
+            ids_in_feedback: false,
             compose: Compose::default(),
             shift_enter: false,
             keys: Keymap::default(),

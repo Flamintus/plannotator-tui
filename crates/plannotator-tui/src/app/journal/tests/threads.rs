@@ -173,3 +173,36 @@ fn a_selection_waiting_for_its_action_survives_a_box_growing_above_it() {
     let made = state.comments.iter().find(|c| c.text == "Why Friday?").expect("the comment");
     assert_eq!(made.quote, "on Friday");
 }
+
+#[test]
+fn a_read_that_failed_is_tried_again_after_a_pause_and_misses_no_reply() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().refused.push("view");
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Nobody yet: a pager rotation.");
+    assert!(app.poll_journal(), "the journal moved: read");
+    assert!(app.status.clone().unwrap_or_default().starts_with("review loop:"), "{:?}", app.status);
+    journal.state.borrow_mut().refused.clear();
+    assert!(!app.poll_journal(), "not on every wake");
+    let review_loop = app.review_loop.as_mut().expect("the loop runs");
+    review_loop.failed = review_loop.failed.and_then(|failed| failed.checked_sub(super::super::RETRY));
+    assert!(app.poll_journal(), "after the pause");
+    assert!(draw(&mut app, 80, 30).contains("Nobody yet: a pager rotation."));
+}
+
+#[test]
+fn a_note_not_saved_in_a_thread_survives_a_reply_rewriting_the_thread() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel.");
+    app.poll_journal();
+    press(&mut app, KeyCode::Char('O'));
+    journal.state.borrow_mut().refused.push("comment");
+    app.add_quote_annotation("admin panel", Kind::Comment, "Which one?".into()).expect("sub-thread");
+    app.poll_journal();
+    journal.state.borrow_mut().agent_replies("rep_2", "c1", "And the runbook.");
+    app.poll_journal();
+    assert!(app.open.doc.source.contains("And the runbook."), "the thread was written again");
+    let kept: Vec<String> = app.open.store.placed().iter().map(|p| p.annotation.body.clone()).collect();
+    assert_eq!(kept, ["Which one?"], "the person's words are not lost");
+    let id = app.open.store.placed()[0].annotation.id.clone();
+    assert_eq!(app.journal_tag(&id), " \u{b7} not saved");
+}
