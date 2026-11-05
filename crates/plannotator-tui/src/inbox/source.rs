@@ -5,7 +5,6 @@
 use anyhow::{Context, Result};
 use plannotator_tui_hosts::{Message, Role};
 use plannotator_tui_inbox::{AttachmentVersion, Author, Inbox};
-use plannotator_tui_schema::DocumentSource;
 use serde::Deserialize;
 
 use super::Target;
@@ -24,11 +23,6 @@ pub(crate) struct Document {
 }
 
 impl Document {
-    /// The document to open: transient, since the Inbox keeps whatever is said about it.
-    pub(crate) fn source(&self) -> DocumentSource {
-        DocumentSource::new(self.text.clone(), self.name.clone(), true, self.target.provenance())
-    }
-
     /// Its line in the picker: a message by its words, a file by its name.
     pub(crate) fn candidate(&self) -> Message {
         let (id, text) = match &self.target {

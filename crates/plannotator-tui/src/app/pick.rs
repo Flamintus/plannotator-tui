@@ -89,6 +89,7 @@ impl App {
         self.show_candidate(index)?;
         self.mode = Mode::Browse;
         self.status = Some(format!("message {} of {}", index + 1, self.candidates.len()));
+        self.deposit_open();
         Ok(())
     }
 
@@ -116,6 +117,7 @@ impl App {
                 self.show_candidate(self.pick_return)?;
                 self.pick_cursor = self.pick_return;
                 self.mode = Mode::Browse;
+                self.deposit_open();
             }
             Some(Action::Quit) => self.quit = true,
             _ => {}
