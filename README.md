@@ -117,8 +117,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| threads in the flow | `z` draws the selected block's folded threads open, or folds them again |
-| Inbox review | `E` send now · `F` finish the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back (see [Plannotator Inbox](#plannotator-inbox)) |
+| review loop | `E` send and end the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -315,8 +314,8 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `clear-all` | `X` | every annotation on the document, after `yes` |
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
-| `reply` `resolve` `open-thread` | `C` `V` `O` | the current note's Inbox thread: reply under it, resolve it or open it again, open it as a document (keys provisional) |
-| `toggle-thread` | `z` | draw the selected block's folded threads open, or fold them again (key provisional) |
+| `reply` `resolve` `open-thread` | `C` `V` `O` | the current note's thread in the review loop: reply under it, resolve it or open it again, open it as a document (keys provisional) |
+| `toggle-thread` | `z` | in the review loop, draw the selected block's folded threads open, or fold them again (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -347,62 +346,50 @@ integration was installed reports none. Without an id, `last` shows the newest t
 the folder, which is a guess when several sessions share one directory, and says so in the
 status line.
 
-## Plannotator Inbox
+## Review loop
 
-Experimental, and off unless the config turns it on:
-
-```toml
-[inbox]
-enabled = true
-```
-
-Plannotator's Inbox is the local server that keeps threads between you and your coding
-agents. With this on, plannotator-tui reviews through it: comments are the Inbox's, kept on
-the thread, sent to the agent's own session, and answered there, round after round. It
-finds the Inbox under the Plannotator data directory (`PLANNOTATOR_DATA_DIR` moves it) and
-pairs with it as a terminal device on the first run, keeping the device token 0600 in
-`clients/plannotator-tui/inbox-device.json` there.
-
-It needs an Inbox whose device door serves terminals: local pairing, and the person's
-routes for comment threads and sends (Plannotator's contract E7). Against an Inbox without
-them, `plannotator-tui inbox` stops with the Inbox's reason; a thread it can read but whose
-comments it cannot list keeps its notes in memory, says so, and copies its feedback rather
-than paste it into an agent's pane.
+Experimental, and off unless the environment turns it on, for `last` (and `annotate.last` in
+Herdr Annotate):
 
 ```sh
-plannotator-tui inbox                  # the Inbox's threads: id, section, subject
-plannotator-tui inbox <thread> [--sent] # review one: its agent messages and attached text files
+export PLANNOTATOR_TUI_REVIEW_LOOP=1
 ```
 
-A thread's documents are its agent messages, newest first, each followed by the text files
-attached to it (`--sent`: the files as the agent sent them, not as they are now), in the
-reply picker.
+It also needs a `plannotator` on the `PATH` whose `plannotator threads` has the review
+journal's commands, which no Plannotator release has yet. The config file is not involved, so
+the released binary keeps reading the same one. Without such a `plannotator`, or for a session
+found only by its folder (a guess), `last` is what it always was, and the footer says why.
 
-On an Inbox document:
+With the loop on, the replies of one agent session make one review, kept by Plannotator's
+review journal under its data directory (`reviews/<key>/journal.jsonl`; `PLANNOTATOR_DATA_DIR`
+moves it) and read and written through `plannotator threads`, the CLI the agent answers with
+too:
 
-- A comment is written to the Inbox the moment you make it, as a draft, one write per
-  action: editing or removing a draft writes that draft only. A sent comment is not edited
-  or removed; reply under it, or resolve it. The Inbox takes no images: a note keeps its
-  words only. `a` and `d` leave a comment that says looks good or delete this. A note the
-  Inbox does not take (too long, a connection lost) stays here, `· not saved` in its title,
-  and goes with the next write that succeeds. Nothing the Inbox says moves the document
-  while you type: it is read once you stop.
-- `E` (or the Send button) sends the selected note's drafts, its replies and sub-threads
-  included, or every draft waiting in the thread when the selected note has none, now: the
-  round stays open. `F` finishes the round. The Inbox composes what the agent reads and
-  wakes its session; nothing is pasted into its pane. The button shows the round under way
-  and the drafts waiting: `round 2 · Send 3 now ▸ Inbox (E)`.
-- The thread is followed live: the agent's reply appears in its box under the passage,
-  marked new until you act on that thread. Each box's head says what became of its send
-  (pending, delivered, read, working, replied) and whether the thread is live, in which
-  case your replies under it go on their own. A sent comment has its box before any answer;
-  a comment whose words are no longer found is boxed under the last block, marked so.
-- `C` replies under the current note's comment, `V` resolves it or opens it again, `O`
-  opens its thread as a document: select a passage of one of its messages and `c` starts a
-  sub-thread on it, a box in the box once back (`Esc`). `z` draws a folded thread open.
+- A note is written to the journal the moment it is made, as a draft of a comment on that
+  reply, one write per action: editing or removing a draft writes that draft only. A sent
+  comment is not edited or removed; reply under it, or resolve it. An attached image goes as
+  an `Image: <path>` line of the comment's words, as the feedback names it. A note the journal
+  does not take stays here, `· not saved` in its title, until a write takes it. Nothing the
+  journal says moves the document while a comment is typed. The review outlives the pane:
+  `last` on the same session brings back its comments, the replies and the round.
+- `E` (or the Send button) sends every draft and ends the round: the journal marks them sent
+  and composes what the agent reads, each comment under its id with how to answer through
+  `plannotator reply`; plannotator-tui pastes that text into the agent's pane as it pastes any
+  feedback, keeps the window open for the next round, and archives the send as a feedback.
+  `S` does the same and closes; `F` is unchanged. A paste the agent did not get (a dialog, no
+  agent) goes again with the next `E`, as the same send. The button shows the round under
+  way: `round 2 · Send 3 to claude in w1:p2 ▸`.
+- The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
+  watched while the pane is open: an answer comes into its thread's box under the passage,
+  marked new until that thread is acted on, and each box's head says what became of its send
+  (pending, delivered, read, replied).
+- `C` replies under the current note's comment, a draft the next `E` sends; `V` resolves it or
+  opens it again; `O` opens its thread as a document: a passage of one of its messages
+  selected, `c` starts a sub-thread on it, a box in the box once back (`Esc`). `z` draws a
+  folded thread open. These keys answer only while the loop runs, and are provisional, to be
+  confirmed in use; like every key they can be rebound under `[keys]`.
 
-These keys are provisional, to be confirmed in use; like every key they can be rebound
-under `[keys]`.
+Each read or write runs `plannotator` once, a few hundred milliseconds.
 
 ## Where annotations live
 

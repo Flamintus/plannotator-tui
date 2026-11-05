@@ -22,8 +22,7 @@ cargo build --release
 | tree | `j`/`k` move · `Enter` open · `.` show/hide hidden (dot-prefixed) entries · `E` send new feedback across files, including collapsed folders · counts show active notes per file |
 | quick open (folder) | `Ctrl+P` find a Markdown file by name anywhere in the folder · type to filter · ↑/↓ or wheel select · `Enter` or click open · `Esc` cancel |
 | archive | `j`/`k` or ↑/↓ select · `Enter` or click restore · `Esc` close |
-| threads in the flow | `z` draws the selected block's folded threads open, or folds them again |
-| Inbox review (`[inbox] enabled`) | `E` send now · `F` finish the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back; keys provisional |
+| review loop (`PLANNOTATOR_TUI_REVIEW_LOOP=1`) | `E` send and end the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back · `z` draw a folded thread open; keys provisional |
 
 Selections and exports are copied to the terminal clipboard (OSC 52).
 
