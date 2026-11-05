@@ -338,7 +338,10 @@ impl App {
 
     /// The notes' bubbles. Under the review loop they stack from the top, in the document's
     /// order, a sub-thread's after its thread's note, as the column of Plannotator's screens
-    /// lists its comments; without it each sits level with its passage, as it always did.
+    /// lists its comments, and the one lit is the current note's, which the keys act on (the
+    /// rail's, the box the cursor is in at any depth, else the selected block's); without it
+    /// each sits level with its passage, as it always did, and every note of the selected block
+    /// is lit.
     fn draw_rail(&mut self, frame: &mut Frame, rail: Rect) {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;
@@ -347,7 +350,10 @@ impl App {
         let inner_width = usize::from(rail.width.saturating_sub(4));
         let mut next_y = rail.y;
         let notes = self.open.store.notes();
-        let first = if in_loop { self.first_stacked(&notes, inner_width, rail.height) } else { 0 };
+        // A sub-thread's note is on its thread's block: the block alone would light them all.
+        let current = in_loop.then(|| self.current_note()).flatten();
+        let current = current.and_then(|id| notes.iter().position(|p| p.annotation.id == id));
+        let first = if in_loop { first_stacked(&notes, current, inner_width, rail.height) } else { 0 };
         let mut bubbles = Vec::new();
         for (index, placed) in notes.iter().enumerate().skip(first) {
             let Some(block) = self.open.doc.block_containing(placed.range.start) else { continue };
@@ -372,7 +378,13 @@ impl App {
             if height < 3 {
                 break;
             }
-            let highlighted = if rail_focused { index == self.rail_cursor } else { block == self.selected };
+            let highlighted = if in_loop {
+                current == Some(index)
+            } else if rail_focused {
+                index == self.rail_cursor
+            } else {
+                block == self.selected
+            };
             let border =
                 if highlighted { Style::new().fg(accent(kind)) } else { Style::new().fg(Color::DarkGray) };
             let border = if rail_focused && index == self.rail_cursor { border.bold() } else { border };
@@ -416,33 +428,6 @@ impl App {
             next_y = y + height;
         }
         self.geometry.bubbles = bubbles;
-    }
-
-    /// The first of the stacked bubbles drawn: the top one, unless the note the rail shows
-    /// (the rail's cursor, else the selected block's first note) would be cut; then the rail
-    /// scrolls only as far as shows it whole.
-    fn first_stacked(&self, notes: &[crate::store::Placed<'_>], width: usize, height: u16) -> usize {
-        let shown = if self.focus == Focus::Rail {
-            self.rail_cursor
-        } else {
-            let in_block = |p: &crate::store::Placed<'_>| {
-                self.open.doc.block_containing(p.range.start) == Some(self.selected)
-            };
-            notes.iter().position(in_block).unwrap_or(0)
-        };
-        let tall = |p: &crate::store::Placed<'_>| {
-            bubble::lines(p.annotation, label(p.kind()), width, true).len() + 2
-        };
-        let mut first = shown.min(notes.len().saturating_sub(1));
-        let mut used = notes.get(first).map_or(0, tall);
-        while let Some(above) = first.checked_sub(1).and_then(|index| notes.get(index)) {
-            used += tall(above);
-            if used > usize::from(height) {
-                break;
-            }
-            first -= 1;
-        }
-        first
     }
 
     fn draw_footer(&mut self, frame: &mut Frame, mut area: Rect) {
@@ -603,6 +588,28 @@ impl App {
             if self.tree.is_some() && self.pending.is_none() { key(Action::QuickOpen, "find") } else { None };
         help.into_iter().chain([find]).chain(self.journal_help()).flatten().collect()
     }
+}
+
+/// The first of the stacked bubbles drawn: the top one, unless the current note's (`current`,
+/// by its place in `notes`) would be cut; then the rail scrolls only as far as shows it whole.
+fn first_stacked(
+    notes: &[crate::store::Placed<'_>],
+    current: Option<usize>,
+    width: usize,
+    height: u16,
+) -> usize {
+    let tall =
+        |p: &crate::store::Placed<'_>| bubble::lines(p.annotation, label(p.kind()), width, true).len() + 2;
+    let mut first = current.unwrap_or(0).min(notes.len().saturating_sub(1));
+    let mut used = notes.get(first).map_or(0, tall);
+    while let Some(above) = first.checked_sub(1).and_then(|index| notes.get(index)) {
+        used += tall(above);
+        if used > usize::from(height) {
+            break;
+        }
+        first -= 1;
+    }
+    first
 }
 
 /// The tail of an id, enough to tell bubbles apart: `anno_…F0123` → `F0123`.

@@ -424,9 +424,11 @@ the agent answers with too:
 - The rail stacks its bubbles from the top in the document's order, as the column of
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
   a comment whose words are no longer found last, as its box is under the last block, each
-  drawn and acted on as any note's (edit, remove, image, reply, resolve, send now); it scrolls
-  only as far as keeps the rail's note, or the selected block's, in full. Without the loop each
-  bubble sits level with its passage, as before.
+  drawn and acted on as any note's (edit, remove, image, reply, resolve, send now). The bubble
+  lit is the current note's, the one the keys act on: the rail's, the box the cursor is in at
+  any depth (a sub-thread's alone, not its thread's), else the selected block's; the rail
+  scrolls only as far as keeps it in full. Without the loop each bubble sits level with its
+  passage, and every note of the selected block is lit, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves
   it or opens it again. `z` draws a folded thread open, in the box the cursor is in or under the
