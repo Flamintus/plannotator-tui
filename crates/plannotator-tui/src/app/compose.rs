@@ -8,6 +8,10 @@
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::UnicodeWidthChar;
 
+/// Rows of words the compose box shows at most: a longer comment scrolls in them, the
+/// cursor's row in view.
+pub(super) const ROWS: usize = 8;
+
 /// What a keystroke did to the compose box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ComposeAction {
@@ -143,5 +147,10 @@ impl Compose {
             (cursor_row, cursor_col) = (lines.len() - 1, used);
         }
         (lines, cursor_row, cursor_col)
+    }
+
+    /// The rows the box shows of the comment wrapped to `width`: one at least, `ROWS` at most.
+    pub(super) fn rows(&self, width: usize) -> usize {
+        self.wrapped(width).0.len().clamp(1, ROWS)
     }
 }

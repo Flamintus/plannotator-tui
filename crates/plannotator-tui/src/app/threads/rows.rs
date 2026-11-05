@@ -1,17 +1,20 @@
 //! A thread's rows as drawn, at every depth and of every kind: its box, its head (`head`), each
 //! message under who wrote it, the threads on a message's words as boxes in the box, each under
-//! the paragraph its passage starts in, a blank row above and below each (`spaced`); or,
-//! folded, its folded line. Each row keeps, per column, the message's words it shows
-//! (`words::Spot`), and a thread's first row says when it is its fold line.
+//! the paragraph its passage starts in, a blank row above and below each (`spaced`), then the
+//! field of a reply being typed, a box in the box too (`field`); or, folded, its folded line.
+//! Each row keeps, per column, the message's words it shows (`words::Spot`), and a thread's
+//! first row says when it is its fold line.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use super::field::Field;
 use super::head::{border, folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
+use crate::theme::palette;
 use crate::wrap::wrap_line;
 
 /// Narrowest box worth drawing; a thread nested past it shows its folded line instead.
@@ -30,12 +33,14 @@ pub(super) struct BoxRow {
     /// folded (its folded line, which `right` or a click draws open) or open (the head of its
     /// box, which `left` or a click folds).
     pub(super) fold: Option<bool>,
+    /// The row is one of the words of the field a reply is typed in, drawn over it (`field`).
+    pub(super) field: bool,
 }
 
 impl BoxRow {
     /// A row that shows no message's words: a head, a rule, an author, a folded line.
     fn plain(line: Line<'static>) -> Self {
-        Self { line, thread: None, words: Vec::new(), fold: None }
+        Self { line, thread: None, words: Vec::new(), fold: None, field: false }
     }
 
     /// A row that shows nothing: a blank line of a message's words.
@@ -46,8 +51,14 @@ impl BoxRow {
     /// The row between the sides of a box `inner` columns wide.
     fn in_box(self, inner: usize, border: Style) -> Self {
         let words = [None, None].into_iter().chain(self.words).collect();
-        Self { line: framed(self.line, inner, border), thread: self.thread, words, fold: self.fold }
+        Self { line: framed(self.line, inner, border), words, ..self }
     }
+}
+
+/// Columns inside a box `width` columns wide, between its sides: what its messages' words, a
+/// box in it and the field of a reply take.
+pub(super) fn inside(width: usize) -> usize {
+    width.saturating_sub(4)
 }
 
 /// The boxes of `threads`, all under one line of the words they are on (a block of the
@@ -91,11 +102,12 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 
 /// A thread's box: its head, then each message under who wrote it, the threads on its words
 /// (`spaced`) under the paragraph their passage starts in, as a thread is under the block its
-/// passage starts in; one whose passage is not found there, after the message's words.
+/// passage starts in; one whose passage is not found there, after the message's words; last,
+/// the field of a reply being typed, a box in the box with a blank row above and below it.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let border = border(thread);
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
-    let inner = width - 4;
+    let inner = inside(width);
     let mut rows = vec![BoxRow::plain(head(thread, width, border))];
     for (index, message) in thread.messages.iter().enumerate() {
         if index > 0 {
@@ -117,8 +129,36 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
             rows.extend(boxes.into_iter().map(|row| row.in_box(inner, border)));
         }
     }
+    if let Some(field) = &thread.reply {
+        let blank = || BoxRow::plain(Line::default()).in_box(inner, border);
+        // The blank row under the boxes the last message ends with is the one above the field.
+        if !rows.last().is_some_and(|row| row.line == blank().line) {
+            rows.push(blank());
+        }
+        rows.extend(field_of(field, inner).into_iter().map(|row| row.in_box(inner, border)));
+        rows.push(blank());
+    }
     rows.push(BoxRow::plain(edge('╰', '╯', width, border)));
     rows
+}
+
+/// The field a reply is typed in, a box `width` columns wide drawn as the compose box is: its
+/// title at its head, then a row of its sides for each row of the words, which are drawn over
+/// them.
+fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
+    let border = Style::new().fg(palette().comment);
+    let title = fit(&field.title, width.saturating_sub(2));
+    let rule = "\u{2500}".repeat(width.saturating_sub(2 + title.width()));
+    let head = Line::from(vec![
+        Span::styled("\u{256d}", border),
+        Span::styled(title, Style::new().add_modifier(Modifier::DIM)),
+        Span::styled(format!("{rule}\u{256e}"), border),
+    ]);
+    let words = (0..field.rows).map(|_| BoxRow { field: true, ..BoxRow::plain(Line::default()) });
+    std::iter::once(BoxRow::plain(head))
+        .chain(words.map(|row| row.in_box(inside(width), border)))
+        .chain([BoxRow::plain(edge('╰', '╯', width, border))])
+        .collect()
 }
 
 /// A message's words wrapped to `inner` columns, each row knowing the byte of the words each
@@ -133,7 +173,7 @@ fn words_of(message: &Message, inner: usize, text: Style, said: &mut Vec<Said>) 
             paragraph.into_iter().map(|(ch, byte)| (ch, Some(byte))).unzip();
         for row in wrap_line(&Line::styled(words, text), &bytes, inner) {
             let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot { message: spoken, byte }));
-            lines.push(BoxRow { line: row.line, thread: None, words: spots.collect(), fold: None });
+            lines.push(BoxRow { line: row.line, words: spots.collect(), ..BoxRow::plain(Line::default()) });
         }
     }
     lines
@@ -270,6 +310,7 @@ mod tests {
             by_hand: None,
             marks: Vec::new(),
             messages,
+            reply: None,
         }
     }
 

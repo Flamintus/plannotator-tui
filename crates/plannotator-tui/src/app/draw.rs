@@ -94,6 +94,7 @@ impl App {
             self.scroll_by(0);
         }
         self.sync_threads();
+        self.keep_reply_in_view();
 
         self.draw_header(frame, header);
         if show_tree {
@@ -110,7 +111,10 @@ impl App {
         match &self.mode {
             Mode::Compose => self.draw_compose(frame, &self.compose_title("comment")),
             Mode::Edit(_) => self.draw_compose(frame, &self.compose_title("edit")),
-            Mode::Reply(_) => self.draw_compose(frame, &self.compose_title("reply")),
+            Mode::Reply(_) => match self.reply_field() {
+                Some(field) => self.draw_reply(frame, field),
+                None => self.draw_compose(frame, &self.compose_title("reply")),
+            },
             Mode::AttachImage(_) => {
                 self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ");
             }
@@ -286,15 +290,14 @@ impl App {
     /// bubble being edited, else centered.
     /// The compose box title; the Shift+Enter hint appears only when the terminal
     /// actually distinguishes it, so the hint is never a lie.
-    fn compose_title(&self, verb: &str) -> String {
+    pub(in crate::app) fn compose_title(&self, verb: &str) -> String {
         let newline = if self.shift_enter { "shift+enter new line" } else { "alt+enter new line" };
         format!(" {verb} \u{b7} enter saves \u{b7} {newline} \u{b7} esc cancels ")
     }
 
     fn draw_compose(&self, frame: &mut Frame, title: &str) {
         let wrap_width = usize::from(COMPOSE_WIDTH.saturating_sub(3));
-        let (lines, cursor_row, cursor_col) = self.compose.wrapped(wrap_width);
-        let content_rows = lines.len().clamp(1, 8);
+        let content_rows = self.compose.rows(wrap_width);
         let height = content_rows as u16 + 2;
         let rect = self
             .float_origin(height, COMPOSE_WIDTH)
@@ -312,20 +315,48 @@ impl App {
             .title(Span::styled(title.to_owned(), Style::new().dim()));
         let inner = boxed.inner(rect);
         frame.render_widget(boxed, rect);
-        // Keep the cursor's row visible when the comment is taller than the box.
-        let scroll = cursor_row.saturating_sub(content_rows - 1);
-        for (i, line) in lines.iter().skip(scroll).take(content_rows).enumerate() {
-            let row = Rect {
-                x: inner.x + 1,
-                y: inner.y + i as u16,
-                width: inner.width.saturating_sub(1),
-                height: 1,
-            };
+        let words = Rect {
+            x: inner.x + 1,
+            width: inner.width.saturating_sub(1),
+            height: content_rows as u16,
+            ..inner
+        };
+        self.compose_words(frame, words, wrap_width);
+    }
+
+    /// The person's reply over the rows of its field, in the box it answers (`threads::field`),
+    /// `field` as `reply_field` gives it: the rows of it in view, the words wrapped to the
+    /// field's.
+    fn draw_reply(&self, frame: &mut Frame, (first, rows, left): (usize, usize, usize)) {
+        let doc = self.geometry.doc;
+        let view = self.scroll..self.scroll + usize::from(doc.height);
+        let shown = first.max(view.start)..(first + rows).min(view.end);
+        if shown.is_empty() {
+            return;
+        }
+        let width = usize::from(doc.width).saturating_sub(2 * left);
+        let words = Rect {
+            x: doc.x + left as u16,
+            y: doc.y + (shown.start - self.scroll) as u16,
+            width: width as u16,
+            height: shown.len() as u16,
+        };
+        self.compose_words(frame, words, width);
+    }
+
+    /// The comment's words wrapped to `wrap` columns, in `area`'s rows: when it is taller, the
+    /// rows past them scroll so the cursor's row is in view; the cursor on it.
+    fn compose_words(&self, frame: &mut Frame, area: Rect, wrap: usize) {
+        let (lines, cursor_row, cursor_col) = self.compose.wrapped(wrap);
+        let rows = usize::from(area.height).max(1);
+        let scroll = cursor_row.saturating_sub(rows - 1);
+        for (i, line) in lines.iter().skip(scroll).take(rows).enumerate() {
+            let row = Rect { y: area.y + i as u16, height: 1, ..area };
             frame.render_widget(Paragraph::new(Line::from(line.clone())), row);
         }
-        let cursor_x = inner.x + 1 + cursor_col as u16;
-        let cursor_y = inner.y + (cursor_row - scroll) as u16;
-        frame.set_cursor_position((cursor_x.min(inner.right().saturating_sub(1)), cursor_y));
+        let cursor_x = area.x + cursor_col as u16;
+        let cursor_y = area.y + (cursor_row - scroll) as u16;
+        frame.set_cursor_position((cursor_x.min(area.right().saturating_sub(1)), cursor_y));
     }
 
     fn edit_origin(&self, height: u16, width: u16) -> Option<Rect> {

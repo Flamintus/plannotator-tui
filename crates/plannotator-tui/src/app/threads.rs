@@ -22,8 +22,10 @@
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
 //! included; one way folds a thread or opens it (`fold`), from `right` (or `confirm`) on its
-//! folded line, `left` on its head, a click on either, and `toggle-thread`.
+//! folded line, `left` on its head, a click on either, and `toggle-thread`. The person's reply
+//! is typed at the bottom of the box it answers, whatever its depth (`field`).
 
+mod field;
 mod fold;
 mod head;
 mod journal;
@@ -38,7 +40,8 @@ use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use super::App;
+use super::{App, Mode};
+use field::Field;
 use rows::{BoxRow, spaced};
 
 pub(super) use head::{RESOLVED, resolved_style};
@@ -64,6 +67,9 @@ pub(super) struct Thread {
     /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
     marks: Vec<String>,
     messages: Vec<Message>,
+    /// The field the person's reply to it is typed in, at the bottom of its box, while it is
+    /// (`field`).
+    reply: Option<Field>,
 }
 
 /// The note, or one reply under it.
@@ -161,15 +167,24 @@ impl Flow {
 }
 
 impl App {
-    /// Match the flow to the open document's comments and width, and keep its rows free under
-    /// their blocks; none without the review loop. When nothing changed this compares the
-    /// threads and wraps nothing.
+    /// Match the flow to the open document's comments and width, and the field of a reply being
+    /// typed, and keep its rows free under their blocks; none without the review loop. When
+    /// nothing changed this compares the threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
         let kept = self.kept_at_cursor();
+        let replying = match &self.mode {
+            Mode::Reply(id) => Some((id.as_str(), self.compose_title("reply"))),
+            _ => None,
+        };
+        let compose = &self.compose;
         let open = &mut self.open;
         for (_, thread) in &mut threads {
             thread.by_hand(&open.flow.by_hand);
+            if let Some((id, title)) = &replying {
+                let field = |words| Field { title: title.clone(), rows: compose.rows(words) };
+                thread.replying(id, open.layout.width, &field);
+            }
         }
         if threads != open.flow.threads || open.layout.width != open.flow.width {
             let by_hand = std::mem::take(&mut open.flow.by_hand);
