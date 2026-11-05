@@ -36,7 +36,7 @@ use ratatui::text::Line;
 use super::App;
 use rows::{BoxRow, lines_of};
 
-pub(super) use journal::status_word;
+pub(super) use journal::state_marks;
 pub(super) use rows::{RESOLVED, resolved_style};
 pub(super) use words::Passage;
 
@@ -46,14 +46,15 @@ pub(super) struct Thread {
     id: String,
     kind: Kind,
     quote: String,
-    /// A sub-thread: the bytes of its message's words its passage covers, marked there as the
-    /// document's passages are, its box under the line they start on; `None` on the document,
-    /// or when the words no longer hold the passage.
+    /// Where its passage is in the words it is on: the document's source, or, for a sub-thread,
+    /// its message's words, where it is marked as the document's passages are, its box under
+    /// the line it starts on; `None` when the words no longer hold it.
     range: Option<Range<usize>>,
     resolved: bool,
     /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.
     folded: Option<bool>,
-    /// What the head says after the state: not found, what became of its send, live, the round.
+    /// What the head says after the state: its kind when not a comment, not found, then what
+    /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
     marks: Vec<String>,
     messages: Vec<Message>,
 }

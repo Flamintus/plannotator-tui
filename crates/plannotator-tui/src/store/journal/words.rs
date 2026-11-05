@@ -177,9 +177,9 @@ impl Kept {
     }
 }
 
-/// The kind of note a comment of the view is: a deletion stays one, so writing its draft again
-/// keeps it, and a looks-good is its exact words.
-fn kind_of(node: &ThreadNode) -> Kind {
+/// The kind of note a comment of the view is, at any depth: a deletion stays one, so writing
+/// its draft again keeps it, and a looks-good is its exact words. Its note's kind, and its box's.
+pub(crate) fn kind_of(node: &ThreadNode) -> Kind {
     kind_of_words(&node.text, node.kind == CommentKind::Deletion)
 }
 

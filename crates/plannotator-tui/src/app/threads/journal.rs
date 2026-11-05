@@ -1,21 +1,25 @@
 //! The flow of a document whose comments the review's journal keeps, from the review's view:
 //! each comment with its replies and the sub-threads on their words, the person's drafts and
 //! what became of each send, the agent's replies not seen yet marked new, and a comment whose
-//! words are no longer found boxed under the last block, marked so, in the words the Inbox's
-//! boxes use (`Round 2`, `Not sent`, `Replied`, `Live`, `New`, `Unanchored`). The view decides
-//! what folds; a draft no one answered stays a bubble in the rail.
+//! words are no longer found boxed at the end of the words it was on, marked so, in the words
+//! the Inbox's boxes use (`Round 2`, `Not sent`, `Replied`, `Live`, `New`, `Unanchored`). One
+//! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
+//! and its marks with it. The view decides what folds; a draft no one answered stays a bubble
+//! in the rail.
 
 use std::collections::HashSet;
 use std::ops::Range;
 
 use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, ThreadNode};
+use plannotator_tui_schema::Kind;
 
 use super::super::App;
 use super::{Message, Thread};
 use crate::journal::{passage, tree};
+use crate::store::kind_of;
 
 /// What became of a send, in the words the Inbox's boxes use for it.
-pub(in crate::app) fn status_word(status: Status) -> Option<&'static str> {
+fn status_word(status: Status) -> Option<&'static str> {
     Some(match status {
         Status::Pending => "Queued",
         Status::Delivered => "Delivered",
@@ -26,13 +30,28 @@ pub(in crate::app) fn status_word(status: Status) -> Option<&'static str> {
     })
 }
 
-/// The round a message went or came in, or that the person's draft is not sent yet.
-fn round(draft: bool, round: u64) -> String {
-    if draft { "Not sent".to_owned() } else { format!("Round {round}") }
+/// What a comment's state is, as its box's head and its bubble in the rail both say it: while
+/// it is open, what became of its send and Live; then its round, or Not sent for a draft. The
+/// round goes last, so a narrow head gives it up first.
+pub(in crate::app) fn state_marks(node: &ThreadNode) -> Vec<String> {
+    let mut marks = Vec::new();
+    if node.state != ThreadState::Resolved {
+        marks.extend(node.status.and_then(status_word).map(str::to_owned));
+        marks.extend(node.live.then(|| "Live".to_owned()));
+    }
+    marks.push(if node.draft { "Not sent".to_owned() } else { format!("Round {}", node.round) });
+    marks
 }
 
-/// What a reply's author line adds: its round, then what became of the person's send, or the
-/// agent's reply new.
+/// The kind a box's head names, when it is not a comment: its glyph alone may be missed.
+fn kind_word(kind: Kind) -> Option<&'static str> {
+    match kind {
+        Kind::Comment => None,
+        Kind::LooksGood => Some("Looks good"),
+        Kind::Delete => Some("Deletion"),
+    }
+}
+
 /// What a reply says beside its author: its status or New, never its round or Not sent, which
 /// the box's head says already.
 fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
@@ -56,24 +75,12 @@ fn passage_range(words: &str, sub: &ThreadNode) -> Option<Range<usize>> {
 }
 
 impl Thread {
-    /// Each thread's kind at any depth, as its note in the rail has it (`kind` names it by id):
-    /// a sub-thread's as a comment's.
-    fn take_kinds(&mut self, kind: &impl Fn(&str) -> Option<plannotator_tui_schema::Kind>) {
-        if let Some(kind) = kind(&self.id) {
-            self.kind = kind;
-        }
-        for message in &mut self.messages {
-            for sub in &mut message.threads {
-                sub.take_kinds(kind);
-            }
-        }
-    }
-
-    fn of_node(node: &ThreadNode, seen: &HashSet<String>) -> Self {
+    /// `node`'s thread, at any depth: `range` is where its passage is in the words it is on
+    /// (the document's, or its message's), `None` when they no longer hold it, which its head
+    /// says (`Unanchored`); its sub-threads are built the same way on their messages' words.
+    fn of_node(node: &ThreadNode, seen: &HashSet<String>, range: Option<Range<usize>>) -> Self {
         let threads = |subs: &[ThreadNode], words: &str| {
-            let sub =
-                |sub: &ThreadNode| Self { range: passage_range(words, sub), ..Self::of_node(sub, seen) };
-            subs.iter().map(sub).collect()
+            subs.iter().map(|sub| Self::of_node(sub, seen, passage_range(words, sub))).collect()
         };
         let comment = Message {
             id: node.id.clone(),
@@ -92,21 +99,17 @@ impl Thread {
             draft: reply.draft,
             threads: threads(&reply.sub_threads, &reply.text),
         });
-        let resolved = node.state == ThreadState::Resolved;
-        // A resolved thread's last send is history: its head says resolved and its round. The
-        // round goes last, so a narrow head gives it up first.
-        let mut marks = Vec::new();
-        if !resolved {
-            marks.extend(node.status.and_then(status_word).map(str::to_owned));
-            marks.extend(node.live.then(|| "Live".to_owned()));
-        }
-        marks.push(round(node.draft, node.round));
+        let kind = kind_of(node);
+        let mut marks: Vec<String> = kind_word(kind).map(str::to_owned).into_iter().collect();
+        marks.extend(range.is_none().then(|| "Unanchored".to_owned()));
+        // A resolved thread's last send is history: its head says resolved and its round.
+        marks.extend(state_marks(node));
         Self {
             id: node.id.clone(),
-            kind: plannotator_tui_schema::Kind::Comment,
+            kind,
             quote: node.place.quote.clone(),
-            range: None,
-            resolved,
+            range,
+            resolved: node.state == ThreadState::Resolved,
             folded: Some(node.folded),
             marks,
             messages: std::iter::once(comment).chain(replies).collect(),
@@ -116,13 +119,13 @@ impl Thread {
 
 impl App {
     /// The open document's threads by block, from the review's view; `None` for a document
-    /// whose notes the journal does not keep.
+    /// whose notes the journal does not keep. A comment whose words are no longer found is
+    /// under the last block, as a sub-thread's is at the end of its message's words.
     pub(super) fn journal_threads(&mut self) -> Option<Vec<(usize, Thread)>> {
         let (_, view) = self.open.store.journal_view()?;
         let seen = self.review_loop.as_mut()?.seen(view);
         let open = &self.open;
         let node = |id: &str| tree::find(&view.threads, id);
-        let kind = |id: &str| open.store.kind(id);
         let mut threads = Vec::new();
         for placed in open.store.placed() {
             let (Some(block), Some(node)) =
@@ -133,17 +136,12 @@ impl App {
             if node.draft && node.replies.is_empty() && node.sub_threads.is_empty() {
                 continue;
             }
-            let mut thread = Thread::of_node(node, seen);
-            thread.take_kinds(&kind);
-            threads.push((block, thread));
+            threads.push((block, Thread::of_node(node, seen, Some(placed.range.clone()))));
         }
         let last = open.doc.blocks.len().checked_sub(1);
         for orphan in open.store.orphaned() {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
-            let mut thread = Thread::of_node(node, seen);
-            thread.take_kinds(&kind);
-            thread.marks.insert(0, "Unanchored".to_owned());
-            threads.push((block, thread));
+            threads.push((block, Thread::of_node(node, seen, None)));
         }
         Some(threads)
     }

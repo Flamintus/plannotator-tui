@@ -22,7 +22,7 @@ use crate::doc::Document;
 mod journal;
 mod review;
 use journal::Kept;
-pub(crate) use journal::draft_note;
+pub(crate) use journal::{draft_note, kind_of};
 use review::timestamp;
 
 #[derive(Debug, Clone)]
@@ -368,11 +368,6 @@ impl Store {
         self.resolve_all(doc);
         self.save_to_journal();
         ids.into_iter().filter(|id| !self.journal_unsaved(id)).collect()
-    }
-
-    /// Note `id`'s kind.
-    pub(crate) fn kind(&self, id: &str) -> Option<Kind> {
-        self.annotations.iter().find(|note| note.id == id).map(|note| note.anchor.kind())
     }
 
     pub(crate) fn has_images(&self, id: &str) -> bool {

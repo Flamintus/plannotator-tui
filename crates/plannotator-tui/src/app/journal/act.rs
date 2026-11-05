@@ -10,7 +10,7 @@ use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, Threa
 use plannotator_tui_schema::{DocumentSource, Provenance};
 
 use super::super::draw::short_id;
-use super::super::threads::status_word;
+use super::super::threads::state_marks;
 use super::super::{App, Focus, Mode, Open};
 use crate::journal::{Review, Target, tree};
 use crate::keys::Action;
@@ -224,25 +224,16 @@ impl App {
         }
     }
 
-    /// What a note's bubble title adds over a document of the journal, in the words of its
-    /// box: not saved, a draft not sent, or what became of its send and its round, the round
-    /// last as the title is cut on the right.
+    /// What a note's bubble title adds over a document of the journal, at any depth: not
+    /// saved, else what its box's head says of its state (`state_marks`), the round last as the
+    /// title is cut on the right.
     pub(in crate::app) fn journal_tag(&self, id: &str) -> String {
         if self.open.store.journal_unsaved(id) {
             return " \u{b7} Not saved".to_owned();
         }
         let Some((_, view)) = self.open.store.journal_view() else { return String::new() };
-        let Some(node) = tree::find(&view.threads, id).filter(|node| node.state != ThreadState::Resolved)
-        else {
-            return String::new();
-        };
-        if node.draft {
-            return " \u{b7} Not sent".to_owned();
-        }
-        match node.status.and_then(status_word) {
-            Some(status) => format!(" \u{b7} {status} \u{b7} Round {}", node.round),
-            None => format!(" \u{b7} Round {}", node.round),
-        }
+        let Some(node) = tree::find(&view.threads, id) else { return String::new() };
+        state_marks(node).iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect()
     }
 
     /// The thread keys the footer adds over a document of the journal, with nothing selected.

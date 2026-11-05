@@ -17,7 +17,7 @@
 
 mod words;
 
-pub(crate) use words::draft_note;
+pub(crate) use words::{draft_note, kind_of};
 
 use std::collections::HashMap;
 

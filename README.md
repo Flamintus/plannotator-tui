@@ -388,10 +388,12 @@ the agent answers with too:
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
-  Inbox: each message says its round (`Round 2`) or `Not sent` for a draft, the head of a box
-  what became of its send (`Queued`, `Delivered`, `Read`, `Working`, `Replied`), `Live`, and
-  `Unanchored` once its words are no longer found, and a bubble counts the replies under the
-  passage (`↳ 1 reply under the passage`), its thread open or folded.
+  Inbox: the head of a box, at any depth, says its kind when it is no comment (`Looks good`,
+  `Deletion`), `Unanchored` once its words are no longer found, what became of its send
+  (`Queued`, `Delivered`, `Read`, `Working`, `Replied`), `Live`, and its round (`Round 2`) or
+  `Not sent` for a draft, as its bubble's title does; a message names its author alone, a reply
+  with its status or `New`; and a bubble counts the replies under the passage (`↳ 1 reply under
+  the passage`), its thread open or folded.
 - A comment answered, or resolved, is a box right under the block its passage is in (under a
   whole list or table when the passage is inside one): the passage at its head, then the
   comment and each reply by author. A resolved thread folds to one line (`✓ Resolved · 💬 "…"
