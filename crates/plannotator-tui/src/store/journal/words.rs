@@ -19,6 +19,10 @@ use crate::journal::{Target, on_file, passage, tree};
 /// How an attached image is named in a note's words, as the feedback names it.
 const IMAGE: &str = "Image: ";
 
+/// The words of a looks-good, as Plannotator's screens write it and read it back: the journal
+/// has no kind for it, these exact words are it.
+pub(super) const LOOKS_GOOD: &str = "\u{1f44d} Looks good";
+
 /// `words` then one `Image: <path>` line per image, after a blank line.
 pub(super) fn with_images(words: &str, images: &[String]) -> String {
     let lines = images.iter().map(|image| format!("{IMAGE}{image}")).collect::<Vec<_>>().join("\n");
@@ -174,9 +178,18 @@ impl Kept {
 }
 
 /// The kind of note a comment of the view is: a deletion stays one, so writing its draft again
-/// keeps it.
+/// keeps it, and a looks-good is its exact words.
 fn kind_of(node: &ThreadNode) -> Kind {
-    if node.kind == CommentKind::Deletion { Kind::Delete } else { Kind::Comment }
+    kind_of_words(&node.text, node.kind == CommentKind::Deletion)
+}
+
+/// The kind of note words the journal keeps are, `deletion` when it says so.
+fn kind_of_words(text: &str, deletion: bool) -> Kind {
+    match (deletion, text == LOOKS_GOOD) {
+        (true, _) => Kind::Delete,
+        (false, true) => Kind::LooksGood,
+        (false, false) => Kind::Comment,
+    }
 }
 
 /// An anchor on `quote` with no place in the document's words, that keeps the note's kind: a
@@ -193,9 +206,9 @@ pub(super) fn quoted(quote: &str, kind: Kind) -> Anchor {
 }
 
 /// A draft of the review's view as a note on `quote`, with no place in a document: its images
-/// taken from its words; a deletion's anchor says so.
+/// taken from its words; a deletion's anchor says so, and a looks-good's.
 pub(crate) fn draft_note(id: &str, quote: &str, text: &str, deletion: bool) -> Annotation {
-    let anchor = quoted(quote, if deletion { Kind::Delete } else { Kind::Comment });
+    let anchor = quoted(quote, kind_of_words(text, deletion));
     let (body, images) = split_images(text);
     Annotation {
         id: id.to_owned(),

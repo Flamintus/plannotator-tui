@@ -78,11 +78,12 @@ impl std::fmt::Debug for Kept {
 }
 
 impl Kept {
-    /// The words the journal keeps for a note: its body, or what its kind says, then one
-    /// `Image: <path>` line per attached image, as the feedback names them.
+    /// The words the journal keeps for a note: its body, or what its kind says (a looks-good's
+    /// words, a deletion's none, with its type), then one `Image: <path>` line per attached
+    /// image, as the feedback names them.
     fn text(annotation: &Annotation) -> String {
         let words = match (annotation.body.is_empty(), annotation.anchor.kind()) {
-            (true, Kind::LooksGood) => "Looks good.".to_owned(),
+            (true, Kind::LooksGood) => words::LOOKS_GOOD.to_owned(),
             _ => annotation.body.clone(),
         };
         words::with_images(&words, &annotation.plannotator_tui.images)
