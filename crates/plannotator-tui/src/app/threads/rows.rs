@@ -1,7 +1,8 @@
 //! A thread's rows as drawn, at every depth and of every kind: its box, its head (`head`), each
 //! message under who wrote it, the threads on a message's words as boxes in the box, each under
-//! the line its passage starts on, a blank row above and below each (`spaced`); or, settled,
-//! its folded line. Each row keeps, per column, the message's words it shows (`words::Spot`).
+//! the paragraph its passage starts in, a blank row above and below each (`spaced`); or,
+//! settled, its folded line. Each row keeps, per column, the message's words it shows
+//! (`words::Spot`).
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -11,6 +12,7 @@ use super::super::draw::accent;
 use super::head::{folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
+use crate::doc::{block_holding, plain_blocks};
 use crate::wrap::wrap_line;
 
 /// Narrowest box worth drawing; a thread nested past it shows its folded line instead.
@@ -81,7 +83,7 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 }
 
 /// A thread's box: its head, then each message under who wrote it, the threads on its words
-/// (`spaced`) under the line their passage starts on, as a thread is under the block its
+/// (`spaced`) under the paragraph their passage starts in, as a thread is under the block its
 /// passage starts in; one whose passage is not found there, after the message's words.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let border =
@@ -100,7 +102,7 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         rows.push(BoxRow::plain(author).in_box(inner, border));
         let lines = words_of(message, inner, text, said);
-        let under = under_lines(&lines, &message.threads);
+        let under = under_lines(message, &lines);
         let mut lines = lines.into_iter().map(Some).chain([None]).zip(under).peekable();
         while let Some((line, threads)) = lines.next() {
             rows.extend(line.map(|line| line.in_box(inner, border)));
@@ -131,18 +133,22 @@ fn words_of(message: &Message, inner: usize, text: Style, said: &mut Vec<Said>) 
     lines
 }
 
-/// The threads on a message's words under each of its `lines`, in their passages' order, and,
-/// last, those whose passage is not found there.
-fn under_lines<'t>(lines: &[BoxRow], threads: &'t [Thread]) -> Vec<Vec<&'t Thread>> {
-    let firsts: Vec<Option<usize>> =
-        lines.iter().map(|line| line.words.iter().flatten().map(|spot| spot.byte).min()).collect();
+/// The threads on `message`'s words under each of its `lines`: under the last line of the
+/// paragraph their passage starts in, as a thread is under the document's block
+/// (`doc::block_holding`), in their passages' order; last, those whose passage is not found.
+fn under_lines<'t>(message: &'t Message, lines: &[BoxRow]) -> Vec<Vec<&'t Thread>> {
+    let paragraphs = plain_blocks(&message.body);
+    let paragraph_of = |byte: usize| block_holding(&paragraphs, byte);
+    let of_line: Vec<Option<usize>> = lines
+        .iter()
+        .map(|line| line.words.iter().flatten().map(|spot| spot.byte).min().and_then(paragraph_of))
+        .collect();
     let mut under = vec![Vec::new(); lines.len() + 1];
-    let mut threads: Vec<&Thread> = threads.iter().collect();
+    let mut threads: Vec<&Thread> = message.threads.iter().collect();
     threads.sort_by_key(|sub| sub.range.as_ref().map(|range| range.start));
     for sub in threads {
-        let start = sub.range.as_ref().map(|range| range.start);
-        let line = start
-            .and_then(|start| firsts.iter().rposition(|first| first.is_some_and(|first| first <= start)));
+        let paragraph = sub.range.as_ref().and_then(|range| paragraph_of(range.start));
+        let line = paragraph.and_then(|paragraph| of_line.iter().rposition(|of| *of == Some(paragraph)));
         if let Some(at) = under.get_mut(line.unwrap_or(lines.len())) {
             at.push(sub);
         }

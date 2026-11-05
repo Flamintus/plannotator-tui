@@ -49,7 +49,7 @@ pub(super) struct Thread {
     quote: String,
     /// Where its passage is in the words it is on: the document's source, or, for a sub-thread,
     /// its message's words, where it is marked as the document's passages are, its box under
-    /// the line it starts on; `None` when the words no longer hold it.
+    /// the paragraph it starts in; `None` when the words no longer hold it.
     range: Option<Range<usize>>,
     resolved: bool,
     /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.

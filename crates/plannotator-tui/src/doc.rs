@@ -71,8 +71,36 @@ impl Document {
 
     /// The block whose range contains `offset`.
     pub(crate) fn block_containing(&self, offset: usize) -> Option<usize> {
-        self.blocks.iter().position(|b| b.range.contains(&offset))
+        block_holding(self.blocks.iter().map(|b| &b.range), offset)
     }
+}
+
+/// Which of `blocks`, the byte ranges of a text's blocks in order, holds `offset`: for a
+/// passage starting there, the block its thread's box goes under, in a document (its Markdown
+/// blocks) as in a message's words in a box (`plain_blocks`).
+pub(crate) fn block_holding<'r>(
+    blocks: impl IntoIterator<Item = &'r Range<usize>>,
+    offset: usize,
+) -> Option<usize> {
+    blocks.into_iter().position(|range| range.contains(&offset))
+}
+
+/// The blocks of plain text, as a thread's box draws a message's words: its paragraphs, which
+/// blank lines part, each from its first line's start to its last line's end.
+pub(crate) fn plain_blocks(text: &str) -> Vec<Range<usize>> {
+    let mut blocks = Vec::new();
+    let mut block: Option<Range<usize>> = None;
+    let mut at = 0;
+    for line in text.split('\n') {
+        if line.trim().is_empty() {
+            blocks.extend(block.take());
+        } else {
+            block.get_or_insert(at..at).end = at + line.len();
+        }
+        at += line.len() + 1;
+    }
+    blocks.extend(block);
+    blocks
 }
 
 fn kind_of(tag: &Tag<'_>) -> BlockKind {

@@ -406,9 +406,10 @@ the agent answers with too:
 - A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
   to start elsewhere) as in the document, takes what the document's words take: the same
   toolbar (`a` looks good, `c` comment, `d` delete), each a sub-thread of that kind, a draft
-  the next `E` sends, drawn as a box in the box right under the line its passage starts on, a
-  blank row above and below it as every box has (one whose passage is no longer found comes
-  after the message's words). The passage stays marked in the message's words, at any depth,
+  the next `E` sends, drawn as a box in the box right under the paragraph its passage starts
+  in, as a thread is under its block, a blank row above and below it as every box has (one
+  whose passage is no longer found comes after the message's words). It is the one way to a
+  sub-thread. The passage stays marked in the message's words, at any depth,
   as a note's of the same kind is in the document. With nothing selected, `c` on a line takes a
   comment on the line's words, as on a block. A draft's words take none until it is sent.
 - The rail stacks its bubbles from the top in the document's order, as the column of
