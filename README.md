@@ -58,8 +58,9 @@ plannotator-tui last               # your coding agent's recent replies, pick on
 
 Drag with the mouse (or `v`, move, then `Enter`) to select, then `a` 👍 · `c` 💬 · `d` ✗. `E`
 copies the feedback to the clipboard as numbered annotations (`# Annotations on plan.md`,
-`## Annotation 1 (line 12)`, …). Every annotation is saved as JSON the moment you make it; `q`
-closes.
+`## Annotation 1 (line 12) (id local_…)`, …): the number is the note's place in this feedback,
+the id is the note's own and stays the same from one send to the next. Every annotation is
+saved as JSON the moment you make it; `q` closes.
 
 `I` attaches a local image to the selected note (in the notes, or the selected block's note in
 the document): type, paste or drop its path, then `Enter`. Quoted, `~` and `file://` paths

@@ -254,10 +254,13 @@ mod tests {
             "fix".into(),
         )
         .expect("annotated");
+        let feedback = app.feedback();
+        // The note's id is minted at random; the rest of the feedback is exact.
+        let id = feedback.split("(id ").nth(1).and_then(|rest| rest.split(')').next()).expect("an id");
         assert_eq!(
-            app.feedback(),
+            feedback,
             format!(
-                "# Annotations on terminal · w1:p1\n\n## Annotation 1\nComment on: \"error in {path}\"\n> fix\n\n"
+                "# Annotations on terminal · w1:p1\n\n## Annotation 1 (id {id})\nComment on: \"error in {path}\"\n> fix\n\n"
             )
         );
     }
