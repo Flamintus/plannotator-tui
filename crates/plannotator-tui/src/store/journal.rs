@@ -15,7 +15,7 @@ mod words;
 use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use plannotator_tui_journal::{ThreadNode, ThreadView};
+use plannotator_tui_journal::{ThreadNode, ThreadView, Viewed};
 use plannotator_tui_schema::{Anchor, Annotation, Kind, Resolution};
 
 use super::{Backing, Store};
@@ -115,12 +115,45 @@ impl Store {
         Ok(store)
     }
 
+    /// The same, from the review's view `viewed` as already read: no call to the journal.
+    pub(crate) fn journal_viewed(
+        review: Review,
+        target: Target,
+        viewed: Viewed,
+        doc: &Document,
+        layout: &DocLayout,
+    ) -> Self {
+        let mut store = Self::transient();
+        store.backing = Backing::Journal(Box::new(Kept {
+            review,
+            target,
+            key: None,
+            listed: Vec::new(),
+            view: None,
+            anchors: HashMap::new(),
+            source: String::new(),
+            chars: Vec::new(),
+            stale: false,
+            refused: Vec::new(),
+            unsaved: Vec::new(),
+        }));
+        store.take_view(viewed, doc, layout);
+        store
+    }
+
     /// Read the review's view again and take this document's comments from it.
     pub(crate) fn refresh_journal(&mut self, doc: &Document, layout: &DocLayout) -> Result<()> {
         let Backing::Journal(kept) = &mut self.backing else { return Ok(()) };
         // Still stale when the read fails: the next wake tries again.
         let viewed =
             kept.review.journal.view(&kept.review.target).context("reading the review's comments")?;
+        self.take_view(viewed, doc, layout);
+        Ok(())
+    }
+
+    /// This document's comments from the review's view `viewed`.
+    fn take_view(&mut self, viewed: Viewed, doc: &Document, layout: &DocLayout) {
+        let Backing::Journal(kept) = &mut self.backing else { return };
         kept.stale = false;
         kept.key = Some(viewed.review);
         let view = viewed.view;
@@ -134,7 +167,6 @@ impl Store {
         self.annotations = nodes.iter().map(|node| words::note(node, kept.anchor(node, doc))).collect();
         kept.view = Some(view);
         self.keep_unsaved(doc);
-        Ok(())
     }
 
     /// The notes the journal did not take, as the person left them, over what it lists; one
@@ -181,6 +213,15 @@ impl Store {
     pub(crate) fn journal_key(&self) -> Option<&str> {
         let Backing::Journal(kept) = &self.backing else { return None };
         kept.key.as_deref()
+    }
+
+    /// For a store the journal keeps: whether note `id` waits for a send (a draft, or a note
+    /// the journal has not taken), rather than being a comment a send carried. `None` for
+    /// any other store.
+    pub(crate) fn journal_waits(&self, id: &str) -> Option<bool> {
+        let Backing::Journal(kept) = &self.backing else { return None };
+        let listed = kept.listed.iter().find(|listed| listed.id == id);
+        Some(listed.is_none_or(|listed| listed.draft) || kept.unsaved.iter().any(|note| note.id == id))
     }
 
     /// Whether note `id` is kept here only, the journal having not taken its last write.

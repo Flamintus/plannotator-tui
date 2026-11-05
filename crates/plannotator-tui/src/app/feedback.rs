@@ -196,7 +196,7 @@ impl App {
     /// opening, reloading or expanding. The status names the skipped files once, when the
     /// set changes; sending still reports such a file as an error.
     pub(super) fn refresh_review_counts(&mut self) {
-        if self.tree.is_none() {
+        if self.tree.is_none() || self.path_folder_counts() {
             return;
         }
         let mut counts = HashMap::new();
@@ -237,6 +237,9 @@ impl App {
     }
 
     pub(super) fn update_open_review_counts(&mut self) {
+        if self.path_folder_counts() {
+            return;
+        }
         if self.tree.is_some()
             && let Provenance::File { path } = &self.open.source.provenance
         {

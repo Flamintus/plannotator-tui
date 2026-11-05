@@ -8,6 +8,7 @@
 mod contract;
 mod kept;
 mod loop_on;
+mod paths;
 mod real;
 mod send;
 mod threads;

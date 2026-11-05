@@ -42,6 +42,9 @@ pub enum ReviewTarget {
     /// An agent session's last messages: `host` as Plannotator names it (`claude-code`), and
     /// the host's own session id.
     Last { host: String, session: String },
+    /// A file or a folder, by its path: Plannotator names the review by its real path, so a
+    /// screen of Plannotator's and a terminal on the same file find the same review.
+    File { path: String },
 }
 
 /// Where the person's comment goes.
@@ -147,8 +150,10 @@ mod tests {
     }
 
     #[test]
-    fn a_last_target_is_named_by_its_host_and_session() {
+    fn a_last_target_is_named_by_its_host_and_session_a_file_by_its_path() {
         let target = ReviewTarget::Last { host: "claude-code".into(), session: "ses_a".into() };
         assert_eq!(json!(target), json!({ "kind": "last", "host": "claude-code", "session": "ses_a" }));
+        let target = ReviewTarget::File { path: "/repo/docs".into() };
+        assert_eq!(json!(target), json!({ "kind": "file", "path": "/repo/docs" }));
     }
 }

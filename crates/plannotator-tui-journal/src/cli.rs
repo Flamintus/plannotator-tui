@@ -16,7 +16,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
 use crate::error::Error;
-use crate::records::{Sent, Viewed};
+use crate::records::{SendTo, Sent, Viewed};
 use crate::requests::{IdempotencyKey, NewComment, ReviewTarget, SendMode};
 
 /// The thread view's contract this client reads: a `v` above it is refused, never guessed at.
@@ -56,17 +56,25 @@ pub trait Journal {
     /// Resolve a sent comment or sub-thread, or open it again.
     fn resolve(&self, target: &ReviewTarget, id: &str, resolved: bool) -> Result<(), Error>;
     /// Send drafts to the agent's session: `now` the ones named, or `round` every draft left,
-    /// ending the round. `key` is the press's: the same press tried again goes under the
-    /// same key, and the journal gives the first send back, its text included.
+    /// ending the round. `to` is the session, which a review of a session's last messages
+    /// names itself. `key` is the press's: the same press tried again goes under the same
+    /// key, and the journal gives the first send back, its text included. A round with
+    /// nothing to carry is refused (`empty`), and no round is written.
     fn send(
         &self,
         target: &ReviewTarget,
         mode: SendMode,
         ids: &[String],
+        to: Option<&SendTo>,
         key: &IdempotencyKey,
     ) -> Result<Sent, Error>;
+    /// Send `id`, already written, given back with its text composed again; nothing is
+    /// written: a send the agent did not get, handed over after the press's key was lost.
+    fn resend(&self, target: &ReviewTarget, id: &str) -> Result<Sent, Error>;
     /// The client handed these sends to the agent's session itself.
     fn delivered(&self, target: &ReviewTarget, sends: &[String]) -> Result<(), Error>;
+    /// The review is approved: its journal goes.
+    fn close(&self, target: &ReviewTarget) -> Result<(), Error>;
     /// When review `review` (its key) was last written, without running anything; `None`
     /// when it has no journal, or this journal cannot tell.
     fn stamp(&self, review: &str) -> Option<Stamp>;
@@ -262,6 +270,7 @@ impl Journal for Cli {
         target: &ReviewTarget,
         mode: SendMode,
         ids: &[String],
+        to: Option<&SendTo>,
         key: &IdempotencyKey,
     ) -> Result<Sent, Error> {
         if mode == SendMode::Now && ids.is_empty() {
@@ -271,11 +280,22 @@ impl Journal for Cli {
         if mode == SendMode::Now {
             body.insert("ids".to_owned(), json!(ids));
         }
+        if let Some(to) = to {
+            body.insert("to".to_owned(), json!(to));
+        }
         self.call("send", target, body)
+    }
+
+    fn resend(&self, target: &ReviewTarget, id: &str) -> Result<Sent, Error> {
+        self.call("send", target, fields(json!({ "id": id })))
     }
 
     fn delivered(&self, target: &ReviewTarget, sends: &[String]) -> Result<(), Error> {
         self.call::<Value>("delivered", target, fields(json!({ "sends": sends }))).map(drop)
+    }
+
+    fn close(&self, target: &ReviewTarget) -> Result<(), Error> {
+        self.call::<Value>("close", target, Map::new()).map(drop)
     }
 
     fn stamp(&self, review: &str) -> Option<Stamp> {

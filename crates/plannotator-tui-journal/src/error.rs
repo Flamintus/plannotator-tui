@@ -1,8 +1,8 @@
 //! The one error type of the crate, read from the CLI's own exit codes and words.
 //!
 //! `plannotator threads` exits 0 with one JSON value on stdout, 1 when the journal refuses
-//! (`<code>: <message>` on stderr: `not_found`, `invalid`, `conflict`, `locked`), 2 on a call
-//! it does not read. The kinds a caller acts on differently get their own variant; the rest
+//! (`<code>: <message>` on stderr: `not_found`, `invalid`, `conflict`, `locked`, or `empty`
+//! for a round with nothing to send), 2 on a call it does not read. The kinds a caller acts on differently get their own variant; the rest
 //! keep the CLI's words.
 
 use std::fmt;

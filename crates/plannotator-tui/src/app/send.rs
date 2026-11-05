@@ -24,7 +24,8 @@ pub(super) enum SendState {
 
 impl App {
     pub(super) fn send_feedback(&mut self) -> Result<()> {
-        if self.open.store.is_journal() {
+        // A folder under the review loop opened on no file of its own sends the review too.
+        if self.open.store.is_journal() || (self.path_review().is_some() && self.open.source.transient) {
             self.send_journal();
             return Ok(());
         }

@@ -8,13 +8,13 @@ use std::ops::Range;
 
 use anyhow::{Context, Result};
 use plannotator_tui_journal::{
-    Anchor as On, NewComment, Placement, State as ThreadState, ThreadNode, ThreadView,
+    Anchor as On, CommentKind, NewComment, Placement, State as ThreadState, ThreadNode, ThreadView,
 };
 use plannotator_tui_schema::{Anchor, Annotation, Kind, NoteExtras, Reply, SourceRange, State, blob_sha};
 
 use super::Kept;
 use crate::doc::Document;
-use crate::journal::{Target, passage, tree};
+use crate::journal::{Target, on_file, passage, tree};
 
 /// How an attached image is named in a note's words, as the feedback names it.
 const IMAGE: &str = "Image: ";
@@ -54,12 +54,15 @@ impl Kept {
     /// Write `annotation` as a new comment, or as an edit of its draft, its words `text`.
     pub(super) fn comment(&self, annotation: &Annotation, text: &str) -> Result<()> {
         let quote = annotation.anchor.rendered().to_owned();
+        let deletion = annotation.anchor.kind() == Kind::Delete;
         let placement = match &self.target {
-            Target::Message { message_id } => Placement::On {
-                on: On::Message { message_id: message_id.clone() },
-                quote,
-                deletion: annotation.anchor.kind() == Kind::Delete,
-            },
+            Target::Message { message_id } => {
+                Placement::On { on: On::Message { message_id: message_id.clone() }, quote, deletion }
+            }
+            Target::File { path } => {
+                let on = On::File { path: path.display().to_string(), lines: self.lines(annotation) };
+                Placement::On { on, quote, deletion }
+            }
             Target::Thread { .. } => self.passage(annotation)?,
         };
         let comment = NewComment { id: annotation.id.clone(), text: text.to_owned(), placement };
@@ -67,8 +70,15 @@ impl Kept {
         review.journal.comment(&review.target, &comment).with_context(|| format!("comment {}", annotation.id))
     }
 
-    /// The comments of `view` on this document's own words: on a message, its comments; on
-    /// a comment's thread, the sub-threads on its messages.
+    /// The lines a note is on in the file, as the agent reads them, from where it was made.
+    fn lines(&self, annotation: &Annotation) -> Option<[u64; 2]> {
+        let range = annotation.anchor.plannotator_tui.as_ref()?.source.as_ref()?;
+        let (first, last) = crate::export::line_span(&self.source, &(range.start..range.end));
+        Some([first as u64, last as u64])
+    }
+
+    /// The comments of `view` on this document's own words: on a message or a file, its
+    /// comments; on a comment's thread, the sub-threads on its messages.
     pub(super) fn comments<'v>(&self, view: &'v ThreadView) -> Vec<&'v ThreadNode> {
         match &self.target {
             Target::Message { message_id } => view
@@ -78,6 +88,11 @@ impl Kept {
                     node.place.parent.is_none()
                         && matches!(&node.place.on, On::Message { message_id: on } if on == message_id)
                 })
+                .collect(),
+            Target::File { path } => view
+                .threads
+                .iter()
+                .filter(|node| node.place.parent.is_none() && on_file(&node.place.on, path))
                 .collect(),
             Target::Thread { comment_id, .. } => {
                 let Some(thread) = tree::find(&view.threads, comment_id) else { return Vec::new() };
@@ -137,7 +152,9 @@ impl Kept {
                     end: range.end,
                     version: blob_sha(doc.source.as_bytes()),
                 };
-                Anchor::new(quote, &doc.source, range, Kind::Comment, block)
+                // A deletion stays one, so writing its draft again keeps it.
+                let kind = if node.kind == CommentKind::Deletion { Kind::Delete } else { Kind::Comment };
+                Anchor::new(quote, &doc.source, range, kind, block)
             }
             None => {
                 Anchor { original_text: quote.clone(), quote, plannotator_tui: None, other: BTreeMap::new() }

@@ -59,6 +59,10 @@ impl App {
 
     /// Whether the action has anything to act on. Other rows are dimmed and skipped.
     fn action_applies(&self, action: ReviewAction) -> bool {
+        // The review loop keeps the review's comments, not a file's record.
+        if self.path_review().is_some() {
+            return false;
+        }
         let counts = self.review_counts();
         match action {
             ReviewAction::ResendAll | ReviewAction::Finish => counts.sent > 0,
@@ -79,6 +83,9 @@ impl App {
     /// Leave the menu, then act exactly as the direct key does.
     pub(super) fn run_review_action(&mut self, action: ReviewAction) -> Result<()> {
         self.mode = Mode::Browse;
+        if self.path_menu_off() {
+            return Ok(());
+        }
         match action {
             ReviewAction::ResendAll => self.resend_all(),
             ReviewAction::Finish => {

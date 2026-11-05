@@ -33,9 +33,16 @@ pub(crate) struct State {
     pub(crate) finished: u64,
     /// Every send written: its mode, the comments it carried and its key.
     pub(crate) sends: Vec<(SendMode, Vec<String>, String)>,
+    /// The session each send named, in the order written (`None`: the review's own).
+    pub(crate) sent_to: Vec<Option<SendTo>>,
+    /// The sends given back by their id, in order.
+    pub(crate) resent: Vec<String>,
+    /// The review was closed (approved): its journal went.
+    pub(crate) closed: bool,
     /// The sends marked delivered, by id.
     pub(crate) delivered: Vec<String>,
-    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `send`, `delivered`.
+    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `send`, `resend`,
+    /// `delivered`, `close`.
     pub(crate) refused: Vec<&'static str>,
     /// The code they are refused with: `locked` unless a test names another.
     pub(crate) refused_as: Option<&'static str>,
@@ -49,6 +56,29 @@ pub(crate) struct State {
 }
 
 impl State {
+    /// Send `index` (from 0) as the journal answers it: its round, what it carried, where it
+    /// went and the text for the agent.
+    fn sent(&self, index: usize, replayed: bool) -> Sent {
+        let (mode, carried, _) = self.sends.get(index).cloned().expect("a send");
+        let before = self.sends.iter().take(index).filter(|(mode, _, _)| *mode == SendMode::Round).count();
+        let round = before as u64 + 1;
+        let to = self.sent_to.get(index).cloned().flatten();
+        let to = to.unwrap_or_else(|| SendTo { host: Some("claude-code".into()), session: "ses_a".into() });
+        Sent {
+            review: REVIEW.to_owned(),
+            text: StandIn::text(round, &carried),
+            send: Send {
+                id: format!("snd_{}", index + 1),
+                round,
+                mode,
+                comments: carried,
+                to,
+                other: serde_json::Map::new(),
+            },
+            replayed,
+        }
+    }
+
     /// The agent replied `text` under comment `id` (another process wrote the journal).
     pub(crate) fn agent_replies(&mut self, reply_id: &str, under: &str, text: &str) {
         let comment = self.comments.iter().find(|comment| comment.id == under).expect("the comment").clone();
@@ -180,29 +210,21 @@ impl Journal for StandIn {
         Ok(())
     }
 
-    /// `round` sends every draft left and finishes the round; the same key again gives the
-    /// first send back.
+    /// `round` sends every draft left and finishes the round, and is refused (`empty`) with
+    /// none; the same key again gives the first send back.
     fn send(
         &self,
         target: &ReviewTarget,
         mode: SendMode,
         ids: &[String],
+        to: Option<&SendTo>,
         key: &IdempotencyKey,
     ) -> Result<Sent, Error> {
         self.call("send", target)?;
         let mut state = self.state.borrow_mut();
-        let to = SendTo { host: Some("claude-code".into()), session: "ses_a".into() };
-        let sent = |id: String, round: u64, carried: Vec<String>, replayed: bool| Sent {
-            review: REVIEW.to_owned(),
-            text: Self::text(round, &carried),
-            send: Send { id, round, mode, comments: carried, to: to.clone(), other: serde_json::Map::new() },
-            replayed,
-        };
         if let Some(index) = state.sends.iter().position(|(_, _, kept)| kept == key.as_str()) {
-            let (_, carried, _) = state.sends.get(index).cloned().expect("found");
-            return Ok(sent(format!("snd_{}", index + 1), state.finished, carried, true));
+            return Ok(state.sent(index, true));
         }
-        let round = state.finished + 1;
         let send_id = format!("snd_{}", state.sends.len() + 1);
         let mut carried = Vec::new();
         for comment in
@@ -213,12 +235,28 @@ impl Journal for StandIn {
             comment.send = Some(send_id.clone());
             carried.push(comment.id.clone());
         }
+        if mode == SendMode::Round && carried.is_empty() {
+            return Err(refused("send", "empty"));
+        }
         if mode == SendMode::Round {
             state.finished += 1;
         }
-        state.sends.push((mode, carried.clone(), key.as_str().to_owned()));
+        state.sends.push((mode, carried, key.as_str().to_owned()));
+        state.sent_to.push(to.cloned());
         state.written += 1;
-        Ok(sent(send_id, round, carried, false))
+        Ok(state.sent(state.sends.len() - 1, false))
+    }
+
+    /// Send `snd_<n>` given back, its text composed again; nothing written.
+    fn resend(&self, target: &ReviewTarget, id: &str) -> Result<Sent, Error> {
+        self.call("resend", target)?;
+        let mut state = self.state.borrow_mut();
+        state.resent.push(id.to_owned());
+        let index =
+            id.strip_prefix("snd_").and_then(|n| n.parse::<usize>().ok()).and_then(|n| n.checked_sub(1));
+        let index =
+            index.filter(|index| *index < state.sends.len()).ok_or_else(|| refused("send", "not_found"))?;
+        Ok(state.sent(index, true))
     }
 
     fn delivered(&self, target: &ReviewTarget, sends: &[String]) -> Result<(), Error> {
@@ -228,6 +266,15 @@ impl Journal for StandIn {
         for comment in state.comments.iter_mut().filter(|c| c.status == Some(Status::Pending)) {
             comment.status = Some(Status::Delivered);
         }
+        state.written += 1;
+        Ok(())
+    }
+
+    fn close(&self, target: &ReviewTarget) -> Result<(), Error> {
+        self.call("close", target)?;
+        let mut state = self.state.borrow_mut();
+        state.closed = true;
+        state.comments.clear();
         state.written += 1;
         Ok(())
     }

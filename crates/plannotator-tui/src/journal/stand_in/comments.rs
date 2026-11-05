@@ -3,7 +3,7 @@
 //! open under it.
 
 use plannotator_tui_journal::{
-    Anchor as On, Author, Parent, Place, ReplyNode, State as ThreadState, Status, ThreadNode,
+    Anchor as On, Author, CommentKind, Parent, Place, ReplyNode, State as ThreadState, Status, ThreadNode,
 };
 
 /// A comment as the stand-in keeps it: a comment, a reply under one (`re`), or a sub-thread
@@ -102,6 +102,7 @@ fn node(comment: &Comment, comments: &[Comment]) -> ThreadNode {
         place: Place { on: comment.on.clone(), quote: comment.quote.clone(), unanchored: false, parent },
         text: comment.text.clone(),
         draft: comment.draft,
+        kind: if comment.deletion { CommentKind::Deletion } else { CommentKind::Comment },
         folded,
         status: comment.status,
         live: comment.live,

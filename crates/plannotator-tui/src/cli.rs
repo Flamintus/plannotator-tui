@@ -232,9 +232,11 @@ fn gated_review(args: &[String]) -> Result<ExitCode> {
         "stdout is not a terminal: the review is drawn there; read the decision from --result-file instead"
     );
     let mode = options.mode();
+    let journal = path_loop();
     let decision = run_review(|width| {
         let mut app = open_review(&path, width, gate_delivery())?;
         app.gate = mode;
+        app.review_path_in_journal(journal);
         Ok(app)
     })?
     .unwrap_or(Decision::Dismissed);
@@ -432,9 +434,11 @@ fn gated_pane(path: &PathBuf, result_file: Option<&Path>) -> Result<()> {
     if let Some(file) = result_file {
         gate::check_result_file(file)?;
     }
+    let journal = path_loop();
     let decision = run_review(|width| {
         let mut app = open_review(path, width, gate_delivery())?;
         app.gate = gate::Gate::Approve;
+        app.review_path_in_journal(journal);
         Ok(app)
     })?
     .unwrap_or(Decision::Dismissed);
@@ -445,7 +449,17 @@ fn gated_pane(path: &PathBuf, result_file: Option<&Path>) -> Result<()> {
 }
 
 fn interactive(path: &PathBuf) -> Result<()> {
-    run_ui(|width| open_app(path, width, true))
+    let journal = path_loop();
+    run_ui(|width| {
+        let mut app = open_app(path, width, true)?;
+        app.review_path_in_journal(journal);
+        Ok(app)
+    })
+}
+
+/// The review loop for a file or a folder sent to the agent of a Herdr pane, when it is on.
+fn path_loop() -> Result<Option<(crate::journal::Shared, plannotator_tui_journal::SendTo)>> {
+    crate::journal::connect_path(|| crate::herdr::launch::delivery_session(&HerdrEnv::from_env()))
 }
 
 /// Own the terminal for one app: `build` gets the document width the screen allows.
@@ -474,7 +488,8 @@ fn run_review(build: impl FnOnce(usize) -> Result<App>) -> Result<Option<Decisio
     let width = doc_width(terminal.size().map_or(120, |s| s.width));
     let result = build(width).and_then(|mut app| {
         app.shift_enter = shift_enter;
-        app.ids_in_feedback = crate::journal::switched_on(|key| std::env::var(key).ok());
+        // Each note's id in the feedback serves the review loop, where the agent answers under it.
+        app.ids_in_feedback = app.review_loop_runs();
         app.keys = config.keys;
         app.ui = config.ui;
         app.editor = crate::editor::from_env(|key| std::env::var(key).ok());

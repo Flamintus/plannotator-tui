@@ -17,7 +17,8 @@ This crate runs that CLI, synchronously, with no runtime and no network.
   and asks it where its data directory is (`plannotator data-dir`).
 - Every call is `plannotator threads <action> -`, its JSON object on stdin
   (a comment's words can be longer than a command line takes),
-  naming the review by its target, `{ "kind": "last", "host", "session" }`.
+  naming the review by its target: `{ "kind": "last", "host", "session" }`,
+  or `{ "kind": "file", "path" }` for a file or a folder.
   The CLI resolves its data directory itself, as the agent's `plannotator reply` does.
   A call that does not answer in time is stopped.
 - Exit 0 is one JSON value on stdout; exit 1 a refusal, `<code>: <message>` on stderr
@@ -25,7 +26,9 @@ This crate runs that CLI, synchronously, with no runtime and no network.
   exit 2 a call the CLI does not read (`Error::Usage`).
 - `send` takes the press's `IdempotencyKey`:
   the same press tried again goes under the same key,
-  and the journal gives the first send back with its text instead of sending twice.
+  and the journal gives the first send back with its text instead of sending twice;
+  `resend` gives a send back by its id, for a client that lost the key when it closed.
+  A round with nothing to carry is refused (`empty`).
 - The thread view is computed by Plannotator (`ReviewThreadView`, `v: 1`):
   a view in a newer contract is refused (`Error::Newer`), never guessed at.
 - `stamp` reads the size and time of `reviews/<key>/journal.jsonl` under the data directory
@@ -40,8 +43,10 @@ This crate runs that CLI, synchronously, with no runtime and no network.
 | `comment` | `threads comment` | `{ id, text, on, quote, type? }`, `{ id, text, re }` or `{ id, text, parent, quote, quote_offset? }` |
 | `remove` | `threads remove` | `{ id }` |
 | `resolve` | `threads resolve` or `threads reopen` | `{ id }` |
-| `send` | `threads send` | `{ mode, ids?, idempotency_key }` |
+| `send` | `threads send` | `{ mode, ids?, to?, idempotency_key }` |
+| `resend` | `threads send` | `{ id }` |
 | `delivered` | `threads delivered` | `{ sends }` |
+| `close` | `threads close` | none |
 
 ## Tests and fixtures
 

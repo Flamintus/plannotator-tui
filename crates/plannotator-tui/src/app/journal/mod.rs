@@ -1,10 +1,12 @@
 //! The review loop in the app (`crate::journal`): `last`'s replies opened as documents whose
-//! comments Plannotator's review journal keeps, by host and session (here); the round sent
-//! and pasted into the agent's pane as the journal composed it (`send`); the journal followed
-//! for the agent's replies (`watch`); and replies, resolution and sub-threads on the current
-//! note's thread (`act`).
+//! comments Plannotator's review journal keeps, by host and session (here), or the files of a
+//! file's or a folder's review, by its real path (`paths`); the round sent and pasted into the
+//! agent's pane as the journal composed it (`send`); the journal followed for the agent's
+//! replies (`watch`); and replies, resolution and sub-threads on the current note's thread
+//! (`act`).
 
 mod act;
+mod paths;
 mod send;
 mod watch;
 
@@ -12,11 +14,11 @@ use std::collections::HashSet;
 use std::time::{Duration, Instant};
 
 use anyhow::Result;
-use plannotator_tui_journal::{Stamp, ThreadNode, ThreadView};
+use plannotator_tui_journal::{ReviewTarget, Stamp, ThreadNode, ThreadView};
 use plannotator_tui_schema::{DocumentSource, Provenance};
 
 use super::{App, Mode, Open};
-use crate::journal::{Review, Shared, Target, tree};
+use crate::journal::{Review, Shared, Target, real_path, tree};
 use crate::store::Store;
 
 /// What the review loop keeps besides its documents.
@@ -24,8 +26,11 @@ pub(super) struct ReviewLoop {
     review: Review,
     /// Why the journal could not list the comments of the reply opened last.
     unlisted: Option<String>,
-    /// The last send the agent did not get, to hand over again under its key.
+    /// The last send the agent did not get, to hand over again.
     press: Option<send::Press>,
+    /// The sends nothing marked delivered when the loop started, by id, the oldest last: an
+    /// earlier pane's that the agent may not have got.
+    left: Vec<String>,
     /// The review's journal as last read: a new stamp means another process wrote it.
     stamp: Option<Stamp>,
     /// The agent's replies the person has seen: the ones there when the review first read
@@ -37,6 +42,8 @@ pub(super) struct ReviewLoop {
     /// When the view could not be read last: it is tried again after `RETRY`, not on every
     /// wake, since each try runs the CLI.
     failed: Option<Instant>,
+    /// A folder's review opened on no file of its own: its view, as read when it opened.
+    view: Option<ThreadView>,
 }
 
 /// How long a view that could not be read waits before it is read again.
@@ -48,11 +55,13 @@ impl ReviewLoop {
             review,
             unlisted: None,
             press: None,
+            left: Vec::new(),
             stamp: None,
             seen: HashSet::new(),
             seeded: false,
             parents: Vec::new(),
             failed: None,
+            view: None,
         }
     }
 
@@ -96,8 +105,14 @@ impl App {
         };
         self.review_loop = Some(ReviewLoop::new(Review::of(journal, &self.message_host, &session)));
         keep_in_journal(self.review_loop.as_mut(), &mut self.open);
+        self.strand_pending();
         self.derive_send_state();
         self.picked();
+    }
+
+    /// Whether the review loop runs for this review.
+    pub(crate) fn review_loop_runs(&self) -> bool {
+        self.review_loop.is_some()
     }
 
     /// Reply `source` as a document: its comments the journal's when the review loop runs.
@@ -174,23 +189,30 @@ impl App {
         }
         self.rail_cursor = self.rail_cursor.min(self.open.store.placed().len().saturating_sub(1));
         self.derive_send_state();
+        self.paths_changed();
     }
 }
 
-/// Give `open`, a reply, the journal's comments when the review loop runs; when the journal
-/// cannot list them, its notes stay in memory as without the review loop, and `picked` says
-/// why.
+/// Give `open`, a reply or a file of the review, the journal's comments when the review loop
+/// runs; when the journal cannot list them, its notes stay where they are without the review
+/// loop (a reply's in memory, a file's in its record), and `picked` says why for a reply.
 fn keep_in_journal(review_loop: Option<&mut ReviewLoop>, open: &mut Open) {
     let Some(review_loop) = review_loop else { return };
-    let Provenance::AgentMessage { message_id: Some(message_id), .. } = &open.source.provenance else {
-        return;
+    let target = match (&open.source.provenance, &review_loop.review.target) {
+        (Provenance::AgentMessage { message_id: Some(message_id), .. }, ReviewTarget::Last { .. }) => {
+            if message_id.is_empty() {
+                Err(anyhow::anyhow!("this reply has no id to keep comments under"))
+            } else {
+                Ok(Target::Message { message_id: message_id.clone() })
+            }
+        }
+        (Provenance::File { path }, ReviewTarget::File { .. }) if !open.source.transient => {
+            Ok(Target::File { path: real_path(path) })
+        }
+        _ => return,
     };
-    let kept = if message_id.is_empty() {
-        Err(anyhow::anyhow!("this reply has no id to keep comments under"))
-    } else {
-        let target = Target::Message { message_id: message_id.clone() };
-        Store::journal(review_loop.review.clone(), target, &open.doc, &open.layout)
-    };
+    let kept =
+        target.and_then(|target| Store::journal(review_loop.review.clone(), target, &open.doc, &open.layout));
     review_loop.unlisted = match kept {
         Ok(store) => {
             open.store = store;

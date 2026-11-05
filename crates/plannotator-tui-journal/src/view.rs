@@ -35,6 +35,10 @@ pub struct ThreadNode {
     pub text: String,
     /// The person's draft, not sent yet.
     pub draft: bool,
+    /// A comment, or the person asking for the words to go; a comment when the journal does
+    /// not say (before Plannotator named it).
+    #[serde(rename = "type", default)]
+    pub kind: CommentKind,
     /// Drawn folded: resolved, with nothing open under it at any depth.
     pub folded: bool,
     /// What became of it, once a comment send carried it.
@@ -85,6 +89,18 @@ pub struct ReplyNode {
     pub replies: Option<Vec<ReplyNode>>,
     #[serde(flatten)]
     pub other: Map<String, Value>,
+}
+
+/// What the person's comment asks: a comment, or that the words go.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommentKind {
+    #[default]
+    Comment,
+    Deletion,
+    /// A kind this client does not know yet: read as a comment.
+    #[serde(other)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

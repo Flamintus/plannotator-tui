@@ -356,8 +356,12 @@ impl App {
         Ok(app)
     }
 
-    /// Recompute the tree's annotation counts from the records on disk.
+    /// Recompute the tree's annotation counts from the records on disk, or from the review's
+    /// comments under the review loop.
     fn refresh_counts(&self, tree: &mut Tree) {
+        if self.path_tree_counts(tree) {
+            return;
+        }
         let (data_dir, project) = (self.data_dir.clone(), self.project.clone());
         tree.set_counts(|path| Store::count_at(&Location::for_file(&data_dir, &project, path)));
     }
@@ -451,6 +455,7 @@ impl App {
         }
         let width = self.open.layout.width;
         self.open = Open::new(read_file(path)?, width, &self.data_dir, &self.project)?;
+        self.keep_path_in_journal();
         self.update_open_review_counts();
         self.derive_send_state();
         self.scroll = 0;
@@ -654,8 +659,13 @@ impl App {
         self.open.disk_noticed = None;
         self.open.doc = Document::parse(self.open.source.content.clone());
         self.open.layout = DocLayout::build(&self.open.doc, self.open.layout.width);
-        self.open.store =
-            Store::load(&Location::for_file(&self.data_dir, &self.project, &path), &self.open.doc)?;
+        if self.path_review().is_some() {
+            // The journal's comments, found again in the file as it is now.
+            self.keep_path_in_journal();
+        } else {
+            self.open.store =
+                Store::load(&Location::for_file(&self.data_dir, &self.project, &path), &self.open.doc)?;
+        }
         self.refresh_review_counts();
         self.derive_send_state();
         self.sync_tree_counts();

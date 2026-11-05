@@ -101,6 +101,25 @@ pub(crate) fn agent_identity(agent_get_json: &str) -> Option<(String, AgentSessi
     Some((agent_host(agent_get_json)?.to_owned(), agent_session(agent_get_json)?))
 }
 
+/// The agent a review in this pane sends to, found exactly: its host label and the host's
+/// own id for its session, from `herdr agent get` on the pane feedback goes to. `None`
+/// outside Herdr, without such a pane, or when Herdr does not know the session.
+pub(crate) fn delivery_session(env: &HerdrEnv) -> Option<(String, String)> {
+    if !env.in_herdr {
+        return None;
+    }
+    let pane = env.delivery_target()?.pane;
+    let (host, session) = agent_identity(&agent_get(env, &pane)?)?;
+    let id = match session {
+        AgentSession::Id(id) => plannotator_tui_hosts::validate_session_id(&id).ok()?.to_owned(),
+        AgentSession::Path(path) => {
+            let known = Host::ALL.into_iter().find(|known| known.label() == host)?;
+            plannotator_tui_hosts::session_id_of(known, Path::new(&path))?
+        }
+    };
+    Some((host, id))
+}
+
 /// The agent process behind a pane, from `herdr pane process-info --pane <id>` JSON: the
 /// foreground process whose name is a known agent, else the group leader. Returns
 /// `(pid, host)` where host is the label `plannotator-tui last --host` accepts.

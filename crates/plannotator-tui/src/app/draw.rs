@@ -362,7 +362,11 @@ impl App {
             let border =
                 if highlighted { Style::new().fg(accent(kind)) } else { Style::new().fg(Color::DarkGray) };
             let border = if rail_focused && index == self.rail_cursor { border.bold() } else { border };
-            let sent = if self.is_file_review() && !self.open.store.is_pending(placed.annotation) {
+            // A comment of the journal's says what became of its send instead (`journal_tag`).
+            let sent = if self.is_file_review()
+                && !self.open.store.is_journal()
+                && !self.open.store.is_pending(placed.annotation)
+            {
                 " · sent"
             } else {
                 ""

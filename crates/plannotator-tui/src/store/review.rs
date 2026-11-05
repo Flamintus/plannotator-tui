@@ -64,6 +64,10 @@ impl Store {
     /// sent, because "pending forever" would resend it on every send and never let it be
     /// archived. The next edit rewrites the timestamp and makes it pending again.
     pub(crate) fn is_pending(&self, annotation: &Annotation) -> bool {
+        // The journal's comments: a draft waits, a sent one has its send.
+        if let Some(waits) = self.journal_waits(&annotation.id) {
+            return waits;
+        }
         let Some(delivery) = self.last_delivery(&annotation.id) else { return true };
         match (parse_time(&annotation.updated_at), parse_time(&delivery.at)) {
             (Some(updated), Some(sent)) => updated > sent,

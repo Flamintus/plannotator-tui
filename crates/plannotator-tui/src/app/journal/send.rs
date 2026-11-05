@@ -3,11 +3,14 @@
 //! sent and composes what the agent reads, with how to answer under each id through
 //! `plannotator reply`; that text goes to the agent's pane by the app's own delivery, as any
 //! feedback does, and the journal is told it was delivered. The send is archived as today's
-//! feedback is.
+//! feedback is. A send the agent did not get goes again first: this pane's under its press's
+//! key, one an earlier pane left pending by its id.
 
 use std::fmt::Write as _;
 
 use plannotator_tui_journal::{Error, IdempotencyKey, SendMode, Sent, ThreadView};
+
+use crate::journal::Review;
 use plannotator_tui_schema::{Annotation, Kind};
 
 use super::super::App;
@@ -15,14 +18,18 @@ use super::super::feedback::Feedback;
 use super::super::send::SendState;
 use crate::archive::AnnotationRecord;
 use crate::delivery::DeliveryError;
-use crate::journal::tree::{all_drafts, carried_by, find};
+use crate::journal::tree::{all_drafts, carried_by, find, pending_sends};
 use crate::keys::Action;
 
-/// A send the agent has not got yet: the press is tried again under its key, and the journal
-/// gives the same send back, its text included, rather than send twice.
+/// A send the agent has not got yet. The journal gives the same send back, its text
+/// included, rather than send twice.
 #[derive(Debug)]
-pub(super) struct Press {
-    key: IdempotencyKey,
+pub(super) enum Press {
+    /// A press of this pane's, tried again under its key.
+    Key(IdempotencyKey),
+    /// A send an earlier pane left pending (the journal wrote it, the agent did not get it),
+    /// by its id.
+    Left(String),
 }
 
 /// Whether a refused send may go through when tried again: the CLI did not run or answer,
@@ -39,23 +46,34 @@ impl App {
     /// `E`: every draft of the review sent, ending the round, and the journal's text pasted
     /// into the agent's pane; a send the agent did not get yet goes again first.
     pub(in crate::app) fn send_journal(&mut self) {
+        let Some(review) = self.loop_review() else { return };
+        let retry = self.keys.hint(Action::Send);
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
-        let press = if let Some(press) = press {
-            press
+        let (press, sent) = if let Some(press) = press {
+            let sent = Self::press_again(&review, &press);
+            (press, sent)
         } else {
             // What waits now, the agent's and other panes' writes included.
-            self.refresh_journal();
-            let Some((_, view)) = self.open.store.journal_view() else { return };
-            if all_drafts(view).is_empty() {
+            let Some(view) = self.waiting_view(&review) else { return };
+            if let Some(left) = self.left_pending(&review, &view) {
+                left
+            } else if all_drafts(&view).is_empty() {
+                self.status = Some("nothing to send".into());
+                return;
+            } else {
+                let key = IdempotencyKey::new();
+                let sent =
+                    review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), &key);
+                (Press::Key(key), sent)
+            }
+        };
+        let sent = match sent {
+            Ok(sent) => sent,
+            Err(err) if err.code() == Some("empty") => {
+                self.refresh_journal();
                 self.status = Some("nothing to send".into());
                 return;
             }
-            Press { key: IdempotencyKey::new() }
-        };
-        let Some(review) = self.open.store.journal_view().map(|(review, _)| review.clone()) else { return };
-        let retry = self.keys.hint(Action::Send);
-        let sent = match review.journal.send(&review.target, SendMode::Round, &[], &press.key) {
-            Ok(sent) => sent,
             Err(err) => {
                 if passing(&err) {
                     self.keep_press(press);
@@ -82,8 +100,9 @@ impl App {
                     .map(|(_, view)| carried_by(view, &sent.send.id))
                     .unwrap_or_default();
                 self.archive_journal_send(&sent, &carried);
+                let again = if matches!(press, Press::Left(_)) { " again" } else { "" };
                 let mut status = format!(
-                    "sent {} comment(s) \u{b7} round {} ended \u{2192} {target}",
+                    "sent{again} {} comment(s) \u{b7} round {} ended \u{2192} {target}",
                     carried.len(),
                     sent.send.round
                 );
@@ -122,6 +141,79 @@ impl App {
     fn keep_press(&mut self, press: Press) {
         if let Some(review_loop) = self.review_loop.as_mut() {
             review_loop.press = Some(press);
+        }
+    }
+
+    /// The press tried again: under its key, or a left send by its id.
+    fn press_again(review: &Review, press: &Press) -> Result<Sent, Error> {
+        match press {
+            Press::Key(key) => {
+                review.journal.send(&review.target, SendMode::Round, &[], review.to.as_ref(), key)
+            }
+            Press::Left(id) => review.journal.resend(&review.target, id),
+        }
+    }
+
+    /// The review `E` sends: the open document's, or the file's or folder's under way.
+    fn loop_review(&self) -> Option<Review> {
+        let open = self.open.store.journal_view().map(|(review, _)| review);
+        open.or_else(|| self.path_review()).cloned()
+    }
+
+    /// The review's view as it is now, read again; the footer says why when it cannot be.
+    fn waiting_view(&mut self, review: &Review) -> Option<ThreadView> {
+        self.refresh_journal();
+        if let Some((_, view)) = self.open.store.journal_view() {
+            return Some(view.clone());
+        }
+        match review.journal.view(&review.target) {
+            Ok(viewed) => Some(viewed.view),
+            Err(err) => {
+                self.status = Some(format!("review loop: {err}"));
+                None
+            }
+        }
+    }
+
+    /// What an earlier pane left, when the review loop starts: the sends nothing marked
+    /// delivered (written, the pane closed before the agent got them), kept to go again
+    /// first; and the drafts the next round carries, which the footer counts, since they may
+    /// be on a reply or a file not open here.
+    pub(in crate::app) fn strand_pending(&mut self) {
+        let view = self.open.store.journal_view().map(|(_, view)| view);
+        let view = view.or_else(|| self.review_loop.as_ref()?.view.as_ref());
+        let mut left = view.map(pending_sends).unwrap_or_default();
+        let drafts = view.map_or(0, |view| all_drafts(view).len());
+        // The oldest is handed over first.
+        left.reverse();
+        if let Some(review_loop) = self.review_loop.as_mut() {
+            review_loop.left = left;
+        }
+        if drafts > 0 {
+            let send = self.keys.hint(Action::Send);
+            self.add_status(&format!(
+                "review loop: {drafts} draft(s) left by an earlier pane go with the next {send}"
+            ));
+        }
+    }
+
+    /// The next send an earlier pane left that is still pending in `view` and went to this
+    /// review's session, given back by the journal with its text; the others are dropped.
+    fn left_pending(&mut self, review: &Review, view: &ThreadView) -> Option<(Press, Result<Sent, Error>)> {
+        let pending = pending_sends(view);
+        loop {
+            let id = self.review_loop.as_mut()?.left.pop()?;
+            if !pending.contains(&id) {
+                continue;
+            }
+            let sent = review.journal.resend(&review.target, &id);
+            // A send to another session (a screen's) is not this pane's to hand over.
+            if let Ok(found) = &sent
+                && review.session().is_some_and(|session| session != found.send.to.session)
+            {
+                continue;
+            }
+            return Some((Press::Left(id), sent));
         }
     }
 

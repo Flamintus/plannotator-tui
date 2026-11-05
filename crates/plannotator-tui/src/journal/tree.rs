@@ -4,7 +4,7 @@
 
 use std::ops::Range;
 
-use plannotator_tui_journal::{Author, ReplyNode, ThreadNode, ThreadView};
+use plannotator_tui_journal::{Author, ReplyNode, Status, ThreadNode, ThreadView};
 
 /// Comment or sub-thread `id`, at any depth.
 pub(crate) fn find<'a>(nodes: &'a [ThreadNode], id: &str) -> Option<&'a ThreadNode> {
@@ -66,6 +66,38 @@ pub(crate) fn carried_by(view: &ThreadView, send: &str) -> Vec<String> {
     for node in &view.threads {
         walk(node, send, &mut out);
     }
+    out
+}
+
+/// The sends nothing marked delivered, read or answered, by id, newest last: what carried a
+/// thread or a reply of the person's whose status is pending.
+pub(crate) fn pending_sends(view: &ThreadView) -> Vec<String> {
+    fn walk(node: &ThreadNode, out: &mut Vec<String>) {
+        if node.status == Some(Status::Pending) && !node.reply_id.is_empty() {
+            out.push(node.reply_id.clone());
+        }
+        for reply in &node.replies {
+            if matches!(reply.author, Author::Person)
+                && reply.status == Some(Status::Pending)
+                && !reply.message_id.is_empty()
+            {
+                out.push(reply.message_id.clone());
+            }
+            for sub in &reply.sub_threads {
+                walk(sub, out);
+            }
+        }
+        for sub in &node.sub_threads {
+            walk(sub, out);
+        }
+    }
+    let mut out = Vec::new();
+    for node in &view.threads {
+        walk(node, &mut out);
+    }
+    // Send ids sort by time (`snd_` and a time-ordered suffix).
+    out.sort();
+    out.dedup();
     out
 }
 

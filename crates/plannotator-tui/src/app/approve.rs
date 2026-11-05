@@ -23,7 +23,11 @@ impl App {
             return Ok(());
         }
         let scope = if self.is_file_review() { SendScope::Pending } else { SendScope::All };
-        let mut feedback = self.prepare_feedback(scope)?;
+        // Under the review loop the notes not sent yet are the journal's drafts.
+        let mut feedback = match self.path_approval() {
+            Some(drafts) => drafts?,
+            None => self.prepare_feedback(scope)?,
+        };
         if self.tree.is_some() {
             self.folder_counts = std::mem::take(&mut feedback.counts);
         }
@@ -34,9 +38,12 @@ impl App {
             Ok(()) => {
                 let decision = Decision::Approved { feedback: feedback.text.clone(), count: feedback.count };
                 self.archive_submission(&mut feedback, decision.archive_decision());
-                // The notes reached the agent with the approval, so they count as sent. The
-                // review is ending; a record that cannot say so only re-offers them next time.
-                let _ = self.remember_delivery(&mut feedback, &target);
+                // Under the review loop the approval ends the review: its journal goes.
+                if !self.close_path_review() {
+                    // The notes reached the agent with the approval, so they count as sent. The
+                    // review is ending; a record that cannot say so only re-offers them next time.
+                    let _ = self.remember_delivery(&mut feedback, &target);
+                }
                 self.derive_send_state();
                 self.decision = Some(decision);
                 self.quit = true;

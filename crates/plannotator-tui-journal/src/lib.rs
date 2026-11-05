@@ -28,4 +28,6 @@ pub use cli::{CONTRACT, Cli, Journal, Stamp};
 pub use error::Error;
 pub use records::{Send, SendTo, Sent, Viewed};
 pub use requests::{IdempotencyKey, NewComment, Placement, ReviewTarget, SendMode};
-pub use view::{Anchor, Author, Parent, Place, ReplyNode, State, Status, ThreadNode, ThreadView};
+pub use view::{
+    Anchor, Author, CommentKind, Parent, Place, ReplyNode, State, Status, ThreadNode, ThreadView,
+};
