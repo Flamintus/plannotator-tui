@@ -40,8 +40,6 @@ pub(super) struct ReviewLoop {
     /// the journal, and those under a thread the person acted on since. Others are new.
     seen: HashSet<String>,
     seeded: bool,
-    /// The documents left for comments' threads opened as documents, the last one last.
-    parents: Vec<act::Parked>,
     /// When the view could not be read last: it is tried again after `RETRY`, not on every
     /// wake, since each try runs the CLI.
     failed: Option<Instant>,
@@ -62,7 +60,6 @@ impl ReviewLoop {
             stamp: None,
             seen: HashSet::new(),
             seeded: false,
-            parents: Vec::new(),
             failed: None,
             view: None,
         }
@@ -182,9 +179,6 @@ impl App {
         }
         let refused = self.open.store.take_refusals();
         let refreshed = self.open.store.refresh_journal(&self.open.doc, &self.open.layout);
-        if refreshed.is_ok() {
-            self.rewrite_thread_document();
-        }
         if let Some(review_loop) = self.review_loop.as_mut() {
             review_loop.failed = refreshed.is_err().then(Instant::now);
         }

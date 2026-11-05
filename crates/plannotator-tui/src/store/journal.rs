@@ -45,8 +45,7 @@ pub(crate) struct Kept {
     /// even where the same words come earlier, with the kind of note they are.
     anchors: HashMap<String, Anchor>,
     /// The notes on a passage of a message in a thread's box, by id: the sub-threads under
-    /// the document's comments, which are not on its words. None on a comment's thread opened
-    /// as a document, whose sub-threads are on its words.
+    /// the document's comments, which are not on its words.
     passages: HashMap<String, Passage>,
     /// The document's words and its rendered characters with their source offsets, as last
     /// laid out: where quotes are found.
@@ -90,12 +89,8 @@ impl Kept {
     }
 
     /// The sub-threads among `nodes`, this document's comments, on the passages of their
-    /// messages in the threads' boxes; on a comment's thread opened as a document they are on
-    /// its words instead.
+    /// messages in the threads' boxes.
     fn place_passages(&mut self, nodes: &[&ThreadNode]) {
-        if matches!(self.target, Target::Thread { .. }) {
-            return;
-        }
         for node in nodes {
             let Some(parent) = &node.place.parent else { continue };
             let passage = Passage {
@@ -233,12 +228,6 @@ impl Store {
     /// Whether note `id` is kept here only, the journal having not taken its last write.
     pub(crate) fn journal_unsaved(&self, id: &str) -> bool {
         matches!(&self.backing, Backing::Journal(kept) if kept.unsaved.iter().any(|note| note.id == id))
-    }
-
-    /// What a journal-backed store's document is.
-    pub(crate) fn journal_target(&self) -> Option<&Target> {
-        let Backing::Journal(kept) = &self.backing else { return None };
-        Some(&kept.target)
     }
 
     /// The notes whose words are no longer found in the document; a note on a box's passage

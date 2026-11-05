@@ -10,14 +10,13 @@
 //! off, nothing here runs and every review is what it always was.
 //!
 //! - `passage`: a comment's quote found in a document's words as drawn.
-//! - `tree`: what is in the view of a review's threads, and a comment's thread as a document.
+//! - `tree`: what is in the view of a review's threads.
 
 pub(crate) mod passage;
 #[cfg(test)]
 pub(crate) mod stand_in;
 pub(crate) mod tree;
 
-use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -129,9 +128,6 @@ pub(crate) enum Target {
     Message { message_id: String },
     /// A file of a file's or a folder's review, by its real path.
     File { path: PathBuf },
-    /// A comment's thread, as `tree::document` writes it: its comments are the sub-threads
-    /// on the words of its messages, each message's words at its source range.
-    Thread { comment_id: String, messages: Vec<(String, Range<usize>)> },
 }
 
 /// A passage of a sent message of a thread (a comment, a reply or a sub-thread) as drawn in

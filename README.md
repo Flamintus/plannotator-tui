@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · `C` reply · `V` resolve or open again · `O` open the thread as a document, `Esc` back · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold it again (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -301,7 +301,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `clear-all` | `X` | every annotation on the document, after `yes` |
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
-| `reply` `resolve` `open-thread` | `C` `V` `O` | the current note's thread in the review loop: reply under it, resolve it or open it again, open it as a document (keys provisional) |
+| `reply` `resolve` | `C` `V` | the current note's thread in the review loop: reply under it, resolve it or open it again (keys provisional) |
 | `toggle-thread` | `z` | in the review loop, draw the folded threads in the box the cursor is in, else the selected block's, open, or fold them again (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
@@ -418,11 +418,9 @@ the agent answers with too:
   level with its passage, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note, as for the image keys), a draft the next `E` sends; `V` resolves it or opens it
-  again; `O` opens its thread as a document: a passage of one of its messages selected, `c`
-  starts a sub-thread on it, a box in the box once back (`Esc`). `z` draws a folded thread open,
-  in the box the cursor is in or under the block, or folds again what it drew open. These keys
-  answer only while the loop runs, and are provisional, to be confirmed in use; like every key
-  they can be rebound under `[keys]`.
+  again. `z` draws a folded thread open, in the box the cursor is in or under the block, or
+  folds again what it drew open. These keys answer only while the loop runs, and are
+  provisional, to be confirmed in use; like every key they can be rebound under `[keys]`.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

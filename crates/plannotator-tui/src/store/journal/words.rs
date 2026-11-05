@@ -1,10 +1,8 @@
 //! Where a comment of the journal is in its document: which comments of the review's view
 //! are on the document's words, and which sub-threads under them on a box's passage, where
-//! each one's quote is in them, the passage a new sub-thread is on in a comment's thread
-//! opened as a document, and a note's images in the words the journal keeps.
+//! each one's quote is in them, and a note's images in the words the journal keeps.
 
 use std::collections::BTreeMap;
-use std::ops::Range;
 
 use anyhow::{Context, Result};
 use plannotator_tui_journal::{
@@ -74,7 +72,6 @@ impl Kept {
                 let on = On::File { path: path.display().to_string(), lines: self.lines(annotation) };
                 Placement::On { on, quote, deletion }
             }
-            (Target::Thread { .. }, None) => self.passage(annotation, deletion)?,
         };
         let comment = NewComment { id: annotation.id.clone(), text: text.to_owned(), placement };
         let review = &self.review;
@@ -90,7 +87,7 @@ impl Kept {
 
     /// The comments of `view` this document's notes are: on a message or a file, its
     /// comments, each followed by the sub-threads under it at any depth, on the passages of its
-    /// box; on a comment's thread, the sub-threads on its messages.
+    /// box.
     pub(super) fn comments<'v>(&self, view: &'v ThreadView) -> Vec<&'v ThreadNode> {
         let with_sub_threads = |node: &'v ThreadNode| std::iter::once(node).chain(tree::under(node));
         match &self.target {
@@ -109,45 +106,12 @@ impl Kept {
                 .filter(|node| node.place.parent.is_none() && on_file(&node.place.on, path))
                 .flat_map(with_sub_threads)
                 .collect(),
-            Target::Thread { comment_id, .. } => {
-                let Some(thread) = tree::find(&view.threads, comment_id) else { return Vec::new() };
-                let replies = thread.replies.iter().flat_map(|reply| &reply.sub_threads);
-                thread.sub_threads.iter().chain(replies).collect()
-            }
         }
     }
 
-    /// The source range of message `id`'s words, in a comment's thread opened as a document.
-    fn message(&self, id: &str) -> Option<Range<usize>> {
-        let Target::Thread { messages, .. } = &self.target else { return None };
-        messages.iter().find(|(message, _)| message == id).map(|(_, range)| range.clone())
-    }
-
-    /// The document's rendered characters within `range`.
-    fn chars_in(&self, range: &Range<usize>) -> Vec<(char, usize)> {
-        self.chars.iter().filter(|(_, offset)| range.contains(offset)).copied().collect()
-    }
-
-    /// The passage a new sub-thread is on: the message whose words hold the selection, its
-    /// quote, and where it starts in that message's words, as the journal counts it.
-    fn passage(&self, annotation: &Annotation, deletion: bool) -> Result<Placement> {
-        let Target::Thread { messages, .. } = &self.target else { anyhow::bail!("not a comment's thread") };
-        let source = annotation.anchor.plannotator_tui.as_ref().and_then(|extras| extras.source.as_ref());
-        let (start, end) = source.map(|range| (range.start, range.end)).context("no selection to place")?;
-        let (parent, range) = messages
-            .iter()
-            .find(|(_, range)| range.start <= start && end <= range.end)
-            .context("a sub-thread is on one message's words: select within one")?;
-        let quote = annotation.anchor.rendered().to_owned();
-        let occurrence = passage::occurrence(&self.chars_in(range), &quote, start);
-        let words = self.source.get(range.clone()).unwrap_or_default();
-        let quote_offset = passage::offset_in(words, &quote, occurrence);
-        Ok(Placement::Passage { parent: parent.clone(), quote, quote_offset, deletion })
-    }
-
     /// Where `node`'s quote is in the document: where this review put it, else the first
-    /// place the words as drawn hold it (within its message's, for a sub-thread), else an
-    /// anchor that resolves to nothing, as a sub-thread on a box's passage has, of its kind.
+    /// place the words as drawn hold it, else an anchor that resolves to nothing, as a
+    /// sub-thread on a box's passage has, of its kind.
     pub(super) fn anchor(&self, node: &ThreadNode, doc: &Document) -> Anchor {
         if let Some(anchor) = self.anchors.get(&node.id) {
             return anchor.clone();
@@ -156,13 +120,7 @@ impl Kept {
             return quoted(&node.place.quote, kind_of(node));
         }
         let quote = node.place.quote.clone();
-        let found = match &node.place.parent {
-            Some(parent) => self.message(&parent.id).and_then(|range| {
-                passage::find_near(&self.chars_in(&range), &doc.source, &quote, parent.quote_offset)
-            }),
-            None => passage::find(&self.chars, &doc.source, &quote, 0),
-        };
-        match found {
+        match passage::find(&self.chars, &doc.source, &quote, 0) {
             Some(range) => {
                 let block = doc.block_containing(range.start);
                 let range = SourceRange {

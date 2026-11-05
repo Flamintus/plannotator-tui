@@ -61,10 +61,9 @@ pub(crate) enum Action {
     #[serde(rename = "copy")]
     CopySelection,
     /// The current note's thread, while the review loop runs: reply under it, resolve it or
-    /// open it again, open it as a document; and draw folded threads open, or fold them again.
+    /// open it again; and draw folded threads open, or fold them again.
     Reply,
     Resolve,
-    OpenThread,
     ToggleThread,
     Yes,
     No,
@@ -73,9 +72,9 @@ pub(crate) enum Action {
 use Action::{
     Approve, Archive, AttachImage, Back, Bottom, ClearAll, ClearBlock, Comment, Confirm, CopySelection,
     CycleFocus, Delete, Down, Edit, FinishReview, Interrupt, Left, LineEnd, LineStart, LooksGood, MoveCursor,
-    No, OpenInEditor, OpenThread, PageDown, PageUp, PickMessage, QuickOpen, Quit, Reload, Remove,
-    RemoveImage, Reply, ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, ToggleHidden,
-    ToggleThread, ToggleTree, Top, UndoFinish, Up, Visual, WordBack, WordForward, Yes,
+    No, OpenInEditor, PageDown, PageUp, PickMessage, QuickOpen, Quit, Reload, Remove, RemoveImage, Reply,
+    ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, ToggleHidden, ToggleThread, ToggleTree, Top,
+    UndoFinish, Up, Visual, WordBack, WordForward, Yes,
 };
 
 /// Browsing, before the focused pane gets the key.
@@ -98,20 +97,8 @@ pub(crate) const GLOBAL: &[Action] = &[
     PickMessage,
 ];
 pub(crate) const TREE: &[Action] = &[Down, Up, Confirm, Right, ToggleHidden, Back];
-pub(crate) const RAIL: &[Action] = &[
-    Down,
-    Up,
-    Confirm,
-    Edit,
-    Remove,
-    AttachImage,
-    RemoveImage,
-    Reply,
-    Resolve,
-    OpenThread,
-    ToggleThread,
-    Back,
-];
+pub(crate) const RAIL: &[Action] =
+    &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, Back];
 /// `attach-image` and `remove-image` act on the selected block's note here.
 pub(crate) const DOCUMENT: &[Action] = &[
     Back,
@@ -133,7 +120,6 @@ pub(crate) const DOCUMENT: &[Action] = &[
     RemoveImage,
     Reply,
     Resolve,
-    OpenThread,
     ToggleThread,
 ];
 /// Cursor motions, in visual mode and while moving the cursor (`move-cursor`).
@@ -311,7 +297,6 @@ const DEFAULTS: &[(Action, &[Key])] = &[
     (CopySelection, &[ch('y')]),
     (Reply, &[ch('C')]),
     (Resolve, &[ch('V')]),
-    (OpenThread, &[ch('O')]),
     (ToggleThread, &[ch('z')]),
     (Yes, &[ch('y'), ch('Y')]),
     (No, &[ch('n'), ch('N')]),
@@ -319,7 +304,7 @@ const DEFAULTS: &[(Action, &[Key])] = &[
 
 /// Actions added after configs were written: `approve` (live only in a gated review),
 /// `copy` (on a waiting selection) and the thread actions.
-const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, OpenThread, ToggleThread];
+const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread];
 
 /// The keys bound to each action. A `[keys]` entry replaces that action's keys and leaves the
 /// others at their defaults; an empty list unbinds the action.
@@ -465,7 +450,6 @@ impl Action {
             Self::CopySelection => "copy",
             Self::Reply => "reply",
             Self::Resolve => "resolve",
-            Self::OpenThread => "open-thread",
             Self::ToggleThread => "toggle-thread",
             Self::Yes => "yes",
             Self::No => "no",

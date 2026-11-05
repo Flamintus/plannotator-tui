@@ -168,7 +168,7 @@ impl App {
             ("annotate-folder", Target::file(tree.root()), Vec::new())
         } else {
             let annotations = std::mem::take(&mut feedback.annotations);
-            match self.archived_provenance() {
+            match &self.open.source.provenance {
                 Provenance::File { path } => ("annotate", Target::file(path), annotations),
                 Provenance::AgentMessage { host, session, .. } => (
                     "annotate-last",

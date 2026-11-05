@@ -1,30 +1,15 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
-//! open it again, `open-thread` to open it as a document, where a passage of one of its
-//! messages takes a sub-thread as a comment does anywhere; `back` returns to the document it
-//! was opened from; `toggle-thread` draws a folded thread open, or folds it again. These keys
-//! answer only while the review loop runs. A passage selected in a message's words right in
-//! its box takes a sub-thread too, noted as the document's words are (`App::annotate`).
+//! open it again, `toggle-thread` draws a folded thread open, or folds it again. These keys
+//! answer only while the review loop runs. A sub-thread has one way in: a passage selected in a
+//! message's words right in its box, noted as the document's words are (`App::annotate`).
 
-use anyhow::Result;
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
-use plannotator_tui_schema::{DocumentSource, Provenance};
 
 use super::super::draw::short_id;
 use super::super::threads::state_marks;
-use super::super::{App, Focus, Mode, Open};
-use crate::journal::{Review, Target, tree};
+use super::super::{App, Focus, Mode};
+use crate::journal::{Review, tree};
 use crate::keys::Action;
-use crate::store::Store;
-
-/// A document left for a comment's thread, and where its reader was in it.
-pub(super) struct Parked {
-    open: Open,
-    scroll: usize,
-    selected: usize,
-    cursor: (usize, usize),
-    rail_cursor: usize,
-    focus: Focus,
-}
 
 impl App {
     /// The thread actions, on the current note: the rail's, or the selected block's. Without
@@ -37,7 +22,6 @@ impl App {
             Action::ToggleThread => self.toggle_threads(),
             Action::Reply => self.begin_reply(),
             Action::Resolve => self.resolve_current(),
-            Action::OpenThread => self.open_thread(),
             _ => {}
         }
     }
@@ -131,100 +115,6 @@ impl App {
         }
     }
 
-    /// Open the current note's thread as a document, the open one kept to come back to.
-    fn open_thread(&mut self) {
-        let Some((review, node)) = self.current_thread() else { return };
-        let open = match self.thread_document(review, &node) {
-            Ok(open) => open,
-            Err(err) => {
-                self.status = Some(format!("review loop: {err:#}"));
-                return;
-            }
-        };
-        let parked = Parked {
-            open: std::mem::replace(&mut self.open, open),
-            scroll: self.scroll,
-            selected: self.selected,
-            cursor: self.cursor,
-            rail_cursor: self.rail_cursor,
-            focus: self.focus,
-        };
-        if let Some(review_loop) = self.review_loop.as_mut() {
-            review_loop.parents.push(parked);
-            review_loop.saw(&node);
-        }
-        (self.scroll, self.selected, self.cursor, self.rail_cursor) = (0, 0, (0, 0), 0);
-        self.focus = Focus::Document;
-        self.clear_selection();
-        self.derive_send_state();
-        let back = self.keys.hint(Action::Back);
-        let comment = self.keys.hint(Action::Comment);
-        self.status = Some(format!(
-            "thread {}: select a passage of one message, {comment} starts a sub-thread on it \u{b7} {back} back",
-            short_id(&node.id)
-        ));
-    }
-
-    /// Comment `node`'s thread as a document: its messages, their sub-threads its notes.
-    fn thread_document(&self, review: Review, node: &ThreadNode) -> Result<Open> {
-        let (text, messages) = tree::document(node);
-        let target = Target::Thread { comment_id: node.id.clone(), messages };
-        let quote = node.place.quote.split_whitespace().collect::<Vec<_>>().join(" ");
-        let name = format!("thread {} \u{b7} \"{quote}\"", short_id(&node.id));
-        let source = DocumentSource::new(text, name, true, Provenance::Stdin);
-        let mut open = Open::new(source, self.open.layout.width, &self.data_dir, &self.project)?;
-        open.store = Store::journal(review, target, &open.doc, &open.layout)?;
-        Ok(open)
-    }
-
-    /// In a comment's thread opened as a document: whether one was left for it.
-    pub(in crate::app) fn in_thread_document(&self) -> bool {
-        self.review_loop.as_ref().is_some_and(|review_loop| !review_loop.parents.is_empty())
-    }
-
-    /// The source a send is archived under: the open document's, or, in a comment's thread
-    /// opened as a document, the reply it was opened from.
-    pub(in crate::app) fn archived_provenance(&self) -> &Provenance {
-        let first = self.review_loop.as_ref().and_then(|review_loop| review_loop.parents.first());
-        first.map_or(&self.open.source.provenance, |parked| &parked.open.source.provenance)
-    }
-
-    /// `back` in a comment's thread: the document it was opened from, as it was left, its
-    /// notes read again. False when no document was left for this one.
-    pub(in crate::app) fn leave_thread_document(&mut self) -> bool {
-        let Some(parked) = self.review_loop.as_mut().and_then(|review_loop| review_loop.parents.pop()) else {
-            return false;
-        };
-        self.open = parked.open;
-        (self.scroll, self.selected, self.cursor, self.rail_cursor) =
-            (parked.scroll, parked.selected, parked.cursor, parked.rail_cursor);
-        self.focus = parked.focus;
-        self.clear_selection();
-        self.open.store.mark_journal_stale();
-        self.status = None;
-        true
-    }
-
-    /// A comment's thread opened as a document, written again from the view when its
-    /// messages changed (a reply came), the reader kept where they were.
-    pub(super) fn rewrite_thread_document(&mut self) {
-        let Some(Target::Thread { comment_id, .. }) = self.open.store.journal_target().cloned() else {
-            return;
-        };
-        let Some((review, node)) = self.thread_of(&comment_id) else { return };
-        if tree::document(&node).0 == self.open.doc.source {
-            return;
-        }
-        match self.thread_document(review, &node) {
-            Ok(open) => {
-                let old = std::mem::replace(&mut self.open, open);
-                self.open.store.carry_over(&old.store, &self.open.doc);
-                self.clear_selection();
-            }
-            Err(err) => self.status = Some(format!("review loop: {err:#}")),
-        }
-    }
-
     /// What a note's bubble title adds over a document of the journal, at any depth: not
     /// saved, else what its box's head says of its state (`state_marks`), the round last as the
     /// title is cut on the right.
@@ -242,13 +132,10 @@ impl App {
         if !self.open.store.is_journal() || self.pending.is_some() || self.focus == Focus::Tree {
             return Vec::new();
         }
-        let back = self.in_thread_document().then(|| self.keys.labelled(Action::Back, "back")).flatten();
         vec![
             self.keys.labelled(Action::Reply, "reply"),
             self.keys.labelled(Action::Resolve, "resolve"),
-            self.keys.labelled(Action::OpenThread, "thread"),
             self.keys.labelled(Action::ToggleThread, "fold"),
-            back,
         ]
     }
 }

@@ -2,9 +2,9 @@
 //! of the flow knows, per column, the message whose words it shows and their byte there
 //! (`Spot`), so the selection the document uses, by mouse or by keyboard, works in a box too,
 //! and a passage selected in one message's words takes what the document's words take, a note
-//! of any kind, a sub-thread on that message (`App::annotate`), as one selected in the thread
-//! opened as a document does. Only while the review loop keeps the document's comments: the
-//! journal is what takes a sub-thread.
+//! of any kind, a sub-thread on that message (`App::annotate`): the one way to a sub-thread.
+//! Only while the review loop keeps the document's comments: the journal is what takes a
+//! sub-thread.
 
 use std::ops::Range;
 

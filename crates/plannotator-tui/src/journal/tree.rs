@@ -2,8 +2,6 @@
 //! sub-threads on the words of each, at any depth. Read only: Plannotator computes the tree;
 //! this finds what is in it.
 
-use std::ops::Range;
-
 use plannotator_tui_journal::{Author, ReplyNode, Status, ThreadNode, ThreadView};
 
 /// Comment or sub-thread `id`, at any depth.
@@ -156,27 +154,4 @@ pub(crate) fn author(reply: &ReplyNode) -> String {
             .or_else(|| host.clone())
             .unwrap_or_else(|| "agent".into()),
     }
-}
-
-/// A comment's thread as one document: its passage quoted, then the comment and each reply
-/// under a heading naming who wrote it, and, for each, the id and source range of its own
-/// words, which its sub-threads are on.
-pub(crate) fn document(node: &ThreadNode) -> (String, Vec<(String, Range<usize>)>) {
-    let quote = node.place.quote.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut text = format!("> {quote}\n\n");
-    let mut messages = Vec::new();
-    let mut add = |id: &str, author: &str, body: &str| {
-        text.push_str("#### ");
-        text.push_str(author);
-        text.push_str("\n\n");
-        let start = text.len();
-        text.push_str(body.trim_end());
-        messages.push((id.to_owned(), start..text.len()));
-        text.push_str("\n\n");
-    };
-    add(&node.id, "You", &node.text);
-    for reply in &node.replies {
-        add(&reply.id, &author(reply), &reply.text);
-    }
-    (text, messages)
 }
