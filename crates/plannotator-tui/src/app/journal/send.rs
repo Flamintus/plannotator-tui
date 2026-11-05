@@ -122,6 +122,9 @@ impl App {
                 );
                 if let Some(err) = delivered {
                     let _ = write!(status, " \u{b7} not marked delivered: {err}");
+                } else {
+                    // As on the screens and in the Inbox: the agent's replies come here by themselves.
+                    status.push_str(" \u{b7} replies will show here");
                 }
                 self.status = Some(status);
             }
