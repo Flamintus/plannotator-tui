@@ -1,23 +1,26 @@
 //! Threads in the document's flow, while the review loop keeps the document's comments. A
 //! comment someone answered, or resolved, is drawn as a box right under the block its passage
 //! starts in: the passage at its head, then the comment and each reply with who wrote it. A
-//! thread opened on one of those messages is a box inside the box, under that message, at the
-//! same indent at every depth. A resolved box folds to one line once nothing under it, at any
-//! depth, is open; until then it stays open, marked resolved. A draft no one has answered
-//! stays a bubble in the rail only. Without the loop nothing is drawn here: a record's replies
-//! and resolved state change nothing on screen, as before the loop.
+//! thread opened on one of those messages is a box inside the box, under the line its passage
+//! starts on, at the same indent at every depth; a blank row is above each box. A resolved box
+//! folds to one line once nothing under it, at any depth, is open; until then it stays open,
+//! marked resolved. A draft no one has answered stays a bubble in the rail only. Without the
+//! loop nothing is drawn here: a record's replies and resolved state change nothing on screen,
+//! as before the loop.
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
 //! thread or the width changes; how a thread is drawn in them is `rows`. Each row knows, per
 //! column, the message's words it shows, so a passage of them can be selected as the
-//! document's words are (`words`).
+//! document's words are (`words`), and `down` and `up` stop on their lines as on the blocks
+//! (`lines`).
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
 //! included; `toggle-thread` draws a folded thread open, or folds it again (`fold`).
 
 mod fold;
 mod journal;
+mod lines;
 mod rows;
 mod words;
 
@@ -41,6 +44,9 @@ pub(super) struct Thread {
     id: String,
     kind: Kind,
     quote: String,
+    /// A sub-thread: the byte of its message's words its passage starts at, under whose line
+    /// its box goes; `None` on the document, or when the words no longer hold the passage.
+    start: Option<usize>,
     resolved: bool,
     /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.
     folded: Option<bool>,
@@ -141,6 +147,7 @@ impl App {
     /// threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
+        let kept = self.words_at_cursor();
         let open = &mut self.open;
         for (_, thread) in &mut threads {
             thread.unfold(&open.flow.unfolded);
@@ -153,7 +160,8 @@ impl App {
             // Rows below a changed box moved, as on a reflow: a selection drawn by rows no
             // longer covers what it did. The selection waiting for an action is a source
             // range, which has not moved: it only follows its first row. A passage of a box's
-            // words follows its words, or goes with them (`boxes_moved`).
+            // words follows its words, or goes with them, and so does the cursor in them
+            // (`boxes_moved`).
             self.selection = None;
             if let Some(pending) = self.pending.as_mut()
                 && let Some(range) = pending.range()
@@ -163,13 +171,13 @@ impl App {
                 pending.at.0 = row.unwrap_or(pending.at.0);
             }
             self.scroll_by(0);
-            self.boxes_moved();
+            self.boxes_moved(kept);
         }
     }
 
     /// The flow's rows that are in view, on the rows the layout keeps free for them, with the
-    /// selection and the cursor over their words.
-    pub(super) fn draw_threads(&self, buf: &mut Buffer, doc: Rect) {
+    /// selection and the cursor over their words, and the line `down` and `up` selected.
+    pub(super) fn draw_threads(&self, buf: &mut Buffer, gutter: Rect, doc: Rect) {
         let view = self.scroll..self.scroll + usize::from(doc.height);
         for (block, rows) in &self.open.flow.rows {
             let Some(rendered) = self.open.layout.blocks.get(*block) else { continue };
@@ -178,6 +186,7 @@ impl App {
                 let Some(drawn) = rows.get(row - top) else { continue };
                 let y = doc.y + (row - self.scroll) as u16;
                 buf.set_line(doc.x, y, &drawn.line, doc.width);
+                self.mark_line(buf, (gutter, doc), (row, y));
                 self.mark_words(buf, doc, (row, y), &drawn.words);
             }
         }

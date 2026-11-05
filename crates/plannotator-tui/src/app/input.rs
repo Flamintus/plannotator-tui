@@ -282,8 +282,9 @@ impl App {
                 ));
             }
             Some(Action::MoveCursor) => self.start_roaming(),
-            Some(Action::Down) => self.select_block(self.selected + 1),
-            Some(Action::Up) => self.select_block(self.selected.saturating_sub(1)),
+            // The next block, or a line of a box's words on the way under the review loop.
+            Some(Action::Down) => self.step(true),
+            Some(Action::Up) => self.step(false),
             // A cursor that moves must be visible, so a column move in block mode is a
             // roaming move: the same key, with the cursor drawn.
             Some(Action::Left | Action::Right) => {
@@ -296,13 +297,8 @@ impl App {
             Some(Action::Bottom) => {
                 self.select_block(self.open.doc.blocks.len().saturating_sub(1));
             }
-            // In a box's words, a comment is a sub-thread on a passage: one is selected first.
-            Some(Action::Comment | Action::Confirm) if self.cursor_in_box_words() => {
-                let (select, comment) = (self.keys.hint(Action::Visual), self.keys.hint(Action::Comment));
-                self.status = Some(format!(
-                    "{select} selects a passage of this message, then {comment} starts a sub-thread on it"
-                ));
-            }
+            // On a line of a box's words, a sub-thread on the line, as the block takes a comment.
+            Some(Action::Comment | Action::Confirm) if self.on_box_line() => self.sub_thread_on_line()?,
             Some(Action::Comment | Action::Confirm) => {
                 // No selection: comment on the whole selected block.
                 if let (Some(block), Some(rendered)) =

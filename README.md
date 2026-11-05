@@ -302,7 +302,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
 | `reply` `resolve` `open-thread` | `C` `V` `O` | the current note's thread in the review loop: reply under it, resolve it or open it again, open it as a document (keys provisional) |
-| `toggle-thread` | `z` | in the review loop, draw the selected block's folded threads open, or fold them again (key provisional) |
+| `toggle-thread` | `z` | in the review loop, draw the folded threads in the box the cursor is in, else the selected block's, open, or fold them again (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -398,16 +398,21 @@ the agent answers with too:
   · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
   `looks-good` colour (`[colors]`). Without the loop, the replies and the resolved state a
   record may carry change nothing on screen.
-- A passage of a comment or a reply selected in its box, with the mouse or with `i` and `v` as
-  in the document, takes a sub-thread: `c` (or the toolbar's comment) writes it, a draft the
-  next `E` sends, drawn as a box in the box under that message. A draft's words take none until
-  it is sent.
+- `j`/`k` stop on each line of the boxes' words on the way from a block to the next, a
+  sub-thread's at any depth, drawn as a selected block; heads, sides and blank rows are stepped
+  over as the gaps between blocks are.
+- A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
+  to start elsewhere) as in the document, takes a sub-thread: `c` (or the toolbar's comment)
+  writes it, a draft the next `E` sends, drawn as a box in the box right under the line its
+  passage starts on, a blank row above it. With nothing selected, `c` on a line takes one on
+  the line's words, as on a block. A draft's words take none until it is sent.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note), a draft the next `E` sends; `V` resolves it or opens it again; `O` opens its
   thread as a document: a passage of one of its messages selected, `c` starts a sub-thread on
-  it, a box in the box once back (`Esc`). `z` draws a folded thread open. These keys answer
-  only while the loop runs, and are provisional, to be confirmed in use; like every key they
-  can be rebound under `[keys]`.
+  it, a box in the box once back (`Esc`). `z` draws a folded thread open, in the box the cursor
+  is in or under the block, or folds again what it drew open. These keys answer only while the
+  loop runs, and are provisional, to be confirmed in use; like every key they can be rebound
+  under `[keys]`.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

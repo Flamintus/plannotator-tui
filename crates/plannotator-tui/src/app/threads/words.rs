@@ -50,7 +50,7 @@ pub(in crate::app) struct Passage {
 impl App {
     /// Whether the boxes' words take a selection: the review loop keeps the open document's
     /// comments. Otherwise the cursor and the selection step over the boxes, as they always did.
-    fn box_words_selectable(&self) -> bool {
+    pub(super) fn box_words_selectable(&self) -> bool {
         self.review_loop_runs() && self.open.store.is_journal()
     }
 
@@ -66,7 +66,7 @@ impl App {
 
     /// The words of the box row at document row `row`, per column, when it shows some and the
     /// boxes' words take a selection.
-    fn box_words(&self, row: usize) -> Option<&[Option<Spot>]> {
+    pub(super) fn box_words(&self, row: usize) -> Option<&[Option<Spot>]> {
         if !self.box_words_selectable() {
             return None;
         }
@@ -177,35 +177,57 @@ impl App {
         }))
     }
 
+    /// The words the cursor stands on in a box: their message's id and byte, to find them
+    /// again once the boxes move.
+    pub(super) fn words_at_cursor(&self) -> Option<(String, usize)> {
+        let words = self.box_words(self.cursor.0)?;
+        let spot =
+            words.get(self.cursor.1).copied().flatten().or_else(|| words.iter().flatten().next().copied())?;
+        Some((self.open.flow.said.get(spot.message)?.id.clone(), spot.byte))
+    }
+
+    /// Where the words of message `id` at `byte` are drawn: their document row and column.
+    fn find_words(&self, id: &str, byte: usize) -> Option<(usize, usize)> {
+        let said = &self.open.flow.said;
+        let here =
+            |spot: &Spot| spot.byte == byte && said.get(spot.message).is_some_and(|said| said.id == id);
+        let layout = &self.open.layout;
+        self.open.flow.rows.iter().find_map(|(block, rows)| {
+            let rendered = layout.blocks.get(*block)?;
+            let top = rendered.first_row + rendered.rows.len();
+            rows.iter().enumerate().find_map(|(index, drawn)| {
+                let column = drawn.words.iter().position(|spot| spot.as_ref().is_some_and(here))?;
+                Some((top + index, column))
+            })
+        })
+    }
+
     /// After the boxes moved, while their words take a selection: a passage waiting for its
     /// action follows its words, the cursor with it, or goes when they are no longer drawn (its
-    /// thread folded, or gone); a cursor that stood in a box, now on rows that moved, goes back
-    /// to the selected block, so the thread keys never act on a box it is no longer in.
-    pub(in crate::app) fn boxes_moved(&mut self) {
+    /// thread folded, or gone); a cursor that stood in a box's words (`kept`, before they
+    /// moved) follows them too, or, when they are no longer drawn, goes back to the selected
+    /// block, so the thread keys never act on a box it is no longer in.
+    pub(in crate::app) fn boxes_moved(&mut self, kept: Option<(String, usize)>) {
         if !self.box_words_selectable() {
             return;
         }
         let Some(Selected::Passage(passage)) = self.pending.as_ref().map(|pending| &pending.on) else {
-            if self.open.layout.row(self.cursor.0).is_none()
-                && let Some(block) = self.open.layout.blocks.get(self.selected)
-            {
-                self.cursor = (block.first_row, 0);
+            let in_box = kept.is_some() || self.open.layout.row(self.cursor.0).is_none();
+            match kept.and_then(|(id, byte)| self.find_words(&id, byte)) {
+                Some(at) => {
+                    self.cursor = at;
+                    self.selected = self.box_block(at.0).unwrap_or(self.selected);
+                }
+                None if in_box => {
+                    if let Some(block) = self.open.layout.blocks.get(self.selected) {
+                        self.cursor = (block.first_row, 0);
+                    }
+                }
+                None => {}
             }
             return;
         };
-        let said = &self.open.flow.said;
-        let starts = |spot: &Spot| {
-            spot.byte == passage.start && said.get(spot.message).is_some_and(|said| said.id == passage.parent)
-        };
-        let layout = &self.open.layout;
-        let found = self.open.flow.rows.iter().find_map(|(block, rows)| {
-            let rendered = layout.blocks.get(*block)?;
-            let top = rendered.first_row + rendered.rows.len();
-            rows.iter().enumerate().find_map(|(index, drawn)| {
-                let column = drawn.words.iter().position(|spot| spot.as_ref().is_some_and(starts))?;
-                Some((top + index, column))
-            })
-        });
+        let found = self.find_words(&passage.parent, passage.start);
         match (found, self.pending.as_mut()) {
             (Some(at), Some(pending)) => {
                 pending.at = at;

@@ -92,7 +92,7 @@ impl App {
             self.draw_tree(frame, tree);
         }
         self.draw_document(frame, gutter, doc);
-        self.draw_threads(frame.buffer_mut(), doc);
+        self.draw_threads(frame.buffer_mut(), gutter, doc);
         if rail_width > 0 {
             self.draw_rail(frame, rail);
         }
@@ -171,6 +171,8 @@ impl App {
         let placed = self.open.store.placed();
         let text_selection_active = self.selection.is_some();
         let doc_focused = self.focus == Focus::Document;
+        // A line of a box's words selected instead of the block above it (`box_line_selected`).
+        let selected = (!self.box_line_selected()).then_some(self.selected);
         let buf = frame.buffer_mut();
 
         for y in 0..doc.height {
@@ -180,7 +182,7 @@ impl App {
             let screen_y = doc.y + y;
             buf.set_line(doc.x, screen_y, &row.line, doc.width);
 
-            if block == self.selected && !text_selection_active && self.pending.is_none() && doc_focused {
+            if Some(block) == selected && !text_selection_active && self.pending.is_none() && doc_focused {
                 buf.set_style(
                     Rect { x: doc.x, y: screen_y, width: doc.width, height: 1 },
                     Style::new().bg(palette().block_bg),
@@ -225,7 +227,7 @@ impl App {
                 buf.set_style(Rect { x, y: screen_y, width: 1, height: 1 }, palette().cursor);
             }
 
-            let marker = match (block == self.selected, row_has_annotation) {
+            let marker = match (Some(block) == selected, row_has_annotation) {
                 (true, _) => Span::styled("▍", Style::new().fg(palette().accent)),
                 (false, true) => Span::styled("▍", Style::new().fg(palette().comment)),
                 (false, false) => Span::raw(" "),

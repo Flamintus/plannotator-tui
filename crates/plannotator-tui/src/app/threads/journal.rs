@@ -11,7 +11,7 @@ use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, T
 
 use super::super::App;
 use super::{Message, Thread};
-use crate::journal::tree;
+use crate::journal::{passage, tree};
 
 /// What became of a send, in the words the Inbox's boxes use for it.
 pub(in crate::app) fn status_word(status: Status) -> Option<&'static str> {
@@ -45,16 +45,32 @@ fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> String {
     }
 }
 
+/// Where `sub`'s passage starts in `words`, the message it is on: the byte of the occurrence
+/// nearest the journal's offset, as Plannotator finds it; `None` when the words do not hold it.
+fn passage_start(words: &str, sub: &ThreadNode) -> Option<usize> {
+    let chars: Vec<(char, usize)> = words.char_indices().map(|(at, ch)| (ch, at)).collect();
+    let quote = &sub.place.quote;
+    let found = match &sub.place.parent {
+        Some(parent) => passage::find_near(&chars, words, quote, parent.quote_offset),
+        None => passage::find(&chars, words, quote, 0),
+    };
+    found.map(|range| range.start)
+}
+
 impl Thread {
     fn of_node(node: &ThreadNode, seen: &HashSet<String>) -> Self {
-        let threads = |subs: &[ThreadNode]| subs.iter().map(|sub| Self::of_node(sub, seen)).collect();
+        let threads = |subs: &[ThreadNode], words: &str| {
+            let sub =
+                |sub: &ThreadNode| Self { start: passage_start(words, sub), ..Self::of_node(sub, seen) };
+            subs.iter().map(sub).collect()
+        };
         let comment = Message {
             id: node.id.clone(),
             author: "You".to_owned(),
             tag: Some(round(node.draft, node.round)),
             body: node.text.clone(),
             draft: node.draft,
-            threads: threads(&node.sub_threads),
+            threads: threads(&node.sub_threads, &node.text),
         };
         let replies = node.replies.iter().map(|reply| Message {
             id: reply.id.clone(),
@@ -62,7 +78,7 @@ impl Thread {
             tag: Some(reply_tag(reply, seen)),
             body: reply.text.clone(),
             draft: reply.draft,
-            threads: threads(&reply.sub_threads),
+            threads: threads(&reply.sub_threads, &reply.text),
         });
         let resolved = node.state == ThreadState::Resolved;
         // A resolved thread's last send is history: its head says resolved and its round. The
@@ -77,6 +93,7 @@ impl Thread {
             id: node.id.clone(),
             kind: plannotator_tui_schema::Kind::Comment,
             quote: node.place.quote.clone(),
+            start: None,
             resolved,
             folded: Some(node.folded),
             marks,
