@@ -5,14 +5,18 @@
 //! bottom, a sub-thread's among the boxes under the paragraph its passage starts in, an edit's
 //! in place of the note's words; or, folded, its folded line. Each row keeps, per column, the
 //! message's words it shows (`words::Spot`), and a thread's first row says when it is its fold
-//! line.
+//! line. Every box's border is grey (`head::BORDER`); each row keeps which of its columns are
+//! whose border, so the box the person is in is drawn lit over them, and moving from one box to
+//! another rebuilds no row.
+
+use std::ops::Range;
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use super::field::{Field, Place};
-use super::head::{border, folded, head};
+use super::head::{BORDER, folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
@@ -37,12 +41,22 @@ pub(super) struct BoxRow {
     pub(super) fold: Option<bool>,
     /// The row is one of the words of the field the person types in, drawn over it (`field`).
     pub(super) field: bool,
+    /// The columns that are a thread's border, with the thread: the sides of each box the row is
+    /// in, a head but its marks, a rule, a bottom edge, a folded line's mark and rule.
+    pub(super) border: Vec<(String, Range<usize>)>,
 }
 
 impl BoxRow {
-    /// A row that shows no message's words: a head, a rule, an author, a folded line.
+    /// A row that shows no message's words: an author, a blank row, a field's edge.
     fn plain(line: Line<'static>) -> Self {
-        Self { line, thread: None, words: Vec::new(), fold: None, field: false }
+        Self { line, thread: None, words: Vec::new(), fold: None, field: false, border: Vec::new() }
+    }
+
+    /// A row of thread `id`'s own border, its `columns`: its head, a rule, its bottom edge, its
+    /// folded line.
+    fn own(line: Line<'static>, id: &str, columns: impl IntoIterator<Item = Range<usize>>) -> Self {
+        let border = columns.into_iter().map(|columns| (id.to_owned(), columns)).collect();
+        Self { border, ..Self::plain(line) }
     }
 
     /// A row that shows nothing: a blank line of a message's words.
@@ -50,10 +64,14 @@ impl BoxRow {
         self.line.width() == 0
     }
 
-    /// The row between the sides of a box `inner` columns wide.
-    fn in_box(self, inner: usize, border: Style) -> Self {
+    /// The row between the sides of a box `inner` columns wide, thread `of`'s (none for the
+    /// field the person types in).
+    fn in_box(self, inner: usize, border: Style, of: Option<&str>) -> Self {
         let words = [None, None].into_iter().chain(self.words).collect();
-        Self { line: framed(self.line, inner, border), words, ..self }
+        let within = self.border.into_iter().map(|(id, columns)| (id, columns.start + 2..columns.end + 2));
+        let sides =
+            of.into_iter().flat_map(|id| [(id.to_owned(), 0..2), (id.to_owned(), inner + 2..inner + 4)]);
+        Self { line: framed(self.line, inner, border), words, border: sides.chain(within).collect(), ..self }
     }
 }
 
@@ -101,8 +119,12 @@ pub(super) fn spaced<'t>(
 /// or the head of its box; a box too narrow to draw shows its folded line, which is none.
 fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let boxed = !thread.is_folded() && width >= MIN_BOX_WIDTH;
-    let mut rows =
-        if boxed { box_of(thread, width, said) } else { vec![BoxRow::plain(folded(thread, width))] };
+    let mut rows = if boxed {
+        box_of(thread, width, said)
+    } else {
+        let (line, border) = folded(thread, width);
+        vec![BoxRow::own(line, &thread.id, border)]
+    };
     if let Some(first) = rows.first_mut() {
         first.fold = if thread.is_folded() { Some(true) } else { boxed.then_some(false) };
     }
@@ -120,21 +142,22 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 /// paragraph its passage starts in, after those starting where it does, as its box will be,
 /// when that box is wide enough to draw; last, a reply's.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    let border = border(thread);
+    let id = Some(thread.id.as_str());
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
     let inner = inside(width);
     let field = thread.field.as_ref();
-    let mut rows = vec![BoxRow::plain(head(thread, width, border))];
+    let (head, columns) = head(thread, width);
+    let mut rows = vec![BoxRow::own(head, &thread.id, columns)];
     for (index, message) in thread.messages.iter().enumerate() {
         if index > 0 {
-            rows.push(BoxRow::plain(edge('├', '┤', width, border)));
+            rows.push(rule('├', '┤', width, &thread.id));
         }
         let named = match &message.tag {
             Some(tag) => format!("{} \u{b7} {tag}", one_line(&message.author)),
             None => one_line(&message.author),
         };
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
-        rows.push(BoxRow::plain(author).in_box(inner, border));
+        rows.push(BoxRow::plain(author).in_box(inner, BORDER, id));
         let edited = field.filter(|field| index == 0 && field.place == Place::Words);
         let lines = if edited.is_some() { Vec::new() } else { words_of(message, inner, text, said) };
         let passage = field.filter(|_| inner >= MIN_BOX_WIDTH).and_then(|field| match field.place {
@@ -147,22 +170,22 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         }
         let mut lines = lines.into_iter().map(Some).chain([None]).zip(under).peekable();
         while let Some((line, boxes)) = lines.next() {
-            rows.extend(line.map(|line| line.in_box(inner, border)));
+            rows.extend(line.map(|line| line.in_box(inner, BORDER, id)));
             let blank = lines.peek().is_some_and(|(next, _)| next.as_ref().is_some_and(BoxRow::is_blank));
             let boxes = spaced(boxes, inner, said, blank);
-            rows.extend(boxes.into_iter().map(|row| row.in_box(inner, border)));
+            rows.extend(boxes.into_iter().map(|row| row.in_box(inner, BORDER, id)));
         }
     }
     if let Some(field) = field.filter(|field| field.place == Place::Bottom) {
-        let blank = || BoxRow::plain(Line::default()).in_box(inner, border);
+        let blank = || BoxRow::plain(Line::default()).in_box(inner, BORDER, id);
         // The blank row under the boxes the last message ends with is the one above the field.
         if !rows.last().is_some_and(|row| row.line == blank().line) {
             rows.push(blank());
         }
-        rows.extend(field_of(field, inner).into_iter().map(|row| row.in_box(inner, border)));
+        rows.extend(field_of(field, inner).into_iter().map(|row| row.in_box(inner, BORDER, id)));
         rows.push(blank());
     }
-    rows.push(BoxRow::plain(edge('╰', '╯', width, border)));
+    rows.push(rule('╰', '╯', width, &thread.id));
     rows
 }
 
@@ -180,7 +203,7 @@ fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
     ]);
     let words = (0..field.rows).map(|_| BoxRow { field: true, ..BoxRow::plain(Line::default()) });
     std::iter::once(BoxRow::plain(head))
-        .chain(words.map(|row| row.in_box(inside(width), border)))
+        .chain(words.map(|row| row.in_box(inside(width), border, None)))
         .chain([BoxRow::plain(edge('╰', '╯', width, border))])
         .collect()
 }
@@ -233,6 +256,11 @@ fn under_lines<'t>(
         }
     }
     under
+}
+
+/// Thread `id`'s rule from `left` to `right`, `width` columns, all of them its border.
+fn rule(left: char, right: char, width: usize, id: &str) -> BoxRow {
+    BoxRow::own(edge(left, right, width, BORDER), id, std::iter::once(0..width))
 }
 
 /// `left` and `right` with a rule between them, `width` columns in all.

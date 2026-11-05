@@ -32,6 +32,13 @@ pub(super) fn accent(kind: Kind) -> Color {
     }
 }
 
+/// The border of the note the keys act on: its bubble's in the rail, lit, and under the review
+/// loop its box's in the flow (`threads`): green once its thread is resolved, else its kind's
+/// colour.
+pub(super) fn lit(kind: Kind, resolved: bool) -> Style {
+    Style::new().fg(if resolved { palette().looks_good } else { accent(kind) })
+}
+
 /// Painting precedence when annotations overlap a cell.
 pub(super) fn priority(kind: Kind) -> u8 {
     match kind {
@@ -422,8 +429,10 @@ impl App {
             } else {
                 block == self.selected
             };
-            let border =
-                if highlighted { Style::new().fg(accent(kind)) } else { Style::new().fg(Color::DarkGray) };
+            let resolved = in_loop && placed.annotation.state == State::Resolved;
+            // Lit as the box of the same note is (`threads`); a resolved thread is only seen
+            // as such under the review loop.
+            let border = if highlighted { lit(kind, resolved) } else { Style::new().fg(Color::DarkGray) };
             let border = if rail_focused && index == self.rail_cursor { border.bold() } else { border };
             // A comment of the journal's says what became of its send instead (`journal_tag`).
             let sent = if self.is_file_review()
@@ -445,7 +454,7 @@ impl App {
                 format!(" {} {}{images}{sent}", glyph(kind), short_id(&placed.annotation.id)),
                 title_style,
             )];
-            if in_loop && placed.annotation.state == State::Resolved {
+            if resolved {
                 title.push(Span::styled(" \u{b7} ", title_style));
                 title.push(Span::styled(threads::RESOLVED, threads::resolved_style()));
             }

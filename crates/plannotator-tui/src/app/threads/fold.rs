@@ -45,7 +45,7 @@ impl Thread {
 
 impl Flow {
     /// Thread `id`, at any depth.
-    fn thread(&self, id: &str) -> Option<&Thread> {
+    pub(super) fn thread(&self, id: &str) -> Option<&Thread> {
         self.threads.iter().find_map(|(_, thread)| thread.find(id))
     }
 
