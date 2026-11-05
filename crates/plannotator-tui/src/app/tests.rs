@@ -4,7 +4,6 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use plannotator_tui_schema::{DocumentSource, Kind, Provenance};
 use ratatui::Terminal;
@@ -13,21 +12,10 @@ use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 
+use super::review_test_support::scratch_data_dir;
 use super::send::SendState;
 use super::{App, Mode, Pending};
 use crate::delivery::{Delivery, Discard, HerdrAgent};
-
-/// A fresh, empty data directory for one test. `App::open` resolves the real one, and a
-/// successful send archives into it, so every app under test is pointed here instead:
-/// nothing a test does may reach the developer's own Plannotator data.
-fn scratch_data_dir() -> PathBuf {
-    static NEXT: AtomicUsize = AtomicUsize::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("plannotator-tui-app-{}-{n}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("scratch data dir");
-    dir
-}
 
 /// A transient source: the app runs exactly as it does on a file, but nothing is written
 /// to the Plannotator data directory.

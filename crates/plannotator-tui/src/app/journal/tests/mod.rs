@@ -20,7 +20,7 @@ use std::rc::Rc;
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
 
 use super::super::App;
-use super::super::review_test_support::RecordingDelivery;
+use super::super::review_test_support::{RecordingDelivery, scratch_data_dir};
 use crate::journal::stand_in::StandIn;
 
 /// The newest reply `last` offers, with a heading and two points.
@@ -32,7 +32,8 @@ pub(super) fn last_app(newest: bool, delivery: RecordingDelivery) -> App {
     last_app_with(&[("m2", NEWEST), ("m1", "First reply.\n")], newest, delivery)
 }
 
-/// `last` on `replies`, `(id, words)` newest first, of Claude Code's session `ses_a`.
+/// `last` on `replies`, `(id, words)` newest first, of Claude Code's session `ses_a`, its data
+/// directory a scratch one: a send archives there, never into the developer's own.
 pub(super) fn last_app_with(replies: &[(&str, &str)], newest: bool, delivery: RecordingDelivery) -> App {
     let replies = replies
         .iter()
@@ -43,7 +44,7 @@ pub(super) fn last_app_with(replies: &[(&str, &str)], newest: bool, delivery: Re
             at: None,
         })
         .collect();
-    App::open_message(
+    let mut app = App::open_message(
         "claude",
         "/tmp/transcript.jsonl",
         Some("ses_a"),
@@ -52,7 +53,9 @@ pub(super) fn last_app_with(replies: &[(&str, &str)], newest: bool, delivery: Re
         Box::new(delivery),
         newest,
     )
-    .expect("app")
+    .expect("app");
+    app.data_dir = scratch_data_dir();
+    app
 }
 
 /// The same with the review loop on, over `journal`.
