@@ -64,6 +64,8 @@ enum Mode {
     Compose,
     /// Editing the body of an existing annotation (by id).
     Edit(String),
+    /// Typing the person's reply under an Inbox comment (by id).
+    Reply(String),
     /// Typing the path of an image to attach to an annotation (by id).
     AttachImage(String),
     /// Quit was asked for while feedback is unsent; the footer asks first.

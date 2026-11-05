@@ -8,6 +8,15 @@
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
 //! thread or the width changes.
+//!
+//! A document whose comments the Inbox keeps draws them from the Inbox's view (`inbox`),
+//! sub-threads, sends and what is new included; `toggle-thread` draws a folded thread open,
+//! or folds it again (`fold`).
+
+mod fold;
+mod inbox;
+
+use std::collections::HashSet;
 
 use plannotator_tui_schema::{Annotation, Kind, State};
 use ratatui::buffer::Buffer;
@@ -32,6 +41,11 @@ pub(super) struct Thread {
     kind: Kind,
     quote: String,
     resolved: bool,
+    /// Drawn folded: the source's word when it has one (the Inbox's view), else `settled`;
+    /// open when unfolded by hand.
+    folded: Option<bool>,
+    /// What the head says after the state: not found, what became of its send, live.
+    marks: Vec<String>,
     messages: Vec<Message>,
 }
 
@@ -39,6 +53,8 @@ pub(super) struct Thread {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Message {
     author: String,
+    /// What the line naming the author adds: a draft, what became of a send, new.
+    tag: Option<String>,
     body: String,
     /// Threads opened on this message's words, drawn under it. A record's replies are flat,
     /// so a note read from one has none; a source that keeps such threads fills them.
@@ -57,9 +73,11 @@ impl Thread {
         // without one is anonymous, as the record defines it (`bubble::author`).
         let author = annotation.author_name.as_deref().or(annotation.author.as_deref()).unwrap_or("You");
         let body = if annotation.body.is_empty() { label(kind) } else { annotation.body.as_str() };
-        let note = Message { author: author.to_owned(), body: body.to_owned(), threads: Vec::new() };
+        let note =
+            Message { author: author.to_owned(), tag: None, body: body.to_owned(), threads: Vec::new() };
         let replies = annotation.replies.iter().map(|reply| Message {
             author: bubble::author(reply).to_owned(),
+            tag: None,
             body: reply.body.clone(),
             threads: Vec::new(),
         });
@@ -68,8 +86,27 @@ impl Thread {
             kind,
             quote: annotation.anchor.rendered().to_owned(),
             resolved,
+            folded: None,
+            marks: Vec::new(),
             messages: std::iter::once(note).chain(replies).collect(),
         })
+    }
+
+    /// Whether it is drawn folded.
+    fn is_folded(&self) -> bool {
+        self.folded.unwrap_or_else(|| self.settled())
+    }
+
+    /// Draw open the threads `unfolded` names, at any depth.
+    fn unfold(&mut self, unfolded: &HashSet<String>) {
+        if unfolded.contains(&self.id) {
+            self.folded = Some(false);
+        }
+        for message in &mut self.messages {
+            for sub in &mut message.threads {
+                sub.unfold(unfolded);
+            }
+        }
     }
 
     /// Resolved, and so is every thread under it at any depth: it is drawn folded.
@@ -101,10 +138,12 @@ pub(super) struct Flow {
     rows: Vec<(usize, Vec<Line<'static>>)>,
     /// How many rows that is per block: what the layout keeps free.
     under: Vec<(usize, usize)>,
+    /// Folded threads drawn open by hand, by id.
+    unfolded: HashSet<String>,
 }
 
 impl Flow {
-    fn new(threads: Vec<(usize, Thread)>, width: usize) -> Self {
+    fn new(threads: Vec<(usize, Thread)>, width: usize, unfolded: HashSet<String>) -> Self {
         let mut rows: Vec<(usize, Vec<Line<'static>>)> = Vec::new();
         for (block, thread) in &threads {
             let lines = lines_of(thread, width);
@@ -114,13 +153,13 @@ impl Flow {
             }
         }
         let under = rows.iter().map(|(block, lines)| (*block, lines.len())).collect();
-        Self { width, threads, rows, under }
+        Self { width, threads, rows, under, unfolded }
     }
 
     /// Whether note `id`'s replies are in view in its open box, so its bubble need not
     /// repeat them.
     pub(super) fn shows_replies(&self, id: &str) -> bool {
-        self.threads.iter().any(|(_, thread)| thread.id == id && !thread.settled())
+        self.threads.iter().any(|(_, thread)| thread.id == id && !thread.is_folded())
     }
 }
 
@@ -128,15 +167,22 @@ impl App {
     /// Match the flow to the open document's notes and width, and keep its rows free under
     /// their blocks. When nothing changed this compares the threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
+        let threads = self.inbox_threads().unwrap_or_else(|| {
+            let open = &self.open;
+            let placed = open.store.placed();
+            placed
+                .iter()
+                .filter_map(|p| Some((open.doc.block_containing(p.range.start)?, Thread::of(p.annotation)?)))
+                .collect()
+        });
         let open = &mut self.open;
-        let threads: Vec<(usize, Thread)> = open
-            .store
-            .placed()
-            .iter()
-            .filter_map(|p| Some((open.doc.block_containing(p.range.start)?, Thread::of(p.annotation)?)))
-            .collect();
+        let mut threads: Vec<(usize, Thread)> = threads;
+        for (_, thread) in &mut threads {
+            thread.unfold(&open.flow.unfolded);
+        }
         if threads != open.flow.threads || open.layout.width != open.flow.width {
-            open.flow = Flow::new(threads, open.layout.width);
+            let unfolded = std::mem::take(&mut open.flow.unfolded);
+            open.flow = Flow::new(threads, open.layout.width, unfolded);
         }
         if open.layout.reserve_under(&open.flow.under) {
             // Rows below a changed box moved, as on a reflow: a selection no longer covers
@@ -162,7 +208,7 @@ impl App {
 
 /// A thread's rows, `width` columns wide: its folded line once settled, else its box.
 fn lines_of(thread: &Thread, width: usize) -> Vec<Line<'static>> {
-    if thread.settled() || width < MIN_BOX_WIDTH {
+    if thread.is_folded() || width < MIN_BOX_WIDTH {
         return vec![folded(thread, width)];
     }
     let border =
@@ -174,7 +220,11 @@ fn lines_of(thread: &Thread, width: usize) -> Vec<Line<'static>> {
         if index > 0 {
             lines.push(edge('├', '┤', width, border));
         }
-        let author = Line::styled(fit(&one_line(&message.author), inner), text.add_modifier(Modifier::BOLD));
+        let named = match &message.tag {
+            Some(tag) => format!("{} \u{b7} {tag}", one_line(&message.author)),
+            None => one_line(&message.author),
+        };
+        let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         lines.push(framed(author, inner, border));
         for paragraph in printable(&message.body).lines() {
             let rows = wrap_line(&Line::styled(paragraph.to_owned(), text), &[], inner);
@@ -197,12 +247,23 @@ fn lines_of(thread: &Thread, width: usize) -> Vec<Line<'static>> {
 fn head(thread: &Thread, width: usize, border: Style) -> Line<'static> {
     let lead = format!("\u{256d} {} ", glyph(thread.kind));
     let id = short_id(&thread.id);
-    let state = thread.resolved.then(|| format!(" resolved \u{b7} {id} "));
+    // The state and the marks, then fewer of them, then the id alone, until the passage fits.
+    let mut marks: Vec<&str> = thread
+        .resolved
+        .then_some("resolved")
+        .into_iter()
+        .chain(thread.marks.iter().map(String::as_str))
+        .collect();
+    let mut rights = Vec::new();
+    while !marks.is_empty() {
+        rights.push(format!(" {} \u{b7} {id} ", marks.join(" \u{b7} ")));
+        marks.pop();
+    }
+    rights.push(format!(" {id} "));
     let passage = one_line(&thread.quote);
     let wanted = passage.width().min(MIN_QUOTE_WIDTH);
-    let right = state
+    let right = rights
         .into_iter()
-        .chain([format!(" {id} ")])
         .find(|right| width.saturating_sub(lead.width() + right.width() + 4) >= wanted)
         .unwrap_or_else(|| " ".to_owned());
     let room = width.saturating_sub(lead.width() + right.width() + 4);
@@ -327,11 +388,20 @@ mod tests {
     }
 
     fn message(author: &str, body: &str, threads: Vec<Thread>) -> Message {
-        Message { author: author.into(), body: body.into(), threads }
+        Message { author: author.into(), tag: None, body: body.into(), threads }
     }
 
     fn thread(id: &str, resolved: bool, messages: Vec<Message>) -> Thread {
-        Thread { id: id.into(), kind: Kind::Comment, quote: format!("passage {id}"), resolved, messages }
+        let quote = format!("passage {id}");
+        Thread {
+            id: id.into(),
+            kind: Kind::Comment,
+            quote,
+            resolved,
+            folded: None,
+            marks: Vec::new(),
+            messages,
+        }
     }
 
     #[test]
@@ -385,6 +455,21 @@ mod tests {
         assert!(rows[folded].contains("resolved \u{b7} 2 messages"), "{screen}");
         assert!(!screen.contains("Nobody today."), "{screen}");
         assert_eq!(row_of(&rows, "We ship on Friday."), folded + 2, "{screen}");
+        std::fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
+    fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
+        let (root, mut app) = answered_app("threads-unfold", "resolved");
+        draw(&mut app, 70, 20);
+        app.select_block(1);
+        press(&mut app, &[KeyCode::Char('z')]);
+        let screen = draw(&mut app, 70, 20);
+        assert!(screen.contains("Nobody today."), "{screen}");
+        let rows: Vec<&str> = screen.lines().collect();
+        assert!(rows[row_of(&rows, "\u{256d}")].contains("resolved"), "still resolved: {screen}");
+        press(&mut app, &[KeyCode::Char('z')]);
+        assert!(!draw(&mut app, 70, 20).contains("Nobody today."), "folded again");
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 

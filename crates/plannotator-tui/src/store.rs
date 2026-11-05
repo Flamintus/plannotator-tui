@@ -346,7 +346,7 @@ pub(crate) fn civil_from_days(days: u64) -> (u64, u64, u64) {
 }
 
 /// A local id in the server's style. Replaced by the server id once synced.
-fn local_id() -> String {
+pub(crate) fn local_id() -> String {
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     format!("local_{nanos:x}")
 }

@@ -1,21 +1,26 @@
 //! Reviewing through the Plannotator Inbox (`crate::inbox`): an Inbox thread's agent
 //! messages and attached files in the picker, each opened as a document whose comments the
 //! Inbox keeps (here), `last`'s replies deposited in their session's review thread
-//! (`deposit`), the comments sent now or at the end of a round (`send`), and the thread
-//! followed live on the Inbox's event stream (`watch`).
+//! (`deposit`), the comments sent now or at the end of a round (`send`), the thread
+//! followed live on the Inbox's event stream (`watch`), and replies, resolution and
+//! sub-threads on the current note's thread (`act`).
 
+mod act;
 mod deposit;
 mod send;
 mod watch;
 
+use std::collections::HashSet;
+
 use anyhow::Result;
+use plannotator_tui_inbox::{ThreadNode, ThreadView};
 use plannotator_tui_schema::Provenance;
 
 use super::{App, Mode, Open};
 use crate::delivery::Delivery;
 use crate::inbox::import::Depositor;
 use crate::inbox::source::{Document, ThreadDocuments};
-use crate::inbox::{Shared, Target};
+use crate::inbox::{Shared, Target, tree};
 use crate::store::Store;
 
 /// What an Inbox review keeps besides its documents.
@@ -32,11 +37,46 @@ pub(super) struct InboxReview {
     press: Option<send::Press>,
     /// The thread whose event stream is followed.
     following: Option<watch::Following>,
+    /// The agent's replies the person has seen: the ones there when the review first read
+    /// the thread, and those under a thread the person acted on since. Others are new.
+    seen: HashSet<String>,
+    seeded: bool,
+    /// The documents left for comments' threads opened as documents, the last one last.
+    parents: Vec<act::Parked>,
 }
 
 impl InboxReview {
     fn new(inbox: Shared, documents: Vec<Document>, depositor: Option<Depositor>) -> Self {
-        Self { inbox, documents, depositor, unlisted: None, press: None, following: None }
+        Self {
+            inbox,
+            documents,
+            depositor,
+            unlisted: None,
+            press: None,
+            following: None,
+            seen: HashSet::new(),
+            seeded: false,
+            parents: Vec::new(),
+        }
+    }
+
+    /// The agent's replies seen; the first call takes every reply there as seen.
+    pub(in crate::app) fn seen(&mut self, view: &ThreadView) -> &HashSet<String> {
+        if !std::mem::replace(&mut self.seeded, true) {
+            let mut replies = Vec::new();
+            for node in &view.threads {
+                tree::agent_replies(node, &mut replies);
+            }
+            self.seen.extend(replies);
+        }
+        &self.seen
+    }
+
+    /// The person acted on `node`: its replies are seen.
+    fn saw(&mut self, node: &ThreadNode) {
+        let mut replies = Vec::new();
+        tree::agent_replies(node, &mut replies);
+        self.seen.extend(replies);
     }
 }
 
@@ -155,7 +195,11 @@ impl App {
     /// The open document's comments as the Inbox has them now.
     fn refresh_inbox(&mut self) {
         let refused = self.open.store.take_refusals();
-        match self.open.store.refresh_inbox(&self.open.doc, &self.open.layout) {
+        let refreshed = self.open.store.refresh_inbox(&self.open.doc, &self.open.layout);
+        if refreshed.is_ok() {
+            self.rewrite_thread_document();
+        }
+        match refreshed {
             Ok(()) if refused.is_empty() => {}
             Ok(()) => self.status = Some(format!("Inbox refused: {}", refused.join(" \u{b7} "))),
             Err(err) => self.status = Some(format!("Inbox: {err:#}")),

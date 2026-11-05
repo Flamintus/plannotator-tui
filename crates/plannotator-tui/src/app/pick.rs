@@ -94,6 +94,10 @@ impl App {
     }
 
     pub(super) fn reopen_picker(&mut self) {
+        if self.in_thread_document() {
+            self.status = Some("back to the message first: the picker is for messages".into());
+            return;
+        }
         if self.candidates.len() > 1 {
             self.pick_return = self.pick_open;
             self.pick_cursor = self.pick_open;

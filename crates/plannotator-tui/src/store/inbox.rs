@@ -7,18 +7,20 @@
 //! draft the same comment again, a removed draft removed. What the Inbox refuses (an edit
 //! or removal of a sent comment, an image) is kept for the footer, and the next read of
 //! the view, which every write asks for, puts the notes back as the Inbox has them.
+//!
+//! Which of the view's comments are on the document, and where, is `words.rs`.
 
-use std::collections::{BTreeMap, HashMap};
+mod words;
+
+use std::collections::HashMap;
 
 use anyhow::{Context, Result};
-use plannotator_tui_inbox::{
-    Anchor as On, Author, FileVersion, NewComment, State as ThreadState, ThreadNode, ThreadView,
-};
-use plannotator_tui_schema::{Anchor, Annotation, Kind, NoteExtras, Reply, SourceRange, State, blob_sha};
+use plannotator_tui_inbox::{ThreadNode, ThreadView};
+use plannotator_tui_schema::{Anchor, Annotation, Kind, Resolution};
 
 use super::{Backing, Store};
 use crate::doc::Document;
-use crate::inbox::{Shared, Target, passage};
+use crate::inbox::{Shared, Target};
 use crate::layout::DocLayout;
 
 /// What an Inbox-backed store knows besides its notes.
@@ -33,6 +35,9 @@ pub(crate) struct Kept {
     /// Where this review put the comments it made, by id: they stay on the words selected,
     /// even where the same words come earlier.
     anchors: HashMap<String, Anchor>,
+    /// The document's rendered characters with their source offsets, as last laid out:
+    /// where quotes are found.
+    chars: Vec<(char, usize)>,
     /// Written since the view was read: read it again.
     stale: bool,
     /// What the Inbox refused since the footer last said.
@@ -65,19 +70,6 @@ impl Kept {
         }
     }
 
-    /// Write `annotation` as a new comment, or as an edit of its draft.
-    fn comment(&self, annotation: &Annotation) -> Result<()> {
-        let comment = NewComment::new(&annotation.id, annotation.anchor.rendered(), Self::text(annotation));
-        match &self.target {
-            Target::Message { message_id, .. } => self.inbox.comment_on_message(message_id, &comment),
-            Target::Attachment { attachment_id, version, .. } => {
-                self.inbox.comment_on_attachment(attachment_id, version, &comment)
-            }
-        }
-        .map(drop)
-        .with_context(|| format!("comment {}", annotation.id))
-    }
-
     /// Comment `annotation` written as `text`: listed as the Inbox now has it.
     fn wrote(&mut self, annotation: &Annotation, text: String) {
         if let Some(listed) = self.listed.iter_mut().find(|listed| listed.id == annotation.id) {
@@ -86,76 +78,6 @@ impl Kept {
             self.anchors.insert(annotation.id.clone(), annotation.anchor.clone());
             self.listed.push(Listed { id: annotation.id.clone(), text, draft: true });
         }
-    }
-
-    /// Whether `node` is a comment on this document's own words.
-    fn is_on_this(&self, node: &ThreadNode) -> bool {
-        node.place.parent.is_none()
-            && match (&node.place.on, &self.target) {
-                (On::Message { message_id }, Target::Message { message_id: this, .. }) => message_id == this,
-                (On::File { path, version, .. }, Target::Attachment { path: this, sent, .. }) => {
-                    path == this && (*version == FileVersion::Sent) == *sent
-                }
-                _ => false,
-            }
-    }
-
-    /// Where `node`'s quote is in the document: where this review put it, else the first
-    /// place the words as drawn hold it, else an anchor that resolves to nothing.
-    fn anchor(&self, node: &ThreadNode, doc: &Document, chars: &[(char, usize)]) -> Anchor {
-        if let Some(anchor) = self.anchors.get(&node.id) {
-            return anchor.clone();
-        }
-        let quote = node.place.quote.clone();
-        match passage::find(chars, &doc.source, &quote, 0) {
-            Some(range) => {
-                let block = doc.block_containing(range.start);
-                let range = SourceRange {
-                    start: range.start,
-                    end: range.end,
-                    version: blob_sha(doc.source.as_bytes()),
-                };
-                Anchor::new(quote, &doc.source, range, Kind::Comment, block)
-            }
-            None => {
-                Anchor { original_text: quote.clone(), quote, plannotator_tui: None, other: BTreeMap::new() }
-            }
-        }
-    }
-}
-
-/// A comment of the Inbox's view as a note: its replies flat under it, by who wrote them.
-fn note(node: &ThreadNode, anchor: Anchor) -> Annotation {
-    let replies = node.replies.iter().map(|reply| {
-        let author = match &reply.author {
-            Author::Person => "You".to_owned(),
-            Author::Agent { host, .. } => host.clone().unwrap_or_else(|| "agent".to_owned()),
-        };
-        Reply {
-            id: reply.id.clone(),
-            annotation_id: node.id.clone(),
-            body: reply.text.clone(),
-            author: Some(author),
-            author_name: reply.author_name.clone(),
-            created_at: reply.at.clone(),
-            updated_at: reply.at.clone(),
-            other: BTreeMap::new(),
-        }
-    });
-    Annotation {
-        id: node.id.clone(),
-        document_id: String::new(),
-        anchor,
-        body: node.text.clone(),
-        author: None,
-        author_name: None,
-        state: if node.state == ThreadState::Resolved { State::Resolved } else { State::Open },
-        attachments: Vec::new(),
-        plannotator_tui: NoteExtras::default(),
-        created_at: String::new(),
-        updated_at: String::new(),
-        replies: replies.collect(),
-        other: BTreeMap::new(),
     }
 }
 
@@ -168,6 +90,7 @@ impl Store {
             listed: Vec::new(),
             view: None,
             anchors: HashMap::new(),
+            chars: Vec::new(),
             stale: false,
             refused: Vec::new(),
         };
@@ -183,13 +106,13 @@ impl Store {
         kept.stale = false;
         let view: ThreadView =
             kept.inbox.thread_view(kept.target.thread_id()).context("reading the Inbox's comments")?;
-        let chars = layout.rendered_chars(&doc.source, &(0..doc.source.len()));
-        let nodes: Vec<&ThreadNode> = view.threads.iter().filter(|node| kept.is_on_this(node)).collect();
+        kept.chars = layout.rendered_chars(&doc.source, &(0..doc.source.len()));
+        let nodes: Vec<&ThreadNode> = kept.comments(&view);
         kept.listed = nodes
             .iter()
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
             .collect();
-        self.annotations = nodes.iter().map(|node| note(node, kept.anchor(node, doc, &chars))).collect();
+        self.annotations = nodes.iter().map(|node| words::note(node, kept.anchor(node, doc))).collect();
         kept.view = Some(view);
         self.resolve_all(doc);
         Ok(())
@@ -203,6 +126,18 @@ impl Store {
     pub(crate) fn inbox_thread(&self) -> Option<(&Shared, &str, &ThreadView)> {
         let Backing::Inbox(kept) = &self.backing else { return None };
         Some((&kept.inbox, kept.target.thread_id(), kept.view.as_ref()?))
+    }
+
+    /// What an Inbox-backed store's document is.
+    pub(crate) fn inbox_target(&self) -> Option<&Target> {
+        let Backing::Inbox(kept) = &self.backing else { return None };
+        Some(&kept.target)
+    }
+
+    /// The notes whose words are no longer found in the document.
+    pub(crate) fn orphaned(&self) -> Vec<&Annotation> {
+        let notes = self.annotations.iter().zip(&self.resolved);
+        notes.filter(|(_, resolution)| **resolution == Resolution::Orphan).map(|(note, _)| note).collect()
     }
 
     /// Have the Inbox's view read again at the next wake.

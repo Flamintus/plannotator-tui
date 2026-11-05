@@ -27,6 +27,7 @@ impl Document {
     pub(crate) fn candidate(&self) -> Message {
         let (id, text) = match &self.target {
             Target::Message { message_id, .. } => (message_id.clone(), self.text.clone()),
+            Target::Thread { comment_id, .. } => (comment_id.clone(), self.text.clone()),
             Target::Attachment { attachment_id, path, .. } => {
                 let name = std::path::Path::new(path).file_name().and_then(|name| name.to_str());
                 (attachment_id.clone(), format!("file {}", name.unwrap_or(path)))

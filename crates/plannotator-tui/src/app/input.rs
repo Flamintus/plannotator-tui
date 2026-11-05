@@ -30,12 +30,12 @@ impl App {
                     Ok(())
                 }
                 Mode::ReviewMenu => self.menu_key(*key),
-                Mode::Compose | Mode::Edit(_) => self.text_key(*key),
+                Mode::Compose | Mode::Edit(_) | Mode::Reply(_) => self.text_key(*key),
                 Mode::AttachImage(_) => self.image_prompt_key(*key),
             },
             // A paste lands in the comment box verbatim, newlines included; anywhere else
             // it is ignored rather than replayed as keystrokes.
-            Event::Paste(text) if matches!(self.mode, Mode::Compose | Mode::Edit(_)) => {
+            Event::Paste(text) if matches!(self.mode, Mode::Compose | Mode::Edit(_) | Mode::Reply(_)) => {
                 self.compose.insert_text(text);
                 Ok(())
             }
@@ -223,6 +223,9 @@ impl App {
             Some(Action::Remove) => self.remove_selected_annotation()?,
             Some(Action::AttachImage) => self.begin_attach_image(),
             Some(Action::RemoveImage) => self.remove_image()?,
+            Some(action @ (Action::Reply | Action::Resolve | Action::OpenThread | Action::ToggleThread)) => {
+                self.thread_action(action);
+            }
             Some(Action::Back) => self.focus = Focus::Document,
             _ => {}
         }
@@ -269,7 +272,7 @@ impl App {
             Some(Action::Back) => {
                 if self.pending.is_some() || self.selection.is_some() {
                     self.clear_selection();
-                } else {
+                } else if !self.leave_thread_document() {
                     self.request_quit();
                 }
             }
@@ -317,6 +320,9 @@ impl App {
             Some(Action::ClearAll) => self.request_clear_all(),
             Some(Action::AttachImage) => self.begin_attach_image(),
             Some(Action::RemoveImage) => self.remove_image()?,
+            Some(action @ (Action::Reply | Action::Resolve | Action::OpenThread | Action::ToggleThread)) => {
+                self.thread_action(action);
+            }
             _ => {}
         }
         Ok(())
@@ -423,6 +429,7 @@ impl App {
             ComposeAction::Save => {
                 let body = self.compose.value().trim().to_owned();
                 match std::mem::replace(&mut self.mode, Mode::Browse) {
+                    Mode::Reply(id) => self.save_reply(&id, body),
                     Mode::Edit(id) => {
                         if body.is_empty() {
                             self.status = Some("edit cancelled: empty".into());

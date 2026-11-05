@@ -53,10 +53,21 @@ pub(crate) fn find(chars: &[(char, usize)], source: &str, quote: &str, nth: usiz
     Some(start..last + width)
 }
 
+/// How many occurrences of `quote` in `chars` start before source offset `before`: which
+/// occurrence a selection starting there is.
+pub(crate) fn occurrence(chars: &[(char, usize)], quote: &str, before: usize) -> usize {
+    let (flat, at) = normalized(chars);
+    let quote = flat_quote(quote);
+    let starts_before = |from: &usize| {
+        at.get(*from).and_then(|index| chars.get(*index)).is_some_and(|(_, offset)| *offset < before)
+    };
+    starts(&flat, &quote).iter().filter(|from| starts_before(from)).count()
+}
+
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "tests assert by panicking")]
 mod tests {
-    use super::find;
+    use super::{find, occurrence};
 
     /// Rendered characters as a layout pairs them: here, the source with `**` markup left out.
     fn drawn(source: &str) -> Vec<(char, usize)> {
@@ -73,10 +84,12 @@ mod tests {
     }
 
     #[test]
-    fn whitespace_runs_match_as_one_and_a_later_occurrence_is_found() {
+    fn whitespace_runs_match_as_one_and_later_occurrences_are_counted() {
         let source = "one  two\none two";
         let chars = drawn(source);
         let second = find(&chars, source, "one two", 1).expect("the second one");
         assert_eq!(second, 9..16);
+        assert_eq!(occurrence(&chars, "one two", second.start), 1, "a selection there is the second");
+        assert_eq!(occurrence(&chars, "one two", 0), 0);
     }
 }

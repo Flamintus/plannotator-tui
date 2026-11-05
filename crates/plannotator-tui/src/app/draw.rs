@@ -100,6 +100,7 @@ impl App {
         match &self.mode {
             Mode::Compose => self.draw_compose(frame, &self.compose_title("comment")),
             Mode::Edit(_) => self.draw_compose(frame, &self.compose_title("edit")),
+            Mode::Reply(_) => self.draw_compose(frame, &self.compose_title("reply")),
             Mode::AttachImage(_) => {
                 self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ");
             }
@@ -323,7 +324,7 @@ impl App {
     }
 
     fn edit_origin(&self, height: u16, width: u16) -> Option<Rect> {
-        let (Mode::Edit(id) | Mode::AttachImage(id)) = &self.mode else { return None };
+        let (Mode::Edit(id) | Mode::AttachImage(id) | Mode::Reply(id)) = &self.mode else { return None };
         let (rect, _) = self.geometry.bubbles.iter().find(|(_, bubble_id)| bubble_id == id)?;
         let area = self.geometry.doc.union(*rect);
         let x = rect.right().saturating_sub(width).max(area.x);
@@ -372,8 +373,13 @@ impl App {
                 n => format!(" · {n} images"),
             };
             let resolved = if placed.annotation.state == State::Resolved { " · resolved" } else { "" };
+            let inbox = self.inbox_tag(&placed.annotation.id);
             let title = Span::styled(
-                format!(" {} {}{images}{sent}{resolved} ", glyph(kind), short_id(&placed.annotation.id)),
+                format!(
+                    " {} {}{images}{sent}{resolved}{inbox} ",
+                    glyph(kind),
+                    short_id(&placed.annotation.id)
+                ),
                 Style::new().fg(accent(kind)),
             );
             let bubble = Block::default()
@@ -542,7 +548,7 @@ impl App {
         // last.
         let find =
             if self.tree.is_some() && self.pending.is_none() { key(Action::QuickOpen, "find") } else { None };
-        help.into_iter().chain([find]).flatten().collect()
+        help.into_iter().chain([find]).chain(self.inbox_help()).flatten().collect()
     }
 }
 

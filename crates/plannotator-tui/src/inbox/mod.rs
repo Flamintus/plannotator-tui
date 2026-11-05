@@ -9,6 +9,8 @@
 //! - `import`: `last`'s reviewed reply, deposited in its session's review thread.
 //! - `passage`: a comment's quote found in a document's words as drawn.
 //! - `source`: a thread's agent messages and attached text files, as documents.
+//! - `tree`: what is in the Inbox's view of a thread's comments, and a comment's thread
+//!   as a document.
 
 pub(crate) mod command;
 pub(crate) mod import;
@@ -16,7 +18,9 @@ pub(crate) mod passage;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod stand_in;
+pub(crate) mod tree;
 
+use std::ops::Range;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
@@ -63,12 +67,17 @@ pub(crate) enum Target {
         /// The version the agent sent, rather than the file as it is now.
         sent: bool,
     },
+    /// A comment's thread, as `tree::document` writes it: its comments are the sub-threads
+    /// on the words of its messages, each message's words at its source range.
+    Thread { thread_id: String, comment_id: String, messages: Vec<(String, Range<usize>)> },
 }
 
 impl Target {
     pub(crate) fn thread_id(&self) -> &str {
         match self {
-            Self::Message { thread_id, .. } | Self::Attachment { thread_id, .. } => thread_id,
+            Self::Message { thread_id, .. }
+            | Self::Attachment { thread_id, .. }
+            | Self::Thread { thread_id, .. } => thread_id,
         }
     }
 
@@ -88,6 +97,11 @@ impl Target {
                 thread_id: thread_id.clone(),
                 message_id: message_id.clone(),
                 attachment_id: Some(attachment_id.clone()),
+            },
+            Self::Thread { thread_id, comment_id, .. } => Provenance::Inbox {
+                thread_id: thread_id.clone(),
+                message_id: comment_id.clone(),
+                attachment_id: None,
             },
         }
     }

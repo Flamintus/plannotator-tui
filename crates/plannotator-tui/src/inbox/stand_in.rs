@@ -1,18 +1,22 @@
 //! A stand-in for the Inbox, for the app's tests: threads, attached files, live sessions,
-//! deposits and comments held in memory, the comments listed by a view of the Inbox's
-//! shape. A route it does not hold, or one a test lists in
+//! deposits and comments held in memory, the comments with their replies and sub-threads
+//! listed by a view of the Inbox's shape (`comments.rs`). A route it does not hold, or one a test lists in
 //! `missing`, answers as an Inbox without that route would.
 
 #![allow(clippy::expect_used, reason = "test fixtures assert by panicking")]
+
+mod comments;
 
 use std::cell::RefCell;
 
 use plannotator_tui_inbox::{
     Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, Event,
-    FileVersion, Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Place, ProjectSessions,
-    ReviewTarget, SendMode, SendTarget, State as ThreadState, Status, Target, Thread, ThreadNode, ThreadRow,
-    ThreadView, Watch,
+    FileVersion, Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Passage, ProjectSessions,
+    ReviewTarget, SendMode, SendTarget, Status, Target, Thread, ThreadRow, ThreadView, Watch,
 };
+
+pub(crate) use comments::Comment;
+use comments::view;
 
 #[derive(Debug, Default)]
 pub(crate) struct StandIn {
@@ -38,48 +42,11 @@ pub(crate) struct State {
     pub(crate) sends: Vec<(SendMode, Vec<String>, String)>,
     /// How many sends to come lose their connection.
     pub(crate) failing_sends: usize,
+    /// Every sub-thread's passage, as asked for.
+    pub(crate) passages: Vec<Passage>,
     /// The threads each watch was asked to follow, and the stream of the last one.
     pub(crate) watched: Vec<Option<String>>,
     pub(crate) stream: Option<std::sync::mpsc::Sender<Event>>,
-}
-
-/// A comment as the stand-in keeps it.
-#[derive(Debug, Clone)]
-pub(crate) struct Comment {
-    pub(crate) id: String,
-    pub(crate) on: On,
-    pub(crate) quote: String,
-    pub(crate) text: String,
-    pub(crate) draft: bool,
-    pub(crate) status: Option<Status>,
-    pub(crate) live: bool,
-}
-
-impl Comment {
-    /// A comment the window made on message `message_id`'s `quote`, sent unless `draft`.
-    pub(crate) fn on_message(id: &str, message_id: &str, quote: &str, text: &str, draft: bool) -> Self {
-        let on = On::Message { message_id: message_id.into() };
-        let status = (!draft).then_some(Status::Delivered);
-        Self { id: id.into(), on, quote: quote.into(), text: text.into(), draft, status, live: false }
-    }
-
-    fn node(&self) -> ThreadNode {
-        ThreadNode {
-            id: self.id.clone(),
-            reply_id: if self.draft { String::new() } else { "snd_1".into() },
-            round: 1,
-            state: ThreadState::Open,
-            place: Place { on: self.on.clone(), quote: self.quote.clone(), unanchored: false, parent: None },
-            text: self.text.clone(),
-            draft: self.draft,
-            folded: false,
-            status: self.status,
-            live: self.live,
-            replies: Vec::new(),
-            sub_threads: Vec::new(),
-            other: serde_json::Map::new(),
-        }
-    }
 }
 
 /// The record a comment route answers.
@@ -120,15 +87,7 @@ impl StandIn {
         match state.comments.iter_mut().find(|kept| kept.id == comment.id) {
             Some(kept) if !kept.draft => return Err(refused("annotations", "annotation_closed")),
             Some(kept) => kept.text.clone_from(&comment.text),
-            None => state.comments.push(Comment {
-                id: comment.id.clone(),
-                on,
-                quote: comment.quote.clone(),
-                text: comment.text.clone(),
-                draft: true,
-                status: None,
-                live: false,
-            }),
+            None => state.comments.push(Comment::draft(&comment.id, on, &comment.quote, &comment.text)),
         }
         Ok(record(&comment.id))
     }
@@ -212,8 +171,12 @@ impl Inbox for StandIn {
     fn thread_view(&self, _thread_id: &str) -> Result<ThreadView, Error> {
         self.missing("threads/:id/comments")?;
         let state = self.state.borrow();
-        let threads = state.comments.iter().map(Comment::node).collect();
-        Ok(ThreadView { v: 1, round: state.finished + 1, threads, other: serde_json::Map::new() })
+        Ok(ThreadView {
+            v: 1,
+            round: state.finished + 1,
+            threads: view(&state.comments),
+            other: serde_json::Map::new(),
+        })
     }
 
     fn attachment_text(
@@ -276,16 +239,48 @@ impl Inbox for StandIn {
         self.write(On::File { path, version, lines: None, at: None }, comment)
     }
 
-    fn reply(&self, _comment_id: &str, _reply: &NewReply) -> Result<CommentRecord, Error> {
-        missing("annotations/:id/replies")
+    /// A reply under a sent comment: a draft, or sent at once when the thread is live.
+    fn reply(&self, comment_id: &str, reply: &NewReply) -> Result<CommentRecord, Error> {
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("reply {} under {comment_id}", reply.id));
+        let Some(under) = state.comments.iter().find(|comment| comment.id == comment_id && !comment.draft)
+        else {
+            return Err(refused("annotations/:id/replies", "annotation_not_allowed"));
+        };
+        let mut kept = Comment::draft(&reply.id, under.on.clone(), "", &reply.text);
+        kept.re = Some(comment_id.to_owned());
+        if under.live {
+            kept.draft = false;
+            kept.status = Some(Status::Pending);
+        }
+        state.comments.push(kept);
+        Ok(record(&reply.id))
     }
 
-    fn sub_thread(&self, _sub: &NewSubThread) -> Result<CommentRecord, Error> {
-        missing("annotations/:id/subthreads")
+    /// A sub-thread on a passage of a message of a comment's thread: a draft.
+    fn sub_thread(&self, sub: &NewSubThread) -> Result<CommentRecord, Error> {
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("sub-thread {} on {}", sub.id, sub.on.parent));
+        state.passages.push(sub.on.clone());
+        let Some(on) =
+            state.comments.iter().find(|comment| comment.id == sub.on.parent).map(|c| c.on.clone())
+        else {
+            return Err(refused("annotations/:id/subthreads", "message_not_found"));
+        };
+        let mut kept = Comment::draft(&sub.id, on, &sub.on.quote, &sub.text);
+        kept.parent = Some(sub.on.parent.clone());
+        state.comments.push(kept);
+        Ok(record(&sub.id))
     }
 
-    fn resolve(&self, _comment_id: &str, _resolved: bool) -> Result<CommentRecord, Error> {
-        missing("annotations/:id/resolve")
+    fn resolve(&self, comment_id: &str, resolved: bool) -> Result<CommentRecord, Error> {
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("resolve {comment_id} {resolved}"));
+        let Some(kept) = state.comments.iter_mut().find(|comment| comment.id == comment_id) else {
+            return Err(refused("annotations/:id/resolve", "annotation_not_found"));
+        };
+        kept.resolved = resolved;
+        Ok(record(comment_id))
     }
 
     fn remove(&self, comment_id: &str) -> Result<CommentRecord, Error> {
