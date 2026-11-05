@@ -38,7 +38,7 @@ fn header(app: &mut App) -> String {
 #[test]
 fn e_sends_every_draft_ends_the_round_and_pastes_the_journals_text() {
     let (mut app, journal, delivery, [first, second]) = two_drafts();
-    assert_eq!(header(&mut app), "round 1 \u{b7} Send 2 to test agent \u{25b8}");
+    assert_eq!(header(&mut app), "Round 1 \u{b7} Send Feedback (2) \u{25b8} test agent");
     app.select_block(1);
     press(&mut app, KeyCode::Char('E'));
     assert_eq!(sends(&journal), [(SendMode::Round, vec![first.clone(), second.clone()])]);
@@ -46,8 +46,8 @@ fn e_sends_every_draft_ends_the_round_and_pastes_the_journals_text() {
     assert_eq!(pasted, [format!("# Comments on your work\n\nround 1: {first}, {second}")]);
     assert_eq!(journal.state.borrow().delivered, ["snd_1"], "the journal is told it was delivered");
     assert!(!app.quit, "the review stays open for the next round");
-    assert_eq!(app.status.as_deref(), Some("sent 2 comment(s) \u{b7} round 1 ended \u{2192} test agent"));
-    assert_eq!(header(&mut app), "round 2 \u{b7} Sent \u{25b8} test agent");
+    assert_eq!(app.status.as_deref(), Some("Round 1 sent \u{b7} 2 comment(s) \u{2192} test agent"));
+    assert_eq!(header(&mut app), "Round 2 \u{b7} Sent \u{25b8} test agent");
 }
 
 #[test]
@@ -140,7 +140,7 @@ fn a_round_sent_from_one_reply_is_sent_on_the_others_too() {
     app.poll_journal();
     assert_eq!(
         header(&mut app),
-        "round 2 \u{b7} Sent \u{25b8} test agent",
+        "Round 2 \u{b7} Sent \u{25b8} test agent",
         "the reply kept aside reads its send"
     );
     press(&mut app, KeyCode::Char('E'));

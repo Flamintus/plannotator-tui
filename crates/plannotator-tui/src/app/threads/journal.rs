@@ -1,8 +1,9 @@
 //! The flow of a document whose comments the review's journal keeps, from the review's view:
 //! each comment with its replies and the sub-threads on their words, the person's drafts and
 //! what became of each send, the agent's replies not seen yet marked new, and a comment whose
-//! words are no longer found boxed under the last block, marked so. The view decides what
-//! folds; a draft no one answered stays a bubble in the rail.
+//! words are no longer found boxed under the last block, marked so, in the words the Inbox's
+//! boxes use (`Round 2`, `Not sent`, `Replied`, `Live`, `New`, `Unanchored`). The view decides
+//! what folds; a draft no one answered stays a bubble in the rail.
 
 use std::collections::HashSet;
 
@@ -12,26 +13,33 @@ use super::super::App;
 use super::{Message, Thread};
 use crate::journal::tree;
 
-/// What became of a send, as the flow names it.
-fn status(status: Option<Status>) -> Option<String> {
-    let word = match status? {
-        Status::Pending => "pending",
-        Status::Delivered => "delivered",
-        Status::Read => "read",
-        Status::Working => "working",
-        Status::Replied => "replied",
+/// What became of a send, in the words the Inbox's boxes use for it.
+pub(in crate::app) fn status_word(status: Status) -> Option<&'static str> {
+    Some(match status {
+        Status::Pending => "Queued",
+        Status::Delivered => "Delivered",
+        Status::Read => "Read",
+        Status::Working => "Working",
+        Status::Replied => "Replied",
         Status::Unknown => return None,
-    };
-    Some(word.to_owned())
+    })
 }
 
-/// What a reply's author line adds: the person's draft or send, the agent's reply new.
-fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
-    match reply.author {
-        Author::Person if reply.draft => Some("draft".to_owned()),
-        Author::Person => status(reply.status),
-        Author::Agent { .. } => (!seen.contains(&reply.id)).then(|| "new".to_owned()),
-    }
+/// The round a message went or came in, or that the person's draft is not sent yet.
+fn round(draft: bool, round: u64) -> String {
+    if draft { "Not sent".to_owned() } else { format!("Round {round}") }
+}
+
+/// What a reply's author line adds: its round, then what became of the person's send, or the
+/// agent's reply new.
+fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> String {
+    let after = match reply.author {
+        Author::Person if reply.draft => None,
+        Author::Person => reply.status.and_then(status_word),
+        Author::Agent { .. } => (!seen.contains(&reply.id)).then_some("New"),
+    };
+    let round = round(reply.draft, reply.round);
+    after.map_or_else(|| round.clone(), |after| format!("{round} \u{b7} {after}"))
 }
 
 impl Thread {
@@ -40,7 +48,7 @@ impl Thread {
         let comment = Message {
             id: node.id.clone(),
             author: "You".to_owned(),
-            tag: node.draft.then(|| "draft".to_owned()),
+            tag: Some(round(node.draft, node.round)),
             body: node.text.clone(),
             draft: node.draft,
             threads: threads(&node.sub_threads),
@@ -48,18 +56,20 @@ impl Thread {
         let replies = node.replies.iter().map(|reply| Message {
             id: reply.id.clone(),
             author: tree::author(reply),
-            tag: reply_tag(reply, seen),
+            tag: Some(reply_tag(reply, seen)),
             body: reply.text.clone(),
             draft: reply.draft,
             threads: threads(&reply.sub_threads),
         });
         let resolved = node.state == ThreadState::Resolved;
-        // A resolved thread's last send is history: its head says resolved, and no more.
-        let marks = if resolved {
-            Vec::new()
-        } else {
-            status(node.status).into_iter().chain(node.live.then(|| "live".to_owned())).collect()
-        };
+        // A resolved thread's last send is history: its head says resolved and its round. The
+        // round goes last, so a narrow head gives it up first.
+        let mut marks = Vec::new();
+        if !resolved {
+            marks.extend(node.status.and_then(status_word).map(str::to_owned));
+            marks.extend(node.live.then(|| "Live".to_owned()));
+        }
+        marks.push(round(node.draft, node.round));
         Self {
             id: node.id.clone(),
             kind: plannotator_tui_schema::Kind::Comment,
@@ -98,7 +108,7 @@ impl App {
         for orphan in open.store.orphaned() {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
             let mut thread = Thread::of_node(node, seen);
-            thread.marks.insert(0, "not found".to_owned());
+            thread.marks.insert(0, "Unanchored".to_owned());
             threads.push((block, thread));
         }
         Some(threads)

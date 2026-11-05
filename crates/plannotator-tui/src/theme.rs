@@ -100,7 +100,7 @@ pub(crate) struct Palette {
     pub(crate) subheading: Color,
     /// Comment titles, the compose box, annotated rows in the gutter, tree counts.
     pub(crate) comment: Color,
-    /// Looks-good titles and toolbar label.
+    /// Looks-good titles and toolbar label, and a resolved thread's mark.
     pub(crate) looks_good: Color,
     /// Delete titles, toolbar label and struck-through text.
     pub(crate) delete: Color,

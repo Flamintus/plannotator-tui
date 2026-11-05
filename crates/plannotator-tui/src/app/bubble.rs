@@ -83,8 +83,8 @@ mod tests {
         app.add_quote_annotation("two", Kind::Comment, "Why two?".into()).expect("note");
         answer_on_disk(&mut app, 0, serde_json::json!([]), "resolved");
         let screen = draw(&mut app, 100, 14);
-        // ` 💬 a1b2c · resolved ` then the border: the title, not the folded line's ` · resolved · `.
-        assert!(screen.lines().any(|row| row.contains("\u{b7} resolved \u{2500}")), "{screen}");
+        // ` 💬 a1b2c · ✓ Resolved ` then the border: the title, not the folded line's `✓ Resolved · `.
+        assert!(screen.lines().any(|row| row.contains("\u{b7} \u{2713} Resolved \u{2500}")), "{screen}");
         std::fs::remove_dir_all(root).expect("cleanup");
     }
 }

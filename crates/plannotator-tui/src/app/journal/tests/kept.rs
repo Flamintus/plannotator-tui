@@ -101,7 +101,7 @@ fn a_note_the_journal_did_not_take_stays_here_marked_until_a_write_takes_it() {
     assert!(app.open.store.edit_body(&id, "Why not Monday?".into()).expect("edit"));
     app.poll_journal();
     assert_eq!(journal.state.borrow().comments[0].text, "Why not Monday?");
-    assert_eq!(app.journal_tag(&id), " \u{b7} draft");
+    assert_eq!(app.journal_tag(&id), " \u{b7} Not sent");
 }
 
 #[test]

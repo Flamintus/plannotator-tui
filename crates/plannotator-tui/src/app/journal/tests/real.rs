@@ -69,7 +69,13 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     };
     assert!(app.open.store.add_image(&deletion, "/tmp/shot.png").expect("image"));
     app.poll_journal();
-    assert!(draw(&mut app, 100, 30).lines().next().unwrap_or_default().contains("round 1 \u{b7} Send 2"));
+    assert!(
+        draw(&mut app, 100, 30)
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .contains("Round 1 \u{b7} Send Feedback (2)")
+    );
     press(&mut app, KeyCode::Char('E'));
     let first = delivery.calls.borrow().last().cloned().expect("pasted");
     assert!(first.starts_with("# Comments on your work\n\nThe person finished round 1."), "{first}");
@@ -94,8 +100,8 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     plannotator(&program, &["reply", "--review", &key, &deletion, "Removed."]);
     assert!(app.poll_journal(), "the journal moved");
     let screen = draw(&mut app, 80, 40);
-    assert!(row_with(&screen, "\"turns the new checkout").contains("replied"), "{screen}");
-    assert!(row_with(&screen, "Claude Code").contains("new"), "{screen}");
+    assert!(row_with(&screen, "\"turns the new checkout").contains("Replied"), "{screen}");
+    assert!(row_with(&screen, "Claude Code").contains("New"), "{screen}");
 
     // Round 2: the person's reply, a sub-thread on the agent's words, a resolution.
     app.select_block(1);
@@ -137,7 +143,7 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     let mut again = open(&program, &delivery);
     let screen = draw(&mut again, 80, 40);
     assert!(screen.contains("A pager rotation; see the runbook."), "{screen}");
-    assert!(row_with(&screen, "round 3").contains("Sent"), "{screen}");
+    assert!(row_with(&screen, "Round 3").contains("Sent"), "{screen}");
     let notes = again.open.store.placed();
     let image = notes.iter().find(|p| p.annotation.id == deletion).expect("the deletion");
     assert_eq!(image.annotation.plannotator_tui.images, ["/tmp/shot.png"]);

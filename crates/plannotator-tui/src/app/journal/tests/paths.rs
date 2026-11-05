@@ -60,7 +60,7 @@ fn a_files_notes_are_its_reviews_drafts_and_e_ends_a_round_sent_to_the_agents_se
             .lines()
             .next()
             .unwrap_or_default()
-            .contains("round 1 \u{b7} Send 2 to test agent")
+            .contains("Round 1 \u{b7} Send Feedback (2) \u{25b8} test agent")
     );
     press(&mut app, KeyCode::Char('E'));
     {

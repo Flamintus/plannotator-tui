@@ -29,6 +29,8 @@ use ratatui::layout::Rect;
 use super::{App, bubble, label};
 use rows::{BoxRow, lines_of};
 
+pub(super) use journal::status_word;
+pub(super) use rows::{RESOLVED, resolved_style};
 pub(super) use words::Passage;
 
 /// One thread as drawn: the passage it is on, then its messages.
@@ -41,7 +43,7 @@ pub(super) struct Thread {
     /// Drawn folded: the source's word when it has one (the review's view), else `settled`;
     /// open when unfolded by hand.
     folded: Option<bool>,
-    /// What the head says after the state: not found, what became of its send, live.
+    /// What the head says after the state: not found, the round, what became of its send, live.
     marks: Vec<String>,
     messages: Vec<Message>,
 }
@@ -52,7 +54,7 @@ struct Message {
     /// The note's or the reply's id: what a sub-thread on its words is under.
     id: String,
     author: String,
-    /// What the line naming the author adds: a draft, what became of a send, new.
+    /// What the line naming the author adds: its round, a draft, what became of a send, new.
     tag: Option<String>,
     body: String,
     /// The person's draft, not sent yet: its words take no sub-thread.
@@ -172,6 +174,11 @@ impl Flow {
     /// repeat them.
     pub(super) fn shows_replies(&self, id: &str) -> bool {
         self.threads.iter().any(|(_, thread)| thread.id == id && !thread.is_folded())
+    }
+
+    /// Whether note `id`'s thread is under its passage, in a box or folded to a line.
+    pub(super) fn holds(&self, id: &str) -> bool {
+        self.threads.iter().any(|(_, thread)| thread.id == id)
     }
 }
 
@@ -311,7 +318,8 @@ mod tests {
         let rows: Vec<&str> = screen.lines().collect();
         let folded = row_of(&rows, "\u{2713}");
         assert_eq!(folded, row_of(&rows, "The on-call engineer") + 1, "{screen}");
-        assert!(rows[folded].contains("resolved \u{b7} 2 messages"), "{screen}");
+        assert!(rows[folded].contains("\u{2713} Resolved \u{b7} \u{1f4ac}"), "{screen}");
+        assert!(rows[folded].contains("\" \u{b7} 2 messages"), "{screen}");
         assert!(!screen.contains("Nobody today."), "{screen}");
         assert_eq!(row_of(&rows, "We ship on Friday."), folded + 2, "{screen}");
         std::fs::remove_dir_all(root).expect("cleanup");

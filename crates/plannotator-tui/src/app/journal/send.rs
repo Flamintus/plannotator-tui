@@ -116,9 +116,9 @@ impl App {
                 self.archive_journal_send(&sent, &carried);
                 let again = if matches!(press, Press::Left(_)) { " again" } else { "" };
                 let mut status = format!(
-                    "sent{again} {} comment(s) \u{b7} round {} ended \u{2192} {target}",
-                    carried.len(),
-                    sent.send.round
+                    "Round {} sent{again} \u{b7} {} comment(s) \u{2192} {target}",
+                    sent.send.round,
+                    carried.len()
                 );
                 if let Some(err) = delivered {
                     let _ = write!(status, " \u{b7} not marked delivered: {err}");
@@ -212,7 +212,8 @@ impl App {
             && self.review_loop.as_ref().is_some_and(|review_loop| review_loop.press.is_some())
     }
 
-    /// The Send button over a document of the journal: the round under way and what `E` does.
+    /// The Send button over a document of the journal: the round under way and what `E` does,
+    /// in the words of Plannotator's screens and Inbox: the round ends with Send Feedback.
     pub(in crate::app) fn journal_send_label(&self) -> Option<String> {
         let (_, view) = self.open.store.journal_view()?;
         let round = view.round;
@@ -221,14 +222,14 @@ impl App {
         let agent = self.delivery.is_agent();
         Some(match (&self.send_state, waiting, self.journal_retry_waiting()) {
             (SendState::Blocked(_), _, _) => {
-                format!("round {round} \u{b7} {target} at a dialog \u{b7} click to retry")
+                format!("Round {round} \u{b7} {target} at a dialog \u{b7} click to retry")
             }
-            (_, _, true) if agent => format!("round {round} \u{b7} Send again to {target} \u{25b8}"),
-            (_, _, true) => format!("round {round} \u{b7} Copy again as feedback"),
-            (_, 0, false) if agent => format!("round {round} \u{b7} Sent \u{25b8} {target}"),
-            (_, 0, false) => format!("round {round} \u{b7} Copied"),
-            (_, n, false) if agent => format!("round {round} \u{b7} Send {n} to {target} \u{25b8}"),
-            (_, n, false) => format!("round {round} \u{b7} Copy {n} as feedback"),
+            (_, _, true) if agent => format!("Round {round} \u{b7} Send Feedback again \u{25b8} {target}"),
+            (_, _, true) => format!("Round {round} \u{b7} Copy again as feedback"),
+            (_, 0, false) if agent => format!("Round {round} \u{b7} Sent \u{25b8} {target}"),
+            (_, 0, false) => format!("Round {round} \u{b7} Copied"),
+            (_, n, false) if agent => format!("Round {round} \u{b7} Send Feedback ({n}) \u{25b8} {target}"),
+            (_, n, false) => format!("Round {round} \u{b7} Copy {n} as feedback"),
         })
     }
 

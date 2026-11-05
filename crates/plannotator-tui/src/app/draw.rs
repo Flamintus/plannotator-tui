@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, Focus, GUTTER, Geometry, Mode, Selected, TOOLBAR, bubble, glyph, label};
+use super::{App, Focus, GUTTER, Geometry, Mode, Selected, TOOLBAR, bubble, glyph, label, threads};
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
@@ -357,7 +357,11 @@ impl App {
             let y = anchored_y.max(next_y);
             let kind = placed.kind();
             let inner_width = usize::from(rail.width.saturating_sub(4));
-            let in_flow = self.open.flow.shows_replies(&placed.annotation.id);
+            // The replies are under the passage: in its open box, or, while the review loop
+            // keeps the document's comments, in a folded line `toggle-thread` opens.
+            let id = &placed.annotation.id;
+            let in_flow = self.open.flow.shows_replies(id)
+                || (self.open.store.is_journal() && self.open.flow.holds(id));
             let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_flow);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
@@ -381,16 +385,18 @@ impl App {
                 1 => " · 1 image".to_owned(),
                 n => format!(" · {n} images"),
             };
-            let resolved = if placed.annotation.state == State::Resolved { " · resolved" } else { "" };
             let journal = self.journal_tag(&placed.annotation.id);
-            let title = Span::styled(
-                format!(
-                    " {} {}{images}{sent}{resolved}{journal} ",
-                    glyph(kind),
-                    short_id(&placed.annotation.id)
-                ),
-                Style::new().fg(accent(kind)),
-            );
+            let title_style = Style::new().fg(accent(kind));
+            let mut title = vec![Span::styled(
+                format!(" {} {}{images}{sent}", glyph(kind), short_id(&placed.annotation.id)),
+                title_style,
+            )];
+            if placed.annotation.state == State::Resolved {
+                title.push(Span::styled(" \u{b7} ", title_style));
+                title.push(Span::styled(threads::RESOLVED, threads::resolved_style()));
+            }
+            title.push(Span::styled(format!("{journal} "), title_style));
+            let title = Line::from(title);
             let bubble = Block::default()
                 .borders(Borders::ALL)
                 .border_type(BorderType::Rounded)

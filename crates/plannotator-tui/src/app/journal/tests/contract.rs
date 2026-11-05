@@ -33,12 +33,12 @@ fn the_view_plannotator_computes_is_drawn_as_it_says() {
     let rows: Vec<&str> = screen.lines().collect();
     let row = |needle: &str| rows.iter().copied().find(|row| row.contains(needle)).expect(needle);
     assert!(
-        rows[0].contains("round 2 \u{b7} Send 3 to test agent"),
+        rows[0].contains("Round 2 \u{b7} Send Feedback (3) \u{25b8} test agent"),
         "the round under way, three drafts: {screen}"
     );
-    assert!(row("\"turns the new checkout off\"").contains("replied"), "{screen}");
+    assert!(row("\"turns the new checkout off\"").contains("Replied"), "{screen}");
     assert!(screen.contains("The on-call engineer, from the runbook."), "the agent's reply: {screen}");
-    assert!(screen.contains("You \u{b7} draft"), "the person's reply waits: {screen}");
+    assert!(screen.contains("You \u{b7} Not sent"), "the person's reply waits: {screen}");
     assert!(
         row("Which runbook?").starts_with("  \u{2502} \u{2502} "),
         "a sub-thread on the agent's reply: {screen}"

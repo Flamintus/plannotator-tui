@@ -69,7 +69,7 @@ agent opens it from your disk; nothing is copied or uploaded. `D` removes the la
 Adding or removing an image makes a sent note pending again.
 
 A note's bubble also shows what its record says about it beyond your text: each reply under
-it, with who wrote it, and `· resolved` in its title once it is resolved, dimmed. Another
+it, with who wrote it, and `· ✓ Resolved` in its title once it is resolved, dimmed. Another
 client of the same record writes those; plannotator-tui reads them when the file opens and on
 `r`, and writes none itself. It saves the record as it last read it, so reload before a change
 of your own when someone may have answered since; removing a note removes its replies too.
@@ -77,8 +77,9 @@ of your own when someone may have answered since; removing a note removes its re
 A note with replies, or resolved, is also drawn as a thread: a box right under the block its
 passage is in (under a whole list or table when the passage is inside one), with the passage
 at its head and the note and each reply, by author, inside. Its bubble then counts the
-replies instead of repeating them. A resolved thread folds to one line (`✓ … resolved · 2
-messages`), and its bubble lists the replies again.
+replies instead of repeating them. A resolved thread folds to one line (`✓ Resolved · 💬 "…" ·
+2 messages`), and its bubble lists the replies again. The `✓ Resolved` mark takes the
+`looks-good` colour (`[colors]`) wherever it is drawn.
 
 Copies go to the clipboard as OSC 52, which is the terminal you are looking at, so on Herdr 0.9.0
 they reach your own machine even when the app runs on a remote server; Herdr Annotate's global
@@ -232,7 +233,7 @@ its light or dark value. A colour is a name (`yellow`, `light-cyan`), a 256-colo
 accent = "cyan"          # focused borders and gutter, the open file, menu and picker frames
 heading = "cyan"         # every heading level
 comment = "yellow"       # comment titles, the compose box, annotated rows in the gutter
-looks-good = "green"
+looks-good = "green"     # also a resolved thread's ✓ Resolved mark
 delete = "red"           # also the struck-through text
 comment-bg = "58"        # the tint under commented text
 looks-good-bg = "22"     # the tint under looks-good text
@@ -384,8 +385,9 @@ the agent answers with too:
   On a reply, `S` does the same and closes, and `F` is unchanged. A paste the agent did not get
   (a dialog, no agent) goes again with the next `E`, as the same send; one an earlier pane of
   plannotator-tui left goes again first, before any draft (a Plannotator screen's is its
-  host's to hand over). The button shows the round under way: `round 2 · Send 3 to claude
-  in w1:p2 ▸`. A round carries every draft of the review, drafts left by an earlier pane
+  host's to hand over). The button shows the round under way, in the words of Plannotator's
+  screens: `Round 2 · Send Feedback (3) ▸ claude in w1:p2`, and the footer says `Round 2 sent`
+  once it went. A round carries every draft of the review, drafts left by an earlier pane
   included, which the footer counts when the pane opens.
 - A folder's tree counts the review's comments on each file. The Review menu acts on the
   review's threads, a finished note being a resolved thread: `F` resolves the sent threads
@@ -398,8 +400,11 @@ the agent answers with too:
   notes, ends the review with its decision, and closes the review in the journal.
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
-  marked new until that thread is acted on, and each box's head says what became of its send
-  (pending, delivered, read, replied).
+  marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
+  Inbox: each message says its round (`Round 2`) or `Not sent` for a draft, the head of a box
+  what became of its send (`Queued`, `Delivered`, `Read`, `Working`, `Replied`) and `Live`, and a
+  bubble counts the replies under the passage (`↳ 1 reply under the passage`), its thread open
+  or folded.
 - A passage of a comment or a reply selected in its box, with the mouse or with `i` and `v` as
   in the document, takes a sub-thread: `c` (or the toolbar's comment) writes it, a draft the
   next `E` sends, drawn as a box in the box under that message. A draft's words take none until

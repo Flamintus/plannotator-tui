@@ -44,12 +44,12 @@ fn the_agents_reply_comes_into_the_box_marked_new_once_its_journal_moves() {
     journal.state.borrow_mut().agent_replies("rep_1", "c1", "Nobody yet: a pager rotation.");
     assert!(app.poll_journal(), "the journal was written by another process");
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "turns the new checkout off").contains("replied"), "{screen}");
-    assert!(row_with(&screen, "Claude Code").contains("Claude Code \u{b7} new"), "{screen}");
+    assert!(row_with(&screen, "turns the new checkout off").contains("Replied"), "{screen}");
+    assert!(row_with(&screen, "Claude Code").contains("Claude Code \u{b7} Round 1 \u{b7} New"), "{screen}");
     assert!(screen.contains("Nobody yet: a pager rotation."), "{screen}");
     reply_with(&mut app, "OK for the rotation.");
     let screen = draw(&mut app, 80, 30);
-    assert!(!screen.contains("\u{b7} new"), "acting on the thread sees its replies: {screen}");
+    assert!(!screen.contains("\u{b7} New"), "acting on the thread sees its replies: {screen}");
 }
 
 #[test]
@@ -63,12 +63,12 @@ fn the_persons_reply_is_a_draft_that_e_sends() {
         (Some("c1"), "And on weekends?", true)
     );
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "You \u{b7} draft").starts_with("  \u{2502}"), "{screen}");
+    assert!(row_with(&screen, "You \u{b7} Not sent").starts_with("  \u{2502}"), "{screen}");
     press(&mut app, KeyCode::Char('E'));
     let sent = journal.state.borrow().sends.last().map(|(_, ids, _)| ids.clone()).expect("a send");
     assert_eq!(sent, [reply.id]);
     let screen = draw(&mut app, 80, 30);
-    assert!(screen.contains("You \u{b7} delivered"), "{screen}");
+    assert!(screen.contains("You \u{b7} Round 1 \u{b7} Delivered"), "{screen}");
 }
 
 #[test]
@@ -77,7 +77,7 @@ fn resolve_folds_the_thread_and_opens_it_again() {
     press(&mut app, KeyCode::Char('V'));
     assert!(journal.state.borrow().comments[0].resolved);
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "\u{2713}").contains("resolved \u{b7} 1 message"), "{screen}");
+    assert!(row_with(&screen, "\u{2576} \u{2713} Resolved").contains("\u{b7} 1 message"), "{screen}");
     press(&mut app, KeyCode::Char('V'));
     assert!(!journal.state.borrow().comments[0].resolved);
     assert!(draw(&mut app, 80, 30).contains("Who watches at night?"));
@@ -94,7 +94,10 @@ fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
     press(&mut app, KeyCode::Char('z'));
     let screen = draw(&mut app, 70, 30);
     assert!(screen.contains("Who watches at night?"), "{screen}");
-    assert!(row_with(&screen, "\u{256d}").contains("resolved"), "drawn open, still resolved: {screen}");
+    assert!(
+        row_with(&screen, "\u{256d}").contains("\u{2713} Resolved"),
+        "drawn open, still resolved: {screen}"
+    );
     press(&mut app, KeyCode::Char('z'));
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded again");
 }
@@ -139,7 +142,7 @@ fn a_comment_whose_words_are_gone_is_boxed_under_the_last_block() {
     let screen = draw(&mut app, 80, 30);
     let rows: Vec<&str> = screen.lines().collect();
     let last = rows.iter().position(|row| row.contains("We ship on Friday.")).expect("last block");
-    let head = rows.iter().position(|row| row.contains("not found")).expect("marked");
+    let head = rows.iter().position(|row| row.contains("Unanchored")).expect("marked");
     assert_eq!(head, last + 1, "{screen}");
 }
 
@@ -272,4 +275,16 @@ fn a_sub_thread_is_on_the_words_of_one_sent_message() {
     assert!(app.pending.is_none());
     let subs = journal.state.borrow().comments.iter().filter(|comment| comment.parent.is_some()).count();
     assert_eq!(subs, 0, "no sub-thread written");
+}
+
+#[test]
+fn a_folded_threads_bubble_counts_its_replies_rather_than_repeat_them() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Nobody yet: a pager rotation.");
+    journal.state.borrow_mut().comments[0].resolved = true;
+    app.poll_journal();
+    let screen = draw(&mut app, 110, 30);
+    assert!(screen.contains("\u{2576} \u{2713} Resolved \u{b7}"), "folded: {screen}");
+    assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
+    assert!(!screen.contains("Nobody yet"), "nor in the bubble: {screen}");
 }
