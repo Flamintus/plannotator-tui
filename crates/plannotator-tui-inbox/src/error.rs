@@ -15,7 +15,8 @@ pub enum Error {
     /// No Inbox answers for this data directory: never started, stopped, or the port in
     /// `inbox.json` is held by something else. The reason says which.
     NotRunning(String),
-    /// The device token is missing, unknown or revoked (`401 device_token_*`): pair again.
+    /// The door refused this terminal's token (a `401`: `device_token_invalid`,
+    /// `device_revoked`, …): pair again. Local pairing's own refusal is a [`Error::Refused`].
     Unpaired { code: String },
     /// The door has no such route (`404 device_route_not_found`): it is closed to this
     /// client, or the Inbox predates the route.
@@ -32,8 +33,9 @@ pub enum Error {
     Transport { route: String, detail: String },
     /// Reading or writing a local file (the device token).
     Io { path: String, detail: String },
-    /// An id that is not one the Inbox makes, refused before any request.
-    InvalidId(String),
+    /// A call refused before any request: an id that is not one the Inbox makes, a `now`
+    /// send that names no draft.
+    Invalid(String),
 }
 
 impl Error {
@@ -65,6 +67,19 @@ impl Error {
                 message: envelope.error.unwrap_or_default(),
                 field: envelope.field,
             },
+        }
+    }
+
+    /// The error from a refused local pairing: a `401` there refuses the connection token
+    /// presented, so pairing again would only be refused again.
+    pub(crate) fn pairing_refusal(route: &str, status: u16, body: &str) -> Self {
+        match Self::refusal(route, status, body) {
+            Self::Unpaired { code } => {
+                let envelope: Envelope = serde_json::from_str(body).unwrap_or_default();
+                let message = envelope.error.unwrap_or_default();
+                Self::Refused { route: route.to_owned(), status, code, message, field: envelope.field }
+            }
+            other => other,
         }
     }
 
@@ -108,7 +123,7 @@ impl fmt::Display for Error {
             Self::Unreadable { route, detail } => write!(f, "{route}: unexpected answer: {detail}"),
             Self::Transport { route, detail } => write!(f, "{route}: {detail}"),
             Self::Io { path, detail } => write!(f, "{path}: {detail}"),
-            Self::InvalidId(id) => write!(f, "{id:?} is not an Inbox id"),
+            Self::Invalid(what) => f.write_str(what),
         }
     }
 }
@@ -136,6 +151,11 @@ mod tests {
         assert!(matches!(
             Error::refusal("x", 409, &body("persistent_comments_off")),
             Error::SettingOff { .. }
+        ));
+        // Local pairing refused is no reason to pair again.
+        assert!(matches!(
+            Error::pairing_refusal("pair-local", 401, &body("device_token_invalid")),
+            Error::Refused { status: 401, .. }
         ));
         // A 404 that names a missing thing is a refusal, not a missing route.
         assert_eq!(Error::refusal("x", 404, &body("thread_not_found")).code(), Some("thread_not_found"));

@@ -16,7 +16,9 @@ use crate::pairing::{Paired, Token, pair_local, token_path};
 use crate::records::{
     AttachmentText, CommentRecord, CommentSend, Deposit, Health, ProjectSessions, Thread, ThreadRow,
 };
-use crate::requests::{AttachmentVersion, NewComment, NewReply, NewSubThread, ReviewTarget, SendMode};
+use crate::requests::{
+    AttachmentVersion, IdempotencyKey, NewComment, NewReply, NewSubThread, ReviewTarget, SendMode,
+};
 use crate::view::ThreadView;
 use crate::watch::Watch;
 
@@ -60,12 +62,14 @@ pub trait Inbox {
     /// Remove a draft.
     fn remove(&self, comment_id: &str) -> Result<CommentRecord, Error>;
     /// Send drafts: `now` the ones named, or `round` (Finish) every draft left
-    /// (E2 and E7: `threads/:id/comment-sends`).
+    /// (E2 and E7: `threads/:id/comment-sends`). `key` is the press's: the same press tried
+    /// again after an error goes under the same key, so it never sends twice.
     fn send(
         &self,
         thread_id: &str,
         mode: SendMode,
         comment_ids: &[String],
+        key: &IdempotencyKey,
     ) -> Result<Vec<CommentSend>, Error>;
     /// Follow the event stream from `from` (a seq; `None`: from now), keeping one thread's
     /// records when `thread_id` is given.
@@ -90,7 +94,12 @@ impl Client {
 pub fn connect(data_dir: &Path, name: &str) -> Result<Client, Error> {
     let found = discover(data_dir)?;
     let path = token_path(data_dir);
-    if let Some(kept) = Paired::load(&path)? {
+    // A file this client cannot read is no pairing: pair again in its place.
+    let kept = match Paired::load(&path) {
+        Err(Error::Io { .. }) => Paired::forget(&path).map(|()| None)?,
+        other => other?,
+    };
+    if let Some(kept) = kept {
         let client = Client::new(data_dir, kept.token);
         match client.health() {
             Err(Error::Unpaired { .. }) => Paired::forget(&path)?,
@@ -179,14 +188,14 @@ impl Inbox for Client {
 
     fn deposit(&self, target: &ReviewTarget) -> Result<Deposit, Error> {
         let body = serde_json::to_value(target).map_err(|e| Error::unreadable("review-targets", e))?;
-        self.door.post("review-targets", fields(body))
+        self.door.post("review-targets", fields(body), &IdempotencyKey::new())
     }
 
     fn comment_on_message(&self, message_id: &str, comment: &NewComment) -> Result<CommentRecord, Error> {
         let route = format!("messages/{}/annotations", segment(message_id)?);
         segment(&comment.id)?;
         let body = json!({ "annotation": comment.annotation() });
-        Ok(self.door.post::<Written>(&route, fields(body))?.annotation)
+        Ok(self.door.post::<Written>(&route, fields(body), &IdempotencyKey::new())?.annotation)
     }
 
     fn comment_on_attachment(
@@ -201,13 +210,13 @@ impl Inbox for Client {
             "version": version,
             "annotation": comment.annotation(),
         });
-        Ok(self.door.post::<Written>("annotations", fields(body))?.annotation)
+        Ok(self.door.post::<Written>("annotations", fields(body), &IdempotencyKey::new())?.annotation)
     }
 
     fn reply(&self, comment_id: &str, reply: &NewReply) -> Result<CommentRecord, Error> {
         let route = format!("annotations/{}/replies", segment(comment_id)?);
         let body = json!({ "annotation": { "id": segment(&reply.id)?, "text": reply.text } });
-        Ok(self.door.post::<Written>(&route, fields(body))?.annotation)
+        Ok(self.door.post::<Written>(&route, fields(body), &IdempotencyKey::new())?.annotation)
     }
 
     fn sub_thread(&self, sub: &NewSubThread) -> Result<CommentRecord, Error> {
@@ -218,17 +227,20 @@ impl Inbox for Client {
             "quote": sub.on.quote,
             "occurrence": sub.on.occurrence,
         } });
-        Ok(self.door.post::<Written>(&route, fields(body))?.annotation)
+        Ok(self.door.post::<Written>(&route, fields(body), &IdempotencyKey::new())?.annotation)
     }
 
     fn resolve(&self, comment_id: &str, resolved: bool) -> Result<CommentRecord, Error> {
         let route = format!("annotations/{}/resolve", segment(comment_id)?);
-        Ok(self.door.post::<Written>(&route, fields(json!({ "resolved": resolved })))?.annotation)
+        Ok(self
+            .door
+            .post::<Written>(&route, fields(json!({ "resolved": resolved })), &IdempotencyKey::new())?
+            .annotation)
     }
 
     fn remove(&self, comment_id: &str) -> Result<CommentRecord, Error> {
         let route = format!("annotations/{}/remove", segment(comment_id)?);
-        Ok(self.door.post::<Written>(&route, Map::new())?.annotation)
+        Ok(self.door.post::<Written>(&route, Map::new(), &IdempotencyKey::new())?.annotation)
     }
 
     fn send(
@@ -236,14 +248,18 @@ impl Inbox for Client {
         thread_id: &str,
         mode: SendMode,
         comment_ids: &[String],
+        key: &IdempotencyKey,
     ) -> Result<Vec<CommentSend>, Error> {
         let route = format!("threads/{}/comment-sends", segment(thread_id)?);
+        if mode == SendMode::Now && comment_ids.is_empty() {
+            return Err(Error::Invalid("a `now` send names the drafts it sends".to_owned()));
+        }
         let mut body = fields(json!({ "mode": mode }));
         if !comment_ids.is_empty() {
             let ids: Result<Vec<&str>, Error> = comment_ids.iter().map(|id| segment(id)).collect();
             body.insert("comment_ids".to_owned(), json!(ids?));
         }
-        Ok(self.door.post::<Sends>(&route, body)?.sends)
+        Ok(self.door.post::<Sends>(&route, body, key)?.sends)
     }
 
     fn watch(&self, from: Option<u64>, thread_id: Option<&str>) -> Result<Watch, Error> {

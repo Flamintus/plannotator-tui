@@ -1,8 +1,36 @@
 //! What a terminal writes. The client mints no comment id: the caller's own id becomes the
 //! Inbox's (`annotation.id`, `^[A-Za-z0-9_.:-]{1,200}$`), as the window's viewer does.
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+
+/// The key a write is answered under: the door keeps the answer per device and key, and
+/// answers a write sent again under it without writing again. One per user action: a call
+/// made again after an error, under the same key, cannot write twice.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdempotencyKey(String);
+
+impl IdempotencyKey {
+    /// A fresh key: unique per process and call, so unique per device over time.
+    pub fn new() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
+        Self(format!("tui_{nanos:x}_{:x}_{:x}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for IdempotencyKey {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 /// A comment on words: an agent's message's, or an attached file's.
 #[derive(Debug, Clone, PartialEq)]

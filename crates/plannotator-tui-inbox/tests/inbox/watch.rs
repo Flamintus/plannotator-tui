@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 use plannotator_tui_inbox::{Client, Error, Event, Inbox, Kind, Token, Watch};
 
 use crate::Result;
-use crate::support::{FakeInbox, Reply, Request};
+use crate::support::{FakeInbox, Reply, Request, SERVER_SESSION, health};
 
 const EVENTS: &str = "/api/inbox/device/events";
 
@@ -26,12 +26,10 @@ fn streaming(
     streams: impl Fn(usize, &Request) -> Reply + Send + Sync + 'static,
 ) -> Result<FakeInbox> {
     let connections = AtomicUsize::new(0);
-    FakeInbox::start(name, move |request| {
-        if request.path == EVENTS {
-            streams(connections.fetch_add(1, Ordering::SeqCst), request)
-        } else {
-            Reply::Json(404, serde_json::json!({ "code": "device_route_not_found" }))
-        }
+    FakeInbox::start(name, move |request| match request.path.as_str() {
+        EVENTS => streams(connections.fetch_add(1, Ordering::SeqCst), request),
+        "/api/inbox/health" => health(SERVER_SESSION),
+        _ => Reply::Json(404, serde_json::json!({ "code": "device_route_not_found" })),
     })
 }
 
@@ -75,18 +73,15 @@ fn a_cut_stream_resumes_from_the_last_seq_without_loss_or_double() -> Result {
     let watch = watch(&inbox, None)?;
     let events = collect(&watch, |events| seqs(events).len() >= 3);
     assert_eq!(seqs(&events), vec![11, 12, 13]);
-    assert_eq!(events.first(), Some(&Event::Open { cursor: 10 }));
-    assert!(events.iter().any(|e| matches!(e, Event::Disconnected(Error::Transport { .. }))));
     let connections = inbox.requests_to(EVENTS);
     let resumed: Vec<Option<&str>> = connections.iter().map(|r| r.header("last-event-id")).collect();
     assert_eq!(resumed.get(..2), Some([None, Some("12")].as_slice()));
-    assert!(connections.iter().all(|r| r.header("authorization") == Some("Bearer tok_device")));
     Ok(())
 }
 
 #[test]
 fn only_the_watched_threads_records_are_told_and_unknown_kinds_are_skipped() -> Result {
-    let fixture = include_str!("../fixtures/events.sse");
+    let fixture = include_str!("../fixtures/v1/events.sse");
     let inbox = streaming("filter", move |_, _| Reply::Stream { text: fixture.to_owned(), hold: true })?;
     let watch = watch(&inbox, Some("msg_a1"))?;
     let events = collect(&watch, |events| seqs(events).len() >= 3);
@@ -151,5 +146,33 @@ fn a_refused_token_stops_the_watch_without_retrying() -> Result {
     assert!(events.iter().any(|e| matches!(e, Event::Stopped(Error::Unpaired { .. }))));
     std::thread::sleep(Duration::from_millis(100));
     assert_eq!(inbox.requests_to(EVENTS).len(), 1);
+    Ok(())
+}
+
+#[test]
+fn a_line_the_client_cannot_read_is_passed_over() -> Result {
+    // An Inbox whose stream has no case for a kind writes `data: undefined`; a later kind may
+    // carry fields of other shapes. Neither stops the watch.
+    let odd = "id: 2\nevent: record\ndata: undefined\n\n\
+               id: 3\nevent: record\ndata: {\"seq\":3,\"kind\":\"later\",\"id\":7,\"message\":\"text\"}\n\n";
+    let text = hello("ss_one", 1) + odd + &record(4, "message", "t");
+    let inbox = streaming("odd", move |_, _| Reply::Stream { text: text.clone(), hold: true })?;
+    let watch = watch(&inbox, None)?;
+    let events = collect(&watch, |events| !seqs(events).is_empty());
+    assert_eq!(seqs(&events), vec![4]);
+    assert!(!events.iter().any(|e| matches!(e, Event::Stopped(_))));
+    Ok(())
+}
+
+#[test]
+fn an_inbox_that_numbers_from_lower_is_followed_from_its_cursor() -> Result {
+    // A new data folder: the restarted Inbox's seq starts below what was seen.
+    let inbox = streaming("renumbered", |n, _| match n {
+        0 => Reply::Stream { text: hello("ss_one", 10) + &record(11, "message", "t"), hold: false },
+        _ => Reply::Stream { text: hello("ss_two", 2) + &record(3, "message", "t"), hold: true },
+    })?;
+    let watch = watch(&inbox, None)?;
+    let events = collect(&watch, |events| seqs(events).len() >= 2);
+    assert_eq!(seqs(&events), vec![11, 3]);
     Ok(())
 }

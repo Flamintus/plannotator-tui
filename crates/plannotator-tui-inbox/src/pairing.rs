@@ -4,8 +4,9 @@
 //! loopback port only, as a device of platform `terminal`, by a secret the Inbox writes and
 //! the client reads. This client presents the registry's connection token (`inbox.json`,
 //! 0600, the same account's only) to `POST pair-local` and keeps the `tok_…` device token
-//! it gets back in a file of its own, 0600, under the data directory. A revoked token is
-//! answered `401 device_revoked`: forget the file and pair again (`crate::connect` does).
+//! it gets back in a file of its own under the data directory (0600 in a 0700 folder on
+//! Unix; on Windows, the folder's own access rules). A revoked token is answered
+//! `401 device_revoked`: forget the file and pair again (`crate::connect` does).
 //!
 //! Same limit as every pairing (analysis § 5.4): an agent under the same account reads
 //! these files too. The door bounds, attributes and revokes; it does not prove a person.
@@ -20,6 +21,7 @@ use serde_json::{Map, Value, json};
 use crate::discovery::Discovery;
 use crate::error::Error;
 use crate::http::{self, CALL_TIMEOUT, DOOR_PREFIX};
+use crate::requests::IdempotencyKey;
 
 /// The platform a terminal pairs as.
 pub const PLATFORM: &str = "terminal";
@@ -77,7 +79,8 @@ pub fn token_path(data_dir: &Path) -> PathBuf {
 /// Pair this terminal with the Inbox found, as `name`.
 pub fn pair_local(found: &Discovery, name: &str) -> Result<Paired, Error> {
     let route = "pair-local";
-    let body = json!({ "name": name, "platform": PLATFORM, "idempotency_key": http::idempotency_key() });
+    let key = IdempotencyKey::new();
+    let body = json!({ "name": name, "platform": PLATFORM, "idempotency_key": key.as_str() });
     let mut response = http::agent(CALL_TIMEOUT)
         .post(format!("{}{DOOR_PREFIX}{route}", found.base_url))
         .header("Authorization", format!("Bearer {}", found.connection_token))
@@ -85,8 +88,12 @@ pub fn pair_local(found: &Discovery, name: &str) -> Result<Paired, Error> {
         .header("Content-Type", "application/json")
         .send(body.to_string())
         .map_err(|e| Error::transport(route, e))?;
-    let value = http::answer(route, &mut response)?;
-    serde_json::from_value(value).map_err(|e| Error::unreadable(route, e))
+    let status = response.status().as_u16();
+    let text = http::body_text(&mut response, route)?;
+    if !(200..300).contains(&status) {
+        return Err(Error::pairing_refusal(route, status, &text));
+    }
+    serde_json::from_str(&text).map_err(|e| Error::unreadable(route, e))
 }
 
 impl Paired {
@@ -105,7 +112,7 @@ impl Paired {
         }
     }
 
-    /// Keep the pairing at `path`, owner-only, by a temporary file and a rename.
+    /// Keep the pairing at `path` by a temporary file and a rename: owner-only on Unix.
     pub fn save(&self, path: &Path) -> Result<(), Error> {
         let dir = path.parent().ok_or_else(|| io_error(path, "no parent directory"))?;
         create_private_dir(dir).map_err(|e| io_error(dir, e))?;

@@ -36,7 +36,8 @@ pub enum Event {
     /// The connection was lost; the watch connects again after the stream's `retry` delay.
     Disconnected(Error),
     /// The watch ended and does not retry: the token is refused, the door has no event
-    /// stream for this client, or the stream is in a newer contract.
+    /// stream for this client, the stream is in a newer contract, or its hello or one of
+    /// its lines cannot be read as a stream at all. A record it cannot read is passed over.
     Stopped(Error),
 }
 
@@ -78,8 +79,9 @@ impl Kind {
     }
 }
 
-/// A running watch. Dropping it ends its threads: at once while it waits to reconnect, at
-/// the stream's next line (a ping at most 15 s away) while it reads.
+/// A running watch. Dropping it ends its threads: at once while it waits to reconnect;
+/// while it reads, at the stream's next line (the Inbox pings every 15 s), or when a read
+/// gives up (30 s without a byte, or a connection still being made).
 #[derive(Debug)]
 pub struct Watch {
     events: Receiver<Event>,

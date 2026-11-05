@@ -15,7 +15,7 @@ fn fully_typed(nodes: &[ThreadNode]) -> bool {
 
 #[test]
 fn the_thread_view_reads_exactly_what_the_inbox_computes() -> Result {
-    let fixture: Value = serde_json::from_str(include_str!("../fixtures/thread-view.json"))?;
+    let fixture: Value = serde_json::from_str(include_str!("../fixtures/v1/thread-view.json"))?;
     let view: ThreadView = serde_json::from_value(fixture.clone())?;
     assert_eq!(serde_json::to_value(&view)?, fixture, "no field lost, none invented");
     assert!(view.other.is_empty() && fully_typed(&view.threads), "the types mirror the view");

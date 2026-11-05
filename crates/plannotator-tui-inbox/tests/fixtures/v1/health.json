@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "app": "plannotator-inbox",
+  "version": "0.28.49-test",
+  "serverSession": "ss_one",
+  "pid": 4242,
+  "update": null,
+  "event_streams": 1
+}

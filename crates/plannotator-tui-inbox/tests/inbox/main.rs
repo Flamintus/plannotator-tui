@@ -3,6 +3,7 @@
 
 mod contract;
 mod door;
+mod pairing;
 mod support;
 mod watch;
 

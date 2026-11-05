@@ -81,7 +81,7 @@ pub(crate) fn read_registry(data_dir: &Path) -> Result<Registry, Error> {
 }
 
 #[derive(Deserialize)]
-struct WindowHealth {
+pub(crate) struct WindowHealth {
     ok: bool,
     app: String,
     version: String,
@@ -89,34 +89,41 @@ struct WindowHealth {
     server_session: String,
 }
 
+/// The registry under `data_dir`, once the health answer on its port (no token sent)
+/// names its `serverSession`: the Inbox's own test of a running Inbox. The registry stays
+/// in place when the Inbox stops, so a token only goes to a port that passed it.
+pub(crate) fn running(data_dir: &Path) -> Result<(Registry, WindowHealth), Error> {
+    let registry = read_registry(data_dir)?;
+    let base_url = registry.base_url();
+    let not_running = |why: &str| Error::NotRunning(format!("{base_url}: {why}"));
+    let mut response = http::agent(HEALTH_TIMEOUT)
+        .get(format!("{base_url}/api/inbox/health"))
+        .call()
+        .map_err(|e| not_running(&format!("no answer ({e})")))?;
+    let status = response.status().as_u16();
+    let body = http::body_text(&mut response, "health")?;
+    if status != 200 {
+        return Err(not_running(&format!("health answered {status}")));
+    }
+    let health: WindowHealth =
+        serde_json::from_str(&body).map_err(|_| not_running("not an Inbox's answer"))?;
+    if !health.ok || health.app != INBOX_APP_ID {
+        return Err(not_running("not an Inbox's answer"));
+    }
+    if health.server_session != registry.server_session {
+        return Err(not_running("another server answers on the registry's port"));
+    }
+    Ok((registry, health))
+}
+
 /// The Inbox for `data_dir`, when one runs: the registry, then the health answer on its
 /// port, which must name the registry's `serverSession` (another one means the port was
 /// taken by a newer Inbox or something else since).
 pub fn discover(data_dir: &Path) -> Result<Discovery, Error> {
-    let registry = read_registry(data_dir)?;
-    let base_url = registry.base_url();
-    let agent = http::agent(HEALTH_TIMEOUT);
-    let not_running = |why: String| Error::NotRunning(format!("{base_url}: {why}"));
-    let mut response = agent
-        .get(format!("{base_url}/api/inbox/health"))
-        .call()
-        .map_err(|e| not_running(format!("no answer ({e})")))?;
-    let status = response.status().as_u16();
-    let body = http::body_text(&mut response, "health")?;
-    if status != 200 {
-        return Err(not_running(format!("health answered {status}")));
-    }
-    let health: WindowHealth =
-        serde_json::from_str(&body).map_err(|_| not_running("the answer is not an Inbox's".to_owned()))?;
-    if !health.ok || health.app != INBOX_APP_ID {
-        return Err(not_running("the answer is not an Inbox's".to_owned()));
-    }
-    if health.server_session != registry.server_session {
-        return Err(not_running("another server answers on the registry's port".to_owned()));
-    }
+    let (registry, health) = running(data_dir)?;
     Ok(Discovery {
         data_dir: data_dir.to_path_buf(),
-        base_url,
+        base_url: registry.base_url(),
         server_session: health.server_session,
         version: health.version,
         connection_token: registry.token,

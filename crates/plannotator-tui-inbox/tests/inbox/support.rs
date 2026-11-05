@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use plannotator_tui_inbox::{Client, Token};
 use serde_json::{Value, json};
 
 use crate::Result;
@@ -173,4 +174,56 @@ fn read_request(stream: &TcpStream) -> Option<Request> {
     let mut body = vec![0; length];
     reader.read_exact(&mut body).ok()?;
     Some(Request { method, path, headers, body: String::from_utf8_lossy(&body).into_owned() })
+}
+
+// ── What the door answers, from the contract fixtures ──
+
+pub(crate) const DEVICE_TOKEN: &str = "tok_device";
+pub(crate) const DOOR: &str = "/api/inbox/device/";
+pub(crate) const PAIR_LOCAL: &str = "/api/inbox/device/pair-local";
+
+pub(crate) fn fixture(text: &str) -> Value {
+    serde_json::from_str(text).unwrap_or_default()
+}
+
+/// What the door answers each route the client calls, from the contract fixtures.
+pub(crate) fn door(request: &Request) -> Reply {
+    let path = request.path.split('?').next().unwrap_or_default();
+    let answer = match path.strip_prefix(DOOR).unwrap_or(path) {
+        "/api/inbox/health" => return health(SERVER_SESSION),
+        "health" => include_str!("../fixtures/v1/health.json"),
+        "pair-local" => return Reply::Json(201, fixture(include_str!("../fixtures/v1/pair-local.json"))),
+        "sessions" => include_str!("../fixtures/v1/sessions.json"),
+        "threads" => include_str!("../fixtures/v1/threads.json"),
+        "threads/msg_a1" => include_str!("../fixtures/v1/thread.json"),
+        "threads/msg_a1/comments" => include_str!("../fixtures/v1/thread-view.json"),
+        "attachments/att_1/view" => include_str!("../fixtures/v1/attachment-view.json"),
+        "review-targets" => include_str!("../fixtures/v1/review-target.json"),
+        "threads/msg_a1/comment-sends" => include_str!("../fixtures/v1/comment-sends.json"),
+        _ if request.method == "POST" => include_str!("../fixtures/v1/annotation.json"),
+        _ => {
+            return Reply::Json(
+                404,
+                json!({ "error": "Not a phone route.", "code": "device_route_not_found" }),
+            );
+        }
+    };
+    Reply::Json(200, fixture(answer))
+}
+
+/// One field of a JSON body, `null` when it is absent.
+pub(crate) fn field(body: &Value, name: &str) -> Value {
+    body.get(name).cloned().unwrap_or(Value::Null)
+}
+
+pub(crate) fn client_of(inbox: &FakeInbox) -> Client {
+    Client::new(&inbox.data_dir, Token::new(DEVICE_TOKEN))
+}
+
+pub(crate) fn door_requests(inbox: &FakeInbox) -> Vec<Request> {
+    inbox.requests().into_iter().filter(|r| r.path.starts_with(DOOR)).collect()
+}
+
+pub(crate) fn posts(inbox: &FakeInbox) -> Vec<Value> {
+    door_requests(inbox).iter().filter(|r| r.method == "POST").map(Request::json).collect()
 }

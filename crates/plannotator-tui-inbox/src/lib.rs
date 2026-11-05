@@ -11,8 +11,9 @@
 //! - [`Inbox`] is the seam: [`Client`] speaks HTTP, an application's tests put a stand-in.
 //! - [`Inbox::watch`] gives a [`Watch`]: threads of its own, events on a channel.
 //!
-//! Synchronous, no runtime. The contract it reads is E7's (`v` [`CONTRACT`]); routes E7
-//! has not put on the door yet answer [`Error::RouteMissing`].
+//! Synchronous, no runtime. The contract it reads is E7's (`v` [`CONTRACT`]): a route E7
+//! has not put on the door yet answers [`Error::RouteMissing`], local pairing on an Inbox
+//! without E7 a [`Error::Refused`] or [`Error::RouteMissing`].
 
 mod client;
 mod discovery;
@@ -34,7 +35,8 @@ pub use records::{
     SendTarget, Session, SessionProject, Thread, ThreadRow,
 };
 pub use requests::{
-    AttachmentVersion, NewComment, NewReply, NewSubThread, Passage, ReviewTarget, SendMode, Target,
+    AttachmentVersion, IdempotencyKey, NewComment, NewReply, NewSubThread, Passage, ReviewTarget, SendMode,
+    Target,
 };
 pub use view::{
     Anchor, Author, FileVersion, Parent, Place, ReplyNode, Side, State, Status, ThreadNode, ThreadView,

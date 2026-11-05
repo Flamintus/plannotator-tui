@@ -6,15 +6,15 @@
 //! door keeps the answer per device and replays it (`Idempotent-Replayed: true`). So a
 //! write tries again once, with the same key, when the request did not complete.
 
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
-use crate::discovery::read_registry;
+use crate::discovery::running;
 use crate::error::Error;
 use crate::pairing::Token;
+use crate::requests::IdempotencyKey;
 
 pub(crate) const DOOR_PREFIX: &str = "/api/inbox/device/";
 /// A whole call, body included; the event stream has its own rules (`watch`).
@@ -26,11 +26,12 @@ const BODY_LIMIT: u64 = 64 * 1024 * 1024;
 const RETRY_AFTER: Duration = Duration::from_millis(200);
 
 /// An agent for loopback calls: refusals come back as answers so their envelope can be
-/// read, and no proxy from the environment ever sees a token.
+/// read, no proxy from the environment ever sees a token, and no redirect is followed.
 pub(crate) fn agent(timeout: Duration) -> ureq::Agent {
     ureq::Agent::config_builder()
         .http_status_as_error(false)
         .proxy(None)
+        .max_redirects(0)
         .timeout_global(Some(timeout))
         .timeout_connect(Some(CONNECT_TIMEOUT))
         .build()
@@ -49,20 +50,13 @@ pub(crate) fn body_text(response: &mut Response, route: &str) -> Result<String, 
         .map_err(|e| Error::transport(route, e))
 }
 
-/// A fresh idempotency key: unique per process and call, so unique per device over time.
-pub(crate) fn idempotency_key() -> String {
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
-    format!("tui_{nanos:x}_{:x}_{:x}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))
-}
-
 /// An id as one path segment, under the Inbox's own rule for ids (`^[A-Za-z0-9_.:-]{1,200}$`,
 /// `packages/core/inbox-attachments.ts`), and never a dot segment, which a URL parser would
 /// resolve into another route.
 pub(crate) fn segment(id: &str) -> Result<&str, Error> {
     let safe = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-');
     let ok = (1..=200).contains(&id.len()) && id.bytes().all(safe) && id.bytes().any(|b| b != b'.');
-    if ok { Ok(id) } else { Err(Error::InvalidId(id.to_owned())) }
+    if ok { Ok(id) } else { Err(Error::Invalid(format!("{id:?} is not an Inbox id"))) }
 }
 
 /// The door of the Inbox under one data directory, as one paired device.
@@ -74,8 +68,11 @@ pub(crate) struct Door {
 }
 
 impl Door {
+    /// The route's URL on the Inbox that runs now, checked before every request that
+    /// carries the token (`discovery::running`).
     pub(crate) fn url(&self, route: &str) -> Result<String, Error> {
-        Ok(format!("{}{DOOR_PREFIX}{route}", read_registry(&self.data_dir)?.base_url()))
+        let (registry, _) = running(&self.data_dir)?;
+        Ok(format!("{}{DOOR_PREFIX}{route}", registry.base_url()))
     }
 
     pub(crate) fn bearer(&self) -> String {
@@ -98,15 +95,16 @@ impl Door {
         answer(route, &mut response)
     }
 
-    /// A write: `fields` plus a fresh `idempotency_key`, sent again once under the same
-    /// key when the first request did not complete.
+    /// A write: `fields` under `key`, sent again once under the same key when the first
+    /// request did not complete.
     pub(crate) fn post<T: DeserializeOwned>(
         &self,
         route: &str,
         fields: Map<String, Value>,
+        key: &IdempotencyKey,
     ) -> Result<T, Error> {
         let mut fields = fields;
-        fields.insert("idempotency_key".to_owned(), Value::String(idempotency_key()));
+        fields.insert("idempotency_key".to_owned(), Value::String(key.as_str().to_owned()));
         let body = Value::Object(fields).to_string();
         let value = match self.post_once(route, &body) {
             Err(Error::Transport { .. }) => {
@@ -149,12 +147,12 @@ mod tests {
     fn an_id_never_leaves_its_path_segment() {
         assert_eq!(segment("local_19a2f.c:1-x"), Ok("local_19a2f.c:1-x"));
         for bad in ["", ".", "..", "../threads", "a/b", "a?b", "a%2Fb", "é"] {
-            assert_eq!(segment(bad), Err(Error::InvalidId(bad.to_owned())), "{bad}");
+            assert!(matches!(segment(bad), Err(Error::Invalid(_))), "{bad}");
         }
     }
 
     #[test]
     fn keys_differ_from_call_to_call() {
-        assert_ne!(idempotency_key(), idempotency_key());
+        assert_ne!(IdempotencyKey::new(), IdempotencyKey::new());
     }
 }
