@@ -16,7 +16,7 @@ use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr as _;
 
 use super::draw::picker_help;
-use super::{App, Mode, Open};
+use super::{App, Mode};
 use crate::keys::{self, Action};
 use crate::last::message_source;
 use crate::theme::palette;
@@ -62,12 +62,10 @@ impl App {
         }
         let next = if let Some(open) = self.pick_cache.remove(&index) {
             open
-        } else if let Some(open) = self.inbox_candidate(index)? {
-            open
         } else {
             let Some(message) = self.candidates.get(index) else { return Ok(()) };
             let source = message_source(&self.message_host, self.message_session.as_deref(), message);
-            Open::new(source, self.open.layout.width, &self.data_dir, &self.project)?
+            self.open_reply(source)?
         };
         let leaving = std::mem::replace(&mut self.open, next);
         self.pick_cache.insert(self.pick_open, leaving);

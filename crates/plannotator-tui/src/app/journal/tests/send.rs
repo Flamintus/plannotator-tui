@@ -1,4 +1,5 @@
-//! Sends through the Inbox: `E` now, `F` the end of the round, never the agent's pane.
+//! Sends through the journal: `E` every draft and the end of the round, pasted into the
+//! agent's pane as the journal composed it; `S` the same, then closed; `F` what it was.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
@@ -7,34 +8,27 @@ use std::rc::Rc;
 use plannotator_tui_journal::SendMode;
 use plannotator_tui_schema::Kind;
 use ratatui::crossterm::event::KeyCode;
-use serde_json::json;
 
-use super::super::super::review_test_support::{RecordingDelivery, draw};
+use super::super::super::review_test_support::{Outcome, RecordingDelivery, draw};
 use super::super::super::{App, Mode};
-use super::press;
-use crate::journal::source::thread_documents;
-use crate::journal::stand_in::{StandIn, thread};
+use super::{loop_app, press};
+use crate::journal::stand_in::StandIn;
 
-/// An Inbox message with a heading and two points, a draft comment on each point.
+/// The newest reply with a draft comment on each point.
 fn two_drafts() -> (App, Rc<StandIn>, RecordingDelivery, [String; 2]) {
-    let inbox = Rc::new(StandIn::default());
-    let body = "# Plan\n\nFirst point.\n\nSecond point.\n";
-    inbox.state.borrow_mut().threads.push(thread("thr_1", "Plan", &[("msg_a1", true, body, json!([]))]));
-    let delivery = RecordingDelivery::default();
-    let found = thread_documents(inbox.as_ref(), "thr_1", false).expect("documents");
-    let mut app = App::open_inbox_thread(found, inbox.clone(), 80, Box::new(delivery.clone())).expect("app");
-    app.add_quote_annotation("First", Kind::Comment, "One?".into()).expect("first");
-    app.add_quote_annotation("Second", Kind::Comment, "Two?".into()).expect("second");
-    app.poll_inbox();
+    let (mut app, journal, delivery) = loop_app();
+    app.add_quote_annotation("on-call", Kind::Comment, "Who?".into()).expect("first");
+    app.add_quote_annotation("We ship", Kind::Comment, "Why Friday?".into()).expect("second");
+    app.poll_journal();
     let ids = {
         let placed = app.open.store.placed();
         [placed[0].annotation.id.clone(), placed[1].annotation.id.clone()]
     };
-    (app, inbox, delivery, ids)
+    (app, journal, delivery, ids)
 }
 
-fn sends(inbox: &StandIn) -> Vec<(SendMode, Vec<String>)> {
-    inbox.state.borrow().sends.iter().map(|(mode, ids, _)| (*mode, ids.clone())).collect()
+fn sends(journal: &StandIn) -> Vec<(SendMode, Vec<String>)> {
+    journal.state.borrow().sends.iter().map(|(mode, ids, _)| (*mode, ids.clone())).collect()
 }
 
 fn header(app: &mut App) -> String {
@@ -42,75 +36,85 @@ fn header(app: &mut App) -> String {
 }
 
 #[test]
-fn e_sends_the_selected_notes_draft_now_and_leaves_the_round_open() {
-    let (mut app, inbox, _, [first, _]) = two_drafts();
+fn e_sends_every_draft_ends_the_round_and_pastes_the_journals_text() {
+    let (mut app, journal, delivery, [first, second]) = two_drafts();
+    assert_eq!(header(&mut app), "round 1 \u{b7} Send 2 to test agent \u{25b8}");
     app.select_block(1);
     press(&mut app, KeyCode::Char('E'));
-    assert_eq!(sends(&inbox), [(SendMode::Now, vec![first])]);
-    assert!(!inbox.state.borrow().comments[0].draft);
-    assert!(inbox.state.borrow().comments[1].draft, "the other draft waits");
-    assert_eq!(header(&mut app), "round 1 \u{b7} Send 1 now \u{25b8} Inbox (E)");
+    assert_eq!(sends(&journal), [(SendMode::Round, vec![first.clone(), second.clone()])]);
+    let pasted = delivery.calls.borrow().clone();
+    assert_eq!(pasted, [format!("# Comments on your work\n\nround 1: {first}, {second}")]);
+    assert_eq!(journal.state.borrow().delivered, ["snd_1"], "the journal is told it was delivered");
+    assert!(!app.quit, "the review stays open for the next round");
+    assert_eq!(app.status.as_deref(), Some("sent 2 comment(s) \u{b7} round 1 ended \u{2192} test agent"));
+    assert_eq!(header(&mut app), "round 2 \u{b7} Sent \u{25b8} test agent");
 }
 
 #[test]
-fn with_no_note_selected_e_sends_every_draft_waiting() {
-    let (mut app, inbox, _, [first, second]) = two_drafts();
-    app.select_block(0);
-    press(&mut app, KeyCode::Char('E'));
-    assert_eq!(sends(&inbox), [(SendMode::Now, vec![first, second])]);
-    assert_eq!(header(&mut app), "round 1 \u{b7} nothing waiting \u{25b8} Inbox");
+fn s_sends_and_closes() {
+    let (mut app, journal, delivery, _) = two_drafts();
+    press(&mut app, KeyCode::Char('S'));
+    assert_eq!(sends(&journal).len(), 1);
+    assert_eq!(delivery.calls.borrow().len(), 1);
+    assert!(app.quit);
 }
 
 #[test]
-fn f_finishes_the_round_with_every_draft_left() {
-    let (mut app, inbox, _, _) = two_drafts();
+fn f_on_a_reply_is_what_it_was() {
+    let (mut app, journal, delivery, _) = two_drafts();
     press(&mut app, KeyCode::Char('F'));
-    assert_eq!(sends(&inbox), [(SendMode::Round, Vec::new())]);
-    assert!(inbox.state.borrow().comments.iter().all(|comment| !comment.draft));
-    assert_eq!(app.status.as_deref(), Some("round 1 finished \u{2192} ses_a"));
-    assert_eq!(header(&mut app), "round 2 \u{b7} nothing waiting \u{25b8} Inbox");
+    assert!(sends(&journal).is_empty() && delivery.calls.borrow().is_empty());
 }
 
 #[test]
-fn an_inbox_send_never_reaches_the_agents_pane() {
-    let (mut app, _, delivery, _) = two_drafts();
-    app.select_block(1);
+fn with_nothing_waiting_e_says_so() {
+    let (mut app, journal, delivery) = loop_app();
     press(&mut app, KeyCode::Char('E'));
-    press(&mut app, KeyCode::Char('F'));
-    assert!(delivery.calls.borrow().is_empty(), "the Inbox composes and delivers; nothing is pasted");
+    assert_eq!(app.status.as_deref(), Some("nothing to send"));
+    assert!(sends(&journal).is_empty() && delivery.calls.borrow().is_empty());
 }
 
 #[test]
-fn a_send_tried_again_after_a_lost_connection_goes_under_the_same_key() {
-    let (mut app, inbox, _, _) = two_drafts();
-    inbox.state.borrow_mut().failing_sends = 1;
+fn a_paste_the_agent_did_not_get_goes_again_under_the_same_key() {
+    let (mut app, journal, delivery, _) = two_drafts();
+    delivery.outcome.set(Outcome::Blocked);
     press(&mut app, KeyCode::Char('E'));
     let status = app.status.clone().unwrap_or_default();
-    assert!(status.contains("send failed") && status.ends_with("E retry"), "{status}");
+    assert!(status.contains("at a dialog") && status.ends_with("E retry"), "{status}");
+    assert_eq!(journal.state.borrow().delivered, Vec::<String>::new());
+    assert!(header(&mut app).contains("test agent at a dialog"));
+    delivery.outcome.set(Outcome::Success);
     press(&mut app, KeyCode::Char('E'));
-    let keys: Vec<String> = inbox.state.borrow().sends.iter().map(|(_, _, key)| key.clone()).collect();
-    assert_eq!(keys.len(), 2);
-    assert_eq!(keys[0], keys[1], "one press, one key, however often it is tried");
-    press(&mut app, KeyCode::Char('F'));
-    let keys: Vec<String> = inbox.state.borrow().sends.iter().map(|(_, _, key)| key.clone()).collect();
-    assert_ne!(keys[2], keys[1], "another press is another key");
+    let keys: Vec<String> = journal.state.borrow().sends.iter().map(|(_, _, key)| key.clone()).collect();
+    assert_eq!(keys.len(), 1, "the journal gave the first send back: nothing sent twice");
+    let pasted = delivery.calls.borrow().clone();
+    assert_eq!((pasted.len(), &pasted[0]), (2, &pasted[1]), "the same text again");
+    assert_eq!(journal.state.borrow().delivered, ["snd_1"]);
+    press(&mut app, KeyCode::Char('E'));
+    assert_eq!(app.status.as_deref(), Some("nothing to send"), "the retry was the press's");
 }
 
 #[test]
-fn quitting_with_drafts_waiting_asks_to_send_them_to_the_inbox() {
-    let (mut app, _, _, _) = two_drafts();
+fn a_send_the_journal_refused_is_tried_again_under_the_same_key() {
+    let (mut app, journal, delivery, _) = two_drafts();
+    journal.state.borrow_mut().refused.push("send");
+    press(&mut app, KeyCode::Char('E'));
+    assert!(app.status.clone().unwrap_or_default().starts_with("send failed"));
+    assert!(delivery.calls.borrow().is_empty());
+    journal.state.borrow_mut().refused.clear();
+    press(&mut app, KeyCode::Char('E'));
+    assert_eq!(sends(&journal).len(), 1);
+    assert_eq!(delivery.calls.borrow().len(), 1);
+}
+
+#[test]
+fn quitting_with_drafts_waiting_asks_and_yes_sends_them() {
+    let (mut app, journal, _, _) = two_drafts();
     press(&mut app, KeyCode::Char('q'));
     assert_eq!(app.mode, Mode::ConfirmQuit);
     let screen = draw(&mut app, 100, 12);
-    assert!(screen.contains("send feedback to the Inbox before quitting?"), "{screen}");
-}
-
-#[test]
-fn sending_before_quitting_sends_every_draft_whatever_is_selected() {
-    let (mut app, inbox, _, [first, second]) = two_drafts();
-    app.select_block(1);
-    press(&mut app, KeyCode::Char('q'));
+    assert!(screen.contains("send feedback to test agent before quitting?"), "{screen}");
     press(&mut app, KeyCode::Char('y'));
-    assert_eq!(sends(&inbox), [(SendMode::Now, vec![first, second])]);
+    assert_eq!(sends(&journal).len(), 1);
     assert!(app.quit, "nothing is left waiting");
 }

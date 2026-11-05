@@ -1,20 +1,22 @@
 //! What a terminal writes. The client mints no comment id: the caller's own id becomes the
-//! Inbox's (`annotation.id`, `^[A-Za-z0-9_.:-]{1,200}$`), as the window's viewer does.
+//! journal's (`^[A-Za-z0-9_.:-]{1,200}$`), so the note and its comment share one id.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Map, Value, json};
 
-/// The key a write is answered under: the door keeps the answer per device and key, and
-/// answers a write sent again under it without writing again. One per user action: a call
-/// made again after an error, under the same key, cannot write twice.
+use crate::view::Anchor;
+
+/// The key a send is answered under: the journal keeps it on the send, and a send made again
+/// under it writes nothing and gives the first one back, its text included. One per press:
+/// a press tried again after an error, under the same key, cannot send twice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IdempotencyKey(String);
 
 impl IdempotencyKey {
-    /// A fresh key: unique per process and call, so unique per device over time.
+    /// A fresh key: unique per process and call.
     pub fn new() -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos());
@@ -32,62 +34,70 @@ impl Default for IdempotencyKey {
     }
 }
 
-/// A comment on words: an agent's message's, or an attached file's.
-#[derive(Debug, Clone, PartialEq)]
+/// What a review is on, which names its journal (`ReviewTarget` in Plannotator's
+/// `review-journal.ts`). Every client of the same target finds the same review.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ReviewTarget {
+    /// An agent session's last messages: `host` as Plannotator names it (`claude-code`), and
+    /// the host's own session id.
+    Last { host: String, session: String },
+}
+
+/// Where the person's comment goes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Placement {
+    /// On the target's words: `quote`, as selected, at `on`. `deletion`: the person asks for
+    /// the words to go.
+    On { on: Anchor, quote: String, deletion: bool },
+    /// The person's reply under sent comment `re` (a sent reply's id answers its comment).
+    Under { re: String },
+    /// A sub-thread on `quote`, a passage of sent message `parent` (a comment, a reply or a
+    /// sub-thread), starting `quote_offset` into its words as a passage counts them
+    /// (whitespace runs as one); the journal finds the first occurrence when it is `None`.
+    Passage { parent: String, quote: String, quote_offset: Option<u64> },
+}
+
+/// The person's comment, reply or sub-thread: a draft until a send carries it. Writing the
+/// same id again edits the draft; a sent one is not edited.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewComment {
     pub id: String,
-    /// The words selected, as rendered (`originalText`).
-    pub quote: String,
     pub text: String,
-    /// More fields of the annotation, opaque to the Inbox beyond its checks (a re-anchoring
-    /// hint, a file comment's `blockId` or `inboxCode`). They never override the four above.
-    pub extra: Map<String, Value>,
+    pub placement: Placement,
 }
 
 impl NewComment {
-    pub fn new(id: impl Into<String>, quote: impl Into<String>, text: impl Into<String>) -> Self {
-        Self { id: id.into(), quote: quote.into(), text: text.into(), extra: Map::new() }
+    /// The fields `threads comment` reads, beside the review's.
+    pub(crate) fn fields(&self) -> Map<String, Value> {
+        let mut fields = Map::new();
+        fields.insert("id".to_owned(), json!(self.id));
+        fields.insert("text".to_owned(), json!(self.text));
+        match &self.placement {
+            Placement::On { on, quote, deletion } => {
+                fields.insert("on".to_owned(), json!(on));
+                fields.insert("quote".to_owned(), json!(quote));
+                if *deletion {
+                    fields.insert("type".to_owned(), json!("deletion"));
+                }
+            }
+            Placement::Under { re } => {
+                fields.insert("re".to_owned(), json!(re));
+            }
+            Placement::Passage { parent, quote, quote_offset } => {
+                fields.insert("parent".to_owned(), json!(parent));
+                fields.insert("quote".to_owned(), json!(quote));
+                if let Some(offset) = quote_offset {
+                    fields.insert("quote_offset".to_owned(), json!(offset));
+                }
+            }
+        }
+        fields
     }
-
-    /// The annotation the Inbox stores: a comment on the words selected.
-    pub(crate) fn annotation(&self) -> Value {
-        let mut fields = self.extra.clone();
-        fields.insert("id".to_owned(), Value::String(self.id.clone()));
-        fields.insert("type".to_owned(), Value::String("COMMENT".to_owned()));
-        fields.insert("originalText".to_owned(), Value::String(self.quote.clone()));
-        fields.insert("text".to_owned(), Value::String(self.text.clone()));
-        Value::Object(fields)
-    }
 }
 
-/// The person's reply under a sent comment (a draft until a send carries it).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewReply {
-    pub id: String,
-    pub text: String,
-}
-
-/// A passage of one message of a comment thread (the comment, a reply under it, or a
-/// sub-thread): its words, and which of their occurrences in that message's text, from 0.
-/// The server finds where it starts; a client never counts the offset itself (the Inbox
-/// counts UTF-16 units in words whose blanks are collapsed).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Passage {
-    /// The message's id: a comment id, or a reply's (`rep_…` or a comment id).
-    pub parent: String,
-    pub quote: String,
-    pub occurrence: u32,
-}
-
-/// The person's sub-thread on a passage (a draft until a send carries it).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NewSubThread {
-    pub id: String,
-    pub on: Passage,
-    pub text: String,
-}
-
-/// `now` sends at once and leaves the round open; `round` is the person's Finish.
+/// `now` sends at once and leaves the round open; `round` is the person's end of a round,
+/// carrying every draft left.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SendMode {
@@ -95,59 +105,50 @@ pub enum SendMode {
     Round,
 }
 
-/// Which version of an attached file to read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AttachmentVersion {
-    /// The file as it is now.
-    Current,
-    /// The version the agent sent.
-    Sent,
-}
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-impl AttachmentVersion {
-    pub(crate) fn query(self) -> &'static str {
-        match self {
-            Self::Current => "current",
-            Self::Sent => "sent",
-        }
-    }
-}
-
-/// A review target to deposit in the Inbox for one agent session (P1's operation, shared
-/// with `/plannotator-last`): the thread for this session and target is found or made.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct ReviewTarget {
-    /// `<host>:<session id>`, as `plannotator inbox review --session` names it.
-    pub session: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub project_path: Option<String>,
-    pub target: Target,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Target {
-    /// A message of the agent's chat, by its host's id: the deposit is idempotent by
-    /// session, that id and the text's sha256, which the server computes.
-    ChatMessage {
-        text: String,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        host_message_id: Option<String>,
-    },
-    /// A file on this machine, by path.
-    File { path: String },
-}
-
-impl ReviewTarget {
-    /// The agent's chat message `host_message_id` of session `session` on `host`.
-    pub fn chat_message(host: &str, session: &str, host_message_id: &str, text: impl Into<String>) -> Self {
-        Self {
-            session: format!("{host}:{session}"),
-            project_path: None,
-            target: Target::ChatMessage {
-                text: text.into(),
-                host_message_id: Some(host_message_id.to_owned()),
+    #[test]
+    fn each_placement_writes_the_fields_the_cli_reads() {
+        let on = NewComment {
+            id: "local_1".into(),
+            text: String::new(),
+            placement: Placement::On {
+                on: Anchor::Message { message_id: "m1".into() },
+                quote: "the panel".into(),
+                deletion: true,
             },
-        }
+        };
+        assert_eq!(
+            Value::Object(on.fields()),
+            json!({ "id": "local_1", "text": "", "on": { "kind": "message", "message_id": "m1" },
+                    "quote": "the panel", "type": "deletion" })
+        );
+        let under = NewComment {
+            id: "r".into(),
+            text: "Yes.".into(),
+            placement: Placement::Under { re: "c".into() },
+        };
+        assert_eq!(Value::Object(under.fields()), json!({ "id": "r", "text": "Yes.", "re": "c" }));
+        let passage = NewComment {
+            id: "s".into(),
+            text: "Why?".into(),
+            placement: Placement::Passage {
+                parent: "rep_1".into(),
+                quote: "a word".into(),
+                quote_offset: Some(4),
+            },
+        };
+        assert_eq!(
+            Value::Object(passage.fields()),
+            json!({ "id": "s", "text": "Why?", "parent": "rep_1", "quote": "a word", "quote_offset": 4 })
+        );
+    }
+
+    #[test]
+    fn a_last_target_is_named_by_its_host_and_session() {
+        let target = ReviewTarget::Last { host: "claude-code".into(), session: "ses_a".into() };
+        assert_eq!(json!(target), json!({ "kind": "last", "host": "claude-code", "session": "ses_a" }));
     }
 }

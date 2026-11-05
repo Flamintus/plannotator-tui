@@ -43,8 +43,8 @@ enum Backing {
     File(PathBuf),
     /// Nowhere: a transient document's notes live in memory only.
     Transient,
-    /// The Inbox, written to one action at a time (`store/inbox.rs`).
-    Inbox(Box<Kept>),
+    /// Plannotator's review journal, written to one action at a time (`store/journal.rs`).
+    Journal(Box<Kept>),
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -201,7 +201,7 @@ impl Store {
 
     fn save(&mut self) -> Result<()> {
         let Backing::File(path) = &self.backing else {
-            self.save_to_inbox();
+            self.save_to_journal();
             return Ok(());
         };
         if let Some(dir) = path.parent() {

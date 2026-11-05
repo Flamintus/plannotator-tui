@@ -24,8 +24,8 @@ pub(super) enum SendState {
 
 impl App {
     pub(super) fn send_feedback(&mut self) -> Result<()> {
-        if self.open.store.is_inbox() {
-            self.send_inbox(plannotator_tui_journal::SendMode::Now);
+        if self.open.store.is_journal() {
+            self.send_journal();
             return Ok(());
         }
         let scope = if self.is_file_review() { SendScope::Pending } else { SendScope::All };
@@ -101,7 +101,7 @@ impl App {
         Ok(())
     }
 
-    fn copy_fallback(&self, text: &str) -> bool {
+    pub(super) fn copy_fallback(&self, text: &str) -> bool {
         self.clipboard && Clipboard.deliver(text).is_ok()
     }
 
@@ -164,7 +164,7 @@ impl App {
             ("annotate-folder", Target::file(tree.root()), Vec::new())
         } else {
             let annotations = std::mem::take(&mut feedback.annotations);
-            match &self.open.source.provenance {
+            match self.archived_provenance() {
                 Provenance::File { path } => ("annotate", Target::file(path), annotations),
                 Provenance::AgentMessage { host, session, .. } => (
                     "annotate-last",
@@ -195,20 +195,20 @@ impl App {
     }
 
     pub(super) fn send_count(&self) -> usize {
-        if let Some(waiting) = self.inbox_drafts() {
+        if let Some(waiting) = self.journal_drafts() {
             return waiting;
         }
         if self.is_file_review() {
             self.review_counts().pending
         } else {
-            // Notes the Inbox keeps go through it, not with this feedback.
-            let replies = self.replies().into_iter().filter(|(_, open)| !open.store.is_inbox());
+            // Notes the journal keeps go through it, not with this feedback.
+            let replies = self.replies().into_iter().filter(|(_, open)| !open.store.is_journal());
             replies.map(|(_, open)| open.store.placed().len()).sum()
         }
     }
 
     pub(super) fn send_label(&self) -> String {
-        if let Some(label) = self.inbox_send_label() {
+        if let Some(label) = self.journal_send_label() {
             return label;
         }
         let target = self.delivery.describe();
@@ -242,8 +242,8 @@ impl App {
     }
 
     pub(super) fn has_unsent(&self) -> bool {
-        (self.delivery.is_agent() || self.open.store.is_inbox())
-            && self.send_count() > 0
+        self.delivery.is_agent()
+            && (self.send_count() > 0 || self.journal_retry_waiting())
             && (self.is_file_review() || self.send_state != SendState::Sent)
     }
 
@@ -258,17 +258,13 @@ impl App {
     /// Send, then quit unless something is still unsent. A refused send keeps the app open
     /// so the footer can say why; an empty review or a clipboard copy has nothing to wait for.
     pub(super) fn send_and_quit(&mut self) -> Result<()> {
-        if self.open.store.is_inbox() {
-            self.send_inbox_all();
-        } else {
-            self.send_feedback()?;
-        }
+        self.send_feedback()?;
         self.quit = !self.has_unsent();
         Ok(())
     }
 
     pub(super) fn derive_send_state(&mut self) {
-        if let Some(state) = self.inbox_send_state() {
+        if let Some(state) = self.journal_send_state() {
             self.send_state = state;
             return;
         }
@@ -282,7 +278,7 @@ impl App {
                 .replies()
                 .into_iter()
                 .map(|(_, open)| &open.store)
-                .filter(|store| store.len() > 0 && !store.is_inbox())
+                .filter(|store| store.len() > 0 && !store.is_journal())
                 .collect();
             !annotated.is_empty() && annotated.iter().all(|store| store.all_delivered())
         };

@@ -103,10 +103,6 @@ impl App {
             Some(Action::ResendAll) if self.is_file_review() => {
                 return self.run_review_action(ReviewAction::ResendAll);
             }
-            Some(Action::FinishReview) if self.open.store.is_inbox() => {
-                self.send_inbox(plannotator_tui_journal::SendMode::Round);
-                return Ok(());
-            }
             Some(Action::FinishReview) if self.is_file_review() => {
                 return self.run_review_action(ReviewAction::Finish);
             }

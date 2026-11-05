@@ -21,7 +21,6 @@ pub(crate) struct Config {
     pub(crate) ui: UiConfig,
     pub(crate) keys: Keymap,
     pub(crate) colors: Colors,
-    pub(crate) inbox: crate::journal::InboxConfig,
 }
 
 /// Which palette the app starts from; `[colors]` adjusts individual roles of it.

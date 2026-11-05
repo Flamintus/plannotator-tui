@@ -1,8 +1,8 @@
-//! Finding a comment's words in a document as drawn. The Inbox keeps a comment's quote as
-//! the person selected it, in the words as drawn (`originalText`); its window finds it
-//! there, every run of whitespace read as one. These functions do the same over a
-//! document's rendered characters (`DocLayout::rendered_chars`), each paired with the
-//! source byte it shows, so that a quote found maps back to a source range.
+//! Finding a comment's words in a document as drawn. The journal keeps a comment's quote as
+//! the person selected it, in the words as drawn; Plannotator's screens find it there, every
+//! run of whitespace read as one. These functions do the same over a document's rendered
+//! characters (`DocLayout::rendered_chars`), each paired with the source byte it shows, so
+//! that a quote found maps back to a source range.
 
 use std::ops::Range;
 
@@ -53,10 +53,10 @@ pub(crate) fn find(chars: &[(char, usize)], source: &str, quote: &str, nth: usiz
     Some(start..last + width)
 }
 
-/// The source range of the occurrence of `quote` nearest to where the Inbox says its passage
-/// starts, `offset` UTF-16 units into the words with whitespace runs read as one (a
-/// sub-thread's `quote_offset`): the Inbox counts in its own words, so the nearest one wins
-/// rather than an exact match.
+/// The source range of the occurrence of `quote` nearest to where the journal says its
+/// passage starts, `offset` UTF-16 units into the words with whitespace runs read as one (a
+/// sub-thread's `quote_offset`): the journal counts in the message's own words, not in the
+/// words as drawn, so the nearest one wins rather than an exact match.
 pub(crate) fn find_near(
     chars: &[(char, usize)],
     source: &str,
@@ -70,6 +70,16 @@ pub(crate) fn find_near(
     let nth = (0..starts.len())
         .min_by_key(|&nth| starts.get(nth).map_or(u64::MAX, |&from| units(from).abs_diff(offset)))?;
     find(chars, source, quote, nth)
+}
+
+/// Where the `nth` occurrence (from 0) of `quote` starts in `words`, as Plannotator counts a
+/// passage's offset (`passageOffset`): UTF-16 units into the words with whitespace runs read
+/// as one and leading whitespace dropped. `None` when the words do not hold it.
+pub(crate) fn offset_in(words: &str, quote: &str, nth: usize) -> Option<u64> {
+    let chars: Vec<(char, usize)> = words.char_indices().map(|(at, ch)| (ch, at)).collect();
+    let (flat, _) = normalized(&chars);
+    let from = *starts(&flat, &flat_quote(quote)).get(nth)?;
+    Some(flat.iter().take(from).map(|ch| ch.len_utf16() as u64).sum())
 }
 
 /// How many occurrences of `quote` in `chars` start before source offset `before`: which
@@ -86,7 +96,7 @@ pub(crate) fn occurrence(chars: &[(char, usize)], quote: &str, before: usize) ->
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "tests assert by panicking")]
 mod tests {
-    use super::{find, find_near, occurrence};
+    use super::{find, find_near, occurrence, offset_in};
 
     /// Rendered characters as a layout pairs them: here, the source with `**` markup left out.
     fn drawn(source: &str) -> Vec<(char, usize)> {
@@ -113,11 +123,20 @@ mod tests {
     }
 
     #[test]
-    fn a_sub_threads_passage_is_the_occurrence_nearest_where_the_inbox_says_it_starts() {
+    fn a_sub_threads_passage_is_the_occurrence_nearest_where_the_journal_says_it_starts() {
         let source = "the panel, then the panel";
         let chars = drawn(source);
         assert_eq!(find_near(&chars, source, "panel", 0), Some(4..9));
         assert_eq!(find_near(&chars, source, "panel", 19), Some(20..25));
         assert_eq!(find_near(&chars, source, "slider", 4), None);
+    }
+
+    #[test]
+    fn a_passages_offset_is_counted_as_plannotator_counts_it() {
+        // `passageOffset` over "  the  panel, then the panel": leading blanks dropped, runs as one.
+        assert_eq!(offset_in("  the  panel, then the panel", "panel", 0), Some(4));
+        assert_eq!(offset_in("  the  panel, then the panel", "the panel", 1), Some(16));
+        assert_eq!(offset_in("caf\u{e9} \u{1f600} panel", "panel", 0), Some(8), "UTF-16 units");
+        assert_eq!(offset_in("the panel", "slider", 0), None);
     }
 }

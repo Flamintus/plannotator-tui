@@ -1,112 +1,196 @@
-//! Sending through the Inbox: `send` (`E`) sends the selected note's drafts, or every
-//! draft waiting, `now`, leaving the round open; `finish-review` (`F`) finishes the round.
-//! The Inbox composes what the agent reads from the comments named and wakes the session,
-//! so nothing composed here is sent, and nothing goes to the agent's pane as well.
+//! Sending through the review journal: `send` (`E`) sends every draft of the review and ends
+//! the round, `send-and-close` (`S`) does the same and closes. The journal marks the drafts
+//! sent and composes what the agent reads, with how to answer under each id through
+//! `plannotator reply`; that text goes to the agent's pane by the app's own delivery, as any
+//! feedback does, and the journal is told it was delivered. The send is archived as today's
+//! feedback is.
 
-use plannotator_tui_journal::{Error, IdempotencyKey, SendMode};
+use std::fmt::Write as _;
+
+use plannotator_tui_journal::{IdempotencyKey, SendMode, Sent, ThreadView};
+use plannotator_tui_schema::{Annotation, Kind};
 
 use super::super::App;
+use super::super::feedback::Feedback;
 use super::super::send::SendState;
-use crate::journal::tree::{all_drafts, drafts, find};
+use crate::archive::AnnotationRecord;
+use crate::delivery::DeliveryError;
+use crate::gate::{Decision, Gate};
+use crate::journal::tree::{all_drafts, find};
 use crate::keys::Action;
 
-/// One press of a send: tried again after the connection failed, it goes under the same
-/// key, so the Inbox never sends it twice.
+/// A send the agent has not got yet: the press is tried again under its key, and the journal
+/// gives the same send back, its text included, rather than send twice.
 #[derive(Debug)]
 pub(super) struct Press {
-    mode: SendMode,
-    ids: Vec<String>,
     key: IdempotencyKey,
+    /// The drafts it carried.
+    carried: Vec<String>,
 }
 
 impl App {
-    /// Send through the Inbox: `now` the selected note's drafts, else every draft waiting;
-    /// `round` finishes the round with whatever is left.
-    pub(in crate::app) fn send_inbox(&mut self, mode: SendMode) {
-        self.send_inbox_of(mode, false);
-    }
-
-    /// `now` every draft waiting, whatever is selected: what sending before quitting means.
-    pub(in crate::app) fn send_inbox_all(&mut self) {
-        self.send_inbox_of(SendMode::Now, true);
-    }
-
-    fn send_inbox_of(&mut self, mode: SendMode, every: bool) {
+    /// `E`: every draft of the review sent, ending the round, and the journal's text pasted
+    /// into the agent's pane; a send the agent did not get yet goes again first.
+    pub(in crate::app) fn send_journal(&mut self) {
         // A write in the same burst of keys has not been read back yet: its draft counts.
-        if self.open.store.inbox_stale() {
-            self.refresh_inbox();
+        if self.open.store.journal_stale() {
+            self.refresh_journal();
         }
-        let Some((inbox, thread_id, view)) = self.open.store.inbox_thread() else { return };
-        let (inbox, thread_id, round) = (inbox.clone(), thread_id.to_owned(), view.round);
-        let ids = match mode {
-            SendMode::Now => {
-                let selected = self.current_note().filter(|_| !every).and_then(|id| find(&view.threads, &id));
-                let mut ids = Vec::new();
-                if let Some(node) = selected {
-                    drafts(node, &mut ids);
-                }
-                if ids.is_empty() { all_drafts(view) } else { ids }
+        let Some((review, view)) = self.open.store.journal_view() else { return };
+        let review = review.clone();
+        let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
+        let press = if let Some(press) = press {
+            press
+        } else {
+            let carried = all_drafts(view);
+            if carried.is_empty() {
+                self.status = Some("nothing to send".into());
+                self.derive_send_state();
+                return;
             }
-            SendMode::Round => Vec::new(),
+            Press { key: IdempotencyKey::new(), carried }
         };
-        if mode == SendMode::Now && ids.is_empty() {
-            self.status = Some("nothing waiting to send".into());
-            return;
-        }
-        let key = match self.inbox.as_mut().and_then(|review| review.press.take()) {
-            Some(press) if press.mode == mode && press.ids == ids => press.key,
-            _ => IdempotencyKey::new(),
-        };
-        match inbox.send(&thread_id, mode, &ids, &key) {
-            Ok(sends) => {
-                let to: Vec<String> = sends.iter().map(|send| send.to.session.clone()).collect();
-                let to = if to.is_empty() { String::new() } else { format!(" \u{2192} {}", to.join(", ")) };
-                self.status = Some(match mode {
-                    SendMode::Now => format!("sent {} now{to}", ids.len()),
-                    SendMode::Round => format!("round {round} finished{to}"),
-                });
-            }
+        let retry = self.keys.hint(Action::Send);
+        let sent = match review.journal.send(&review.target, SendMode::Round, &[], &press.key) {
+            Ok(sent) => sent,
             Err(err) => {
-                if matches!(err, Error::Transport { .. })
-                    && let Some(review) = self.inbox.as_mut()
+                self.status = Some(format!("send failed: {err} \u{b7} {retry} retry"));
+                self.keep_press(press);
+                self.refresh_journal();
+                return;
+            }
+        };
+        let target = self.delivery.describe();
+        match self.delivery.deliver(&sent.text) {
+            Ok(()) => {
+                let mut status = format!(
+                    "sent {} comment(s) \u{b7} round {} ended \u{2192} {target}",
+                    press.carried.len(),
+                    sent.send.round
+                );
+                // A copy reaches the agent when the person pastes it: the journal is not told.
+                if self.delivery.is_agent()
+                    && let Err(err) =
+                        review.journal.delivered(&review.target, std::slice::from_ref(&sent.send.id))
                 {
-                    review.press = Some(Press { mode, ids, key });
+                    let _ = write!(status, " \u{b7} not marked delivered: {err}");
                 }
-                let retry =
-                    self.keys.hint(if mode == SendMode::Now { Action::Send } else { Action::FinishReview });
-                self.status = Some(format!("Inbox: send failed: {err} \u{b7} {retry} retry"));
+                self.archive_journal_send(&sent, &press.carried);
+                self.status = Some(status);
+                if self.gate != Gate::Off {
+                    self.decision =
+                        Some(Decision::Annotated { feedback: sent.text, count: press.carried.len() });
+                    self.quit = true;
+                }
+            }
+            Err(DeliveryError::Blocked(msg)) => {
+                let copied = if self.copy_fallback(&sent.text) { " \u{b7} copied to clipboard" } else { "" };
+                self.status = Some(format!("{target} is at a dialog{copied} \u{b7} {retry} retry"));
+                self.keep_press(press);
+                self.refresh_journal();
+                self.send_state = SendState::Blocked(msg);
+                return;
+            }
+            Err(DeliveryError::Unavailable(msg)) => {
+                let copied = if self.copy_fallback(&sent.text) { " \u{b7} copied to clipboard" } else { "" };
+                self.status = Some(format!("no agent to send to ({msg}){copied} \u{b7} {retry} retry"));
+                self.keep_press(press);
+            }
+            Err(DeliveryError::Failed(err)) => {
+                self.status = Some(format!("send failed: {err:#} \u{b7} {retry} retry"));
+                self.keep_press(press);
             }
         }
-        self.refresh_inbox();
+        self.refresh_journal();
     }
 
-    /// The open Inbox document's drafts waiting, across its thread; `None` for any other.
-    pub(in crate::app) fn inbox_drafts(&self) -> Option<usize> {
-        self.open.store.inbox_thread().map(|(_, _, view)| all_drafts(view).len())
+    fn keep_press(&mut self, press: Press) {
+        if let Some(review_loop) = self.review_loop.as_mut() {
+            review_loop.press = Some(press);
+        }
     }
 
-    /// The Send button over an Inbox document: the round under way and what `E` sends.
-    pub(in crate::app) fn inbox_send_label(&self) -> Option<String> {
-        let (_, _, view) = self.open.store.inbox_thread()?;
-        let waiting = all_drafts(view).len();
-        let key = match self.keys.hint(Action::Send) {
-            key if key.is_empty() => String::new(),
-            key => format!(" ({key})"),
+    /// The send in the submission archive, as a feedback is: the text the agent got, and the
+    /// notes it carried as they were written.
+    fn archive_journal_send(&self, sent: &Sent, carried: &[String]) {
+        let notes: Vec<_> = self
+            .replies()
+            .into_iter()
+            .flat_map(|(_, open)| open.store.placed())
+            .filter(|placed| carried.contains(&placed.annotation.id))
+            .map(|placed| placed.annotation.clone())
+            .collect();
+        let view = self.open.store.journal_view().map(|(_, view)| view);
+        let annotations = carried.iter().map(|id| record(id, &notes, view)).collect();
+        let mut feedback = Feedback {
+            text: sent.text.clone(),
+            count: carried.len(),
+            images: notes.iter().map(|note| note.plannotator_tui.images.len()).sum(),
+            annotations,
+            ..Feedback::default()
         };
-        Some(match waiting {
-            0 => format!("round {} \u{b7} nothing waiting \u{25b8} Inbox", view.round),
-            n => format!("round {} \u{b7} Send {n} now \u{25b8} Inbox{key}", view.round),
+        self.archive_submission(&mut feedback, "feedback");
+    }
+
+    /// The drafts of the review waiting, when the open document is the journal's.
+    pub(in crate::app) fn journal_drafts(&self) -> Option<usize> {
+        self.open.store.journal_view().map(|(_, view)| all_drafts(view).len())
+    }
+
+    /// Whether a send the agent did not get waits to be tried again.
+    pub(in crate::app) fn journal_retry_waiting(&self) -> bool {
+        self.open.store.is_journal()
+            && self.review_loop.as_ref().is_some_and(|review_loop| review_loop.press.is_some())
+    }
+
+    /// The Send button over a document of the journal: the round under way and what `E` does.
+    pub(in crate::app) fn journal_send_label(&self) -> Option<String> {
+        let (_, view) = self.open.store.journal_view()?;
+        let round = view.round;
+        let waiting = all_drafts(view).len();
+        let target = self.delivery.describe();
+        let agent = self.delivery.is_agent();
+        Some(match (&self.send_state, waiting, self.journal_retry_waiting()) {
+            (SendState::Blocked(_), _, _) => {
+                format!("round {round} \u{b7} {target} at a dialog \u{b7} click to retry")
+            }
+            (_, _, true) if agent => format!("round {round} \u{b7} Send again to {target} \u{25b8}"),
+            (_, _, true) => format!("round {round} \u{b7} Copy again as feedback"),
+            (_, 0, false) if agent => format!("round {round} \u{b7} Sent \u{25b8} {target}"),
+            (_, 0, false) => format!("round {round} \u{b7} Copied"),
+            (_, n, false) if agent => format!("round {round} \u{b7} Send {n} to {target} \u{25b8}"),
+            (_, n, false) => format!("round {round} \u{b7} Copy {n} as feedback"),
         })
     }
 
-    /// The Send button's state over an Inbox document: sent once no draft waits.
-    pub(in crate::app) fn inbox_send_state(&self) -> Option<SendState> {
-        let waiting = self.inbox_drafts()?;
-        Some(if waiting == 0 { SendState::Sent } else { SendState::Ready })
+    /// The Send button's state over a document of the journal: sent once nothing waits.
+    pub(in crate::app) fn journal_send_state(&self) -> Option<SendState> {
+        let waiting = self.journal_drafts()?;
+        Some(if waiting == 0 && !self.journal_retry_waiting() { SendState::Sent } else { SendState::Ready })
     }
+}
 
-    /// Where a send goes, as the footer names it.
-    pub(in crate::app) fn send_target(&self) -> String {
-        if self.open.store.is_inbox() { "the Inbox".to_owned() } else { self.delivery.describe() }
+/// The archive's record of comment `id` a send carried: its note as written, or, for a reply
+/// or a sub-thread, its words as the view has them.
+fn record(id: &str, notes: &[Annotation], view: Option<&ThreadView>) -> AnnotationRecord {
+    if let Some(note) = notes.iter().find(|note| note.id == id) {
+        let kind = match note.anchor.kind() {
+            Kind::Comment => "comment",
+            Kind::LooksGood => "looks-good",
+            Kind::Delete => "delete",
+        };
+        return AnnotationRecord {
+            id: Some(id.to_owned()),
+            kind: Some(kind.to_owned()),
+            text: (!note.body.is_empty()).then(|| note.body.clone()),
+            original_text: (!note.anchor.original_text.is_empty()).then(|| note.anchor.original_text.clone()),
+        };
+    }
+    let node = view.and_then(|view| find(&view.threads, id));
+    AnnotationRecord {
+        id: Some(id.to_owned()),
+        kind: Some("comment".to_owned()),
+        text: node.map(|node| node.text.clone()),
+        original_text: node.map(|node| node.place.quote.clone()).filter(|quote| !quote.is_empty()),
     }
 }

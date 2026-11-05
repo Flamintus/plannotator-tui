@@ -1,19 +1,16 @@
-//! The Plannotator Inbox, as this app reviews through it. Plannotator's local server keeps
-//! threads between a person and coding agents; this app opens their messages and attached
-//! files as documents. The one seam is `plannotator_tui_journal::Inbox`, whose `Client`
-//! speaks the Inbox's device door and whose tests put a stand-in in its place.
+//! The review loop: `last`'s replies reviewed round after round through Plannotator's review
+//! journal, which keeps the comments, the agent's replies under them by id, sub-threads and
+//! resolutions, by host and session. The one seam is `plannotator_tui_journal::Journal`,
+//! whose `Cli` runs `plannotator threads` and whose tests put a stand-in in its place.
 //!
-//! All of it waits behind `[inbox] enabled`, off by default: off, nothing here runs.
+//! Off unless `PLANNOTATOR_TUI_REVIEW_LOOP` turns it on (the config file stays the one the
+//! released binary reads) and a `plannotator` with the journal's commands is on the `PATH`;
+//! off, nothing here runs and `last` is what it always was.
 //!
-//! - `command`: `plannotator-tui inbox`, the threads or one thread to review.
 //! - `passage`: a comment's quote found in a document's words as drawn.
-//! - `source`: a thread's agent messages and attached text files, as documents.
-//! - `tree`: what is in the Inbox's view of a thread's comments, and a comment's thread
-//!   as a document.
+//! - `tree`: what is in the view of a review's threads, and a comment's thread as a document.
 
-pub(crate) mod command;
 pub(crate) mod passage;
-pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod stand_in;
 pub(crate) mod tree;
@@ -22,100 +19,77 @@ use std::ops::Range;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
-use plannotator_tui_journal::Inbox;
-use plannotator_tui_schema::{DocumentSource, Provenance};
-use serde::{Deserialize, Serialize};
+use plannotator_tui_journal::{Cli, Journal, ReviewTarget};
 
-/// `[inbox]` in the config file.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, default)]
-pub(crate) struct InboxConfig {
-    /// Review through the Plannotator Inbox. Off by default.
-    pub(crate) enabled: bool,
+/// The journal, shared by every document of one review.
+pub(crate) type Shared = Rc<dyn Journal>;
+
+/// The variable that turns the review loop on: `1` or `true`.
+pub(crate) const SWITCH: &str = "PLANNOTATOR_TUI_REVIEW_LOOP";
+
+/// Whether `env` turns the review loop on.
+pub(crate) fn switched_on(env: impl Fn(&str) -> Option<String>) -> bool {
+    env(SWITCH).is_some_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true"))
 }
 
-/// The Inbox, shared by every document of one review.
-pub(crate) type Shared = Rc<dyn Inbox>;
-
-/// The name this terminal pairs with the Inbox under.
-const DEVICE_NAME: &str = "plannotator-tui";
-
-/// The Inbox under this process's data directory, this terminal paired with it.
-pub(crate) fn connect() -> Result<Shared> {
-    let data_dir = crate::workspace_paths::data_dir();
-    let client = plannotator_tui_journal::connect(&data_dir, DEVICE_NAME)
-        .with_context(|| format!("connecting to the Inbox under {}", data_dir.display()))?;
-    Ok(Rc::new(client))
+/// The review of `last`'s replies, through the journal of `host`'s session `session`.
+#[derive(Clone)]
+pub(crate) struct Review {
+    pub(crate) journal: Shared,
+    /// The session's review: `last` with Plannotator's name of the host.
+    pub(crate) target: ReviewTarget,
 }
 
-/// What an Inbox document is: the words its comments are on.
+impl std::fmt::Debug for Review {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Review").field("target", &self.target).finish_non_exhaustive()
+    }
+}
+
+impl Review {
+    /// The review of `host`'s session `session`, `host` as this app names it (`claude`).
+    pub(crate) fn of(journal: Shared, host: &str, session: &str) -> Self {
+        let host = crate::archive::origin_label(host).to_owned();
+        Self { journal, target: ReviewTarget::Last { host, session: session.to_owned() } }
+    }
+}
+
+/// The review loop for `last`: `Ok(None)` when it is off; an error says why it cannot run
+/// although it is on. `session` is the host's own id for the session, when it was found
+/// exactly: a folder's newest transcript is a guess, and gets no review of its own.
+pub(crate) fn connect(session: Option<&str>) -> Result<Option<Shared>> {
+    if !switched_on(|key| std::env::var(key).ok()) {
+        return Ok(None);
+    }
+    session.context("this agent's session is not identified exactly, so it has no review of its own")?;
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let program = Cli::find(&path).context("no `plannotator` on the PATH")?;
+    let cli = Cli::new(program, crate::workspace_paths::data_dir());
+    cli.probe().context("plannotator")?;
+    Ok(Some(Rc::new(cli)))
+}
+
+/// What a document of the review loop is: the words its comments are on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Target {
-    /// An agent's message.
-    Message { thread_id: String, message_id: String },
-    /// A text file attached to an agent's message, at the version its comments name.
-    Attachment {
-        thread_id: String,
-        message_id: String,
-        attachment_id: String,
-        /// The file's path, as the thread's comments name it.
-        path: String,
-        /// `current`, or the sent version's sha256, as the Inbox answered it.
-        version: String,
-        /// The version the agent sent, rather than the file as it is now.
-        sent: bool,
-    },
+    /// An agent's message, by the id its host gave it.
+    Message { message_id: String },
     /// A comment's thread, as `tree::document` writes it: its comments are the sub-threads
     /// on the words of its messages, each message's words at its source range.
-    Thread { thread_id: String, comment_id: String, messages: Vec<(String, Range<usize>)> },
-}
-
-impl Target {
-    pub(crate) fn thread_id(&self) -> &str {
-        match self {
-            Self::Message { thread_id, .. }
-            | Self::Attachment { thread_id, .. }
-            | Self::Thread { thread_id, .. } => thread_id,
-        }
-    }
-
-    /// The document of these words: transient, since the Inbox keeps what is said about it.
-    pub(crate) fn source(&self, name: String, text: String) -> DocumentSource {
-        DocumentSource::new(text, name, true, self.provenance())
-    }
-
-    pub(crate) fn provenance(&self) -> Provenance {
-        match self {
-            Self::Message { thread_id, message_id } => Provenance::Inbox {
-                thread_id: thread_id.clone(),
-                message_id: message_id.clone(),
-                attachment_id: None,
-            },
-            Self::Attachment { thread_id, message_id, attachment_id, .. } => Provenance::Inbox {
-                thread_id: thread_id.clone(),
-                message_id: message_id.clone(),
-                attachment_id: Some(attachment_id.clone()),
-            },
-            Self::Thread { thread_id, comment_id, .. } => Provenance::Inbox {
-                thread_id: thread_id.clone(),
-                message_id: comment_id.clone(),
-                attachment_id: None,
-            },
-        }
-    }
+    Thread { comment_id: String, messages: Vec<(String, Range<usize>)> },
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, reason = "tests assert by panicking")]
 mod tests {
-    use crate::config::Config;
+    use super::switched_on;
 
     #[test]
-    fn the_inbox_is_off_unless_the_config_turns_it_on() {
-        assert!(!Config::default().inbox.enabled);
-        assert!(!Config::parse("").expect("parses").inbox.enabled);
-        assert!(Config::parse("[inbox]\nenabled = true\n").expect("parses").inbox.enabled);
-        let err = Config::parse("[inbox]\nenable = true\n").expect_err("a typo is an error");
-        assert!(err.to_string().contains("enable"), "{err}");
+    fn only_one_or_true_turns_the_review_loop_on() {
+        let env = |value: &'static str| move |key: &str| (key == super::SWITCH).then(|| value.to_owned());
+        assert!(switched_on(env("1")));
+        assert!(switched_on(env(" TRUE ")));
+        assert!(!switched_on(env("0")));
+        assert!(!switched_on(env("")));
+        assert!(!switched_on(|_| None));
     }
 }

@@ -1,4 +1,4 @@
-//! The stand-in's comments, and the view of them in the Inbox's shape: each comment with
+//! The stand-in's comments, and the view of them in the journal's shape: each comment with
 //! its replies, and the sub-threads on the words of each, folded once resolved with nothing
 //! open under it.
 
@@ -9,7 +9,10 @@ use plannotator_tui_journal::{
 /// A comment as the stand-in keeps it: a comment, a reply under one (`re`), or a sub-thread
 /// on a message's words (`parent`).
 #[derive(Debug, Clone)]
-#[allow(clippy::struct_excessive_bools, reason = "independent facts of one comment, as the Inbox keeps them")]
+#[allow(
+    clippy::struct_excessive_bools,
+    reason = "independent facts of one comment, as the journal keeps them"
+)]
 pub(crate) struct Comment {
     pub(crate) id: String,
     pub(crate) on: On,
@@ -21,6 +24,10 @@ pub(crate) struct Comment {
     pub(crate) resolved: bool,
     pub(crate) re: Option<String>,
     pub(crate) parent: Option<String>,
+    /// Where a sub-thread's passage starts in its parent's words, as it was written.
+    pub(crate) quote_offset: Option<u64>,
+    /// The person asks for the words to go.
+    pub(crate) deletion: bool,
     /// An agent's reply.
     pub(crate) agent: bool,
 }
@@ -38,11 +45,13 @@ impl Comment {
             resolved: false,
             re: None,
             parent: None,
+            quote_offset: None,
+            deletion: false,
             agent: false,
         }
     }
 
-    /// A comment the window made on message `message_id`'s `quote`, sent unless `draft`.
+    /// A comment another client made on message `message_id`'s `quote`, sent unless `draft`.
     pub(crate) fn on_message(id: &str, message_id: &str, quote: &str, text: &str, draft: bool) -> Self {
         let mut comment = Self::draft(id, On::Message { message_id: message_id.into() }, quote, text);
         comment.draft = draft;
@@ -58,7 +67,7 @@ impl Comment {
     }
 }
 
-/// The comments as the Inbox's view lists them.
+/// The comments as the review's view lists them.
 pub(super) fn view(comments: &[Comment]) -> Vec<ThreadNode> {
     comments.iter().filter(|c| c.re.is_none() && c.parent.is_none()).map(|c| node(c, comments)).collect()
 }
@@ -77,7 +86,10 @@ fn node(comment: &Comment, comments: &[Comment]) -> ThreadNode {
     let sub_threads = subs(&comment.id, comments);
     let under = sub_threads.iter().chain(replies.iter().flat_map(|reply| &reply.sub_threads));
     let folded = comment.resolved && under.clone().all(|sub| sub.folded);
-    let parent = comment.parent.clone().map(|id| Parent { id, quote_offset: 0 });
+    let parent = comment
+        .parent
+        .clone()
+        .map(|id| Parent { id, quote_offset: comment.quote_offset.unwrap_or_default() });
     ThreadNode {
         id: comment.id.clone(),
         reply_id: if comment.draft { String::new() } else { "snd_1".into() },

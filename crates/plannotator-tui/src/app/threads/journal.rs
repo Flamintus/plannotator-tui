@@ -1,8 +1,8 @@
-//! The flow of a document whose comments the Inbox keeps, from the Inbox's view: each
-//! comment with its replies and the sub-threads on their words, the person's drafts and
-//! what became of each send, the agent's replies not seen yet marked new, and a comment
-//! whose words are no longer found boxed under the last block, marked so. The Inbox decides
-//! what folds; a draft no one answered stays a bubble in the rail.
+//! The flow of a document whose comments the review's journal keeps, from the review's view:
+//! each comment with its replies and the sub-threads on their words, the person's drafts and
+//! what became of each send, the agent's replies not seen yet marked new, and a comment whose
+//! words are no longer found boxed under the last block, marked so. The view decides what
+//! folds; a draft no one answered stays a bubble in the rail.
 
 use std::collections::HashSet;
 
@@ -69,11 +69,11 @@ impl Thread {
 }
 
 impl App {
-    /// The open document's threads by block, from the Inbox's view; `None` for a document
-    /// whose notes the Inbox does not keep.
-    pub(super) fn inbox_threads(&mut self) -> Option<Vec<(usize, Thread)>> {
-        let (_, _, view) = self.open.store.inbox_thread()?;
-        let seen = self.inbox.as_mut()?.seen(view);
+    /// The open document's threads by block, from the review's view; `None` for a document
+    /// whose notes the journal does not keep.
+    pub(super) fn journal_threads(&mut self) -> Option<Vec<(usize, Thread)>> {
+        let (_, view) = self.open.store.journal_view()?;
+        let seen = self.review_loop.as_mut()?.seen(view);
         let open = &self.open;
         let node = |id: &str| tree::find(&view.threads, id);
         let mut threads = Vec::new();

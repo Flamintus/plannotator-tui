@@ -9,9 +9,9 @@
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
 //! thread or the width changes.
 //!
-//! A document whose comments the Inbox keeps draws them from the Inbox's view (`inbox`),
-//! sub-threads, sends and what is new included; `toggle-thread` draws a folded thread open,
-//! or folds it again (`fold`).
+//! A document whose comments the review's journal keeps draws them from the review's view
+//! (`journal`), sub-threads, sends and what is new included; `toggle-thread` draws a folded
+//! thread open, or folds it again (`fold`).
 
 mod fold;
 mod journal;
@@ -41,7 +41,7 @@ pub(super) struct Thread {
     kind: Kind,
     quote: String,
     resolved: bool,
-    /// Drawn folded: the source's word when it has one (the Inbox's view), else `settled`;
+    /// Drawn folded: the source's word when it has one (the review's view), else `settled`;
     /// open when unfolded by hand.
     folded: Option<bool>,
     /// What the head says after the state: not found, what became of its send, live.
@@ -167,7 +167,7 @@ impl App {
     /// Match the flow to the open document's notes and width, and keep its rows free under
     /// their blocks. When nothing changed this compares the threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
-        let threads = self.inbox_threads().unwrap_or_else(|| {
+        let threads = self.journal_threads().unwrap_or_else(|| {
             let open = &self.open;
             let placed = open.store.placed();
             placed

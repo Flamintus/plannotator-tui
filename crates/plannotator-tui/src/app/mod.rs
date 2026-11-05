@@ -64,7 +64,7 @@ enum Mode {
     Compose,
     /// Editing the body of an existing annotation (by id).
     Edit(String),
-    /// Typing the person's reply under an Inbox comment (by id).
+    /// Typing the person's reply under a comment of the review loop (by id).
     Reply(String),
     /// Typing the path of an image to attach to an annotation (by id).
     AttachImage(String),
@@ -211,8 +211,9 @@ pub(crate) struct App {
     /// review's annotations live only in memory, so the one being left is kept here
     /// rather than dropped.
     pick_cache: HashMap<usize, Open>,
-    /// Set when the review goes through the Plannotator Inbox.
-    inbox: Option<journal::InboxReview>,
+    /// Set when the review loop runs: `last`'s replies reviewed through Plannotator's review
+    /// journal.
+    review_loop: Option<journal::ReviewLoop>,
     message_host: String,
     /// The transcript path, for the archive's `transcript`; never the session id.
     message_transcript: String,
@@ -298,7 +299,7 @@ impl App {
             pick_open: 0,
             pick_return: 0,
             pick_cache: HashMap::new(),
-            inbox: None,
+            review_loop: None,
             message_host: String::new(),
             message_transcript: String::new(),
             message_session: None,

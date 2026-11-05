@@ -373,10 +373,10 @@ impl App {
                 n => format!(" · {n} images"),
             };
             let resolved = if placed.annotation.state == State::Resolved { " · resolved" } else { "" };
-            let inbox = self.inbox_tag(&placed.annotation.id);
+            let journal = self.journal_tag(&placed.annotation.id);
             let title = Span::styled(
                 format!(
-                    " {} {}{images}{sent}{resolved}{inbox} ",
+                    " {} {}{images}{sent}{resolved}{journal} ",
                     glyph(kind),
                     short_id(&placed.annotation.id)
                 ),
@@ -407,7 +407,8 @@ impl App {
                 .filter_map(|(action, label)| self.keys.labelled(action, label))
                 .collect::<Vec<_>>()
                 .join(" · ");
-            let question = format!(" send feedback to {} before quitting? {answers}", self.send_target());
+            let question =
+                format!(" send feedback to {} before quitting? {answers}", self.delivery.describe());
             frame.render_widget(Paragraph::new(Line::from(Span::raw(question).bold())), area);
             return;
         }
@@ -548,7 +549,7 @@ impl App {
         // last.
         let find =
             if self.tree.is_some() && self.pending.is_none() { key(Action::QuickOpen, "find") } else { None };
-        help.into_iter().chain([find]).chain(self.inbox_help()).flatten().collect()
+        help.into_iter().chain([find]).chain(self.journal_help()).flatten().collect()
     }
 }
 

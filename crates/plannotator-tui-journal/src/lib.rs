@@ -1,44 +1,31 @@
-//! A client of the Plannotator Inbox's person API, for terminal clients.
+//! A client of Plannotator's review journal, for terminal clients.
 //!
-//! The Inbox (Plannotator's local server) keeps threads between a person and coding agents;
-//! its device door (`/api/inbox/device/*`) is the API every client that is not its own
-//! window uses. This crate speaks it from a terminal: it finds the Inbox, pairs locally,
-//! reads threads and the computed view of their comment threads, writes comments, replies,
-//! sub-threads, resolutions and sends, and follows the event stream.
+//! Plannotator keeps each review's comment threads in a journal on disk, by target
+//! (`reviews/<key>/journal.jsonl` under its data directory): the person's comments, replies
+//! and sub-threads, their resolutions, the sends that carry them to the agent's session, and
+//! the agent's replies under them by id. Its CLI, `plannotator threads`, reads and writes the
+//! journal for a client with no server of its own; the agent answers through the same CLI
+//! (`plannotator reply`). This crate runs it.
 //!
-//! - [`discover`] reads `inbox/inbox.json` under the data directory and checks the Inbox's
-//!   health; [`connect`] also pairs (or reuses the kept token) and gives a [`Client`].
-//! - [`Inbox`] is the seam: [`Client`] speaks HTTP, an application's tests put a stand-in.
-//! - [`Inbox::watch`] gives a [`Watch`]: threads of its own, events on a channel.
+//! - [`Journal`] is the seam: [`Cli`] runs `plannotator threads <action> -` with the call's
+//!   JSON on stdin; an application's tests put a stand-in.
+//! - The thread view ([`ThreadView`], `v` [`CONTRACT`]) is computed by Plannotator: rounds,
+//!   states, folds, statuses, where each sub-thread sits. A client draws it and applies none
+//!   of those rules itself.
+//! - [`Journal::stamp`] tells when a review's journal was last written without running the
+//!   CLI, so a client reads the view again only when it moved.
 //!
-//! Synchronous, no runtime. The contract it reads is E7's (`v` [`CONTRACT`]): a route E7
-//! has not put on the door yet answers [`Error::RouteMissing`], local pairing on an Inbox
-//! without E7 a [`Error::Refused`] or [`Error::RouteMissing`].
+//! Synchronous, no runtime: every call runs the CLI once, and stops it if it does not answer
+//! in time.
 
-mod client;
-mod discovery;
+mod cli;
 mod error;
-mod http;
-mod pairing;
 mod records;
 mod requests;
-mod sse;
 mod view;
-mod watch;
 
-pub use client::{CONTRACT, Client, Inbox, connect};
-pub use discovery::{Discovery, discover};
+pub use cli::{CONTRACT, Cli, Journal, Stamp};
 pub use error::Error;
-pub use pairing::{Device, PLATFORM, Paired, Token, pair_local, token_path};
-pub use records::{
-    AttachmentText, CommentRecord, CommentSend, Deposit, Health, LastThread, Message, ProjectSessions,
-    SendTarget, Session, SessionProject, Thread, ThreadRow,
-};
-pub use requests::{
-    AttachmentVersion, IdempotencyKey, NewComment, NewReply, NewSubThread, Passage, ReviewTarget, SendMode,
-    Target,
-};
-pub use view::{
-    Anchor, Author, FileVersion, Parent, Place, ReplyNode, Side, State, Status, ThreadNode, ThreadView,
-};
-pub use watch::{Event, GATHER, Kind, Record, Watch};
+pub use records::{Send, SendTo, Sent, Viewed};
+pub use requests::{IdempotencyKey, NewComment, Placement, ReviewTarget, SendMode};
+pub use view::{Anchor, Author, Parent, Place, ReplyNode, State, Status, ThreadNode, ThreadView};

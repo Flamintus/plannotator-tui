@@ -1,9 +1,10 @@
-//! The computed, versioned view of an Inbox thread's comment threads: the mirror of
-//! `InboxCommentThreadView` (`packages/core/inbox-comment-sends.ts`, brick E1, `v: 1`).
+//! The computed, versioned view of a review's comment threads: the mirror of
+//! `ReviewThreadView` (`packages/core/review-threads.ts`, `v: 1`), which `threads view`
+//! prints.
 //!
-//! The server computes everything a client draws: rounds, state, folds, statuses, live
+//! Plannotator computes everything a client draws: rounds, state, folds, statuses, live
 //! threads, where each sub-thread sits. A client reads it and never applies those rules
-//! itself. Fields the Inbox adds later are kept in `other`, so nothing is lost on a read.
+//! itself. Fields the journal adds later are kept in `other`, so nothing is lost on a read.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -55,7 +56,7 @@ pub struct Place {
     pub on: Anchor,
     /// The words, lines or part it is on, as the person selected them.
     pub quote: String,
-    /// Its words were not found in the file the last time the window showed it.
+    /// Its words were not found in the target the last time a client showed it.
     pub unanchored: bool,
     /// A sub-thread: the message it is on and where its passage starts in those words.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -79,7 +80,7 @@ pub struct ReplyNode {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,
     pub sub_threads: Vec<ThreadNode>,
-    /// Replies to this reply, for a source whose replies nest. The Inbox never fills it.
+    /// Replies to this reply, for a source whose replies nest. The journal never fills it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub replies: Option<Vec<ReplyNode>>,
     #[serde(flatten)]
@@ -107,45 +108,32 @@ pub enum Status {
     Unknown,
 }
 
-/// Where a comment is.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// Where a comment is, in its review's target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Anchor {
-    /// An agent's message's words.
+    /// A passage of an agent's message, by the id the client names it with.
     Message { message_id: String },
-    /// A file attached to the thread: its lines or moment, on its current or sent version.
+    /// A file's words, and the lines they are on when known.
     File {
         path: String,
-        version: FileVersion,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lines: Option<[u64; 2]>,
-        /// A video comment's moment, in seconds.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        at: Option<f64>,
     },
-    /// A guided review's diff: a file of its patch, one side, a line range.
-    Guide { message_id: String, file: String, side: Side, lines: [u64; 2] },
+    /// The plan under review: the version commented and the lines, when known.
+    Plan {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        version: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lines: Option<[u64; 2]>,
+    },
     /// A place this client does not know yet.
     #[serde(other)]
     Unknown,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum FileVersion {
-    Current,
-    Sent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Side {
-    Old,
-    New,
-}
-
-/// The message a sub-thread is on, and where its passage starts in those words (UTF-16
-/// units of the words as drawn: the server's count, never a client's).
+/// The message a sub-thread is on, and where its passage starts in its words (UTF-16 units,
+/// whitespace runs counted as one: `passageOffset` in Plannotator's `passage.ts`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Parent {
     pub id: String,

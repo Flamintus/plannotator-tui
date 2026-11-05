@@ -1,64 +1,75 @@
-//! The Inbox review against a stand-in Inbox (`crate::journal::stand_in`): opening its
-//! documents (`open`), the comments it keeps (`kept`), sending them (`send`), following the
-//! thread live (`live`), and the threads drawn and acted on (`threads`), from a view the
-//! server's own code computed too (`contract`).
+//! The review loop against a stand-in journal (`crate::journal::stand_in`): `last` with the
+//! loop off or on (`loop_on`), the comments the journal keeps (`kept`), sending them
+//! (`send`), the journal followed and the threads drawn and acted on (`threads`), from a view
+//! Plannotator's own CLI computed too (`contract`).
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
 mod contract;
 mod kept;
-mod live;
-mod open;
+mod loop_on;
+mod real;
 mod send;
 mod threads;
 
 use std::rc::Rc;
 
 use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
-use serde_json::json;
 
 use super::super::App;
-use crate::delivery::Discard;
-use crate::journal::source::thread_documents;
-use crate::journal::stand_in::{StandIn, attached, thread};
+use super::super::review_test_support::RecordingDelivery;
+use crate::journal::stand_in::StandIn;
 
-/// An Inbox with one thread: two agent messages, the first with a Markdown file and a
-/// picture attached, and the person's message between them.
-pub(super) fn thread_inbox() -> Rc<StandIn> {
-    let inbox = Rc::new(StandIn::default());
-    {
-        let mut state = inbox.state.borrow_mut();
-        state.threads.push(thread(
-            "thr_1",
-            "The plan",
-            &[
-                (
-                    "msg_a1",
-                    true,
-                    "First answer.",
-                    json!([attached("att_1", "plan.md", "markdown"), attached("att_2", "shot.png", "image")]),
-                ),
-                ("msg_p1", false, "Go on.", json!([])),
-                ("msg_a2", true, "Second answer.", json!([])),
-            ],
-        ));
-        let words = serde_json::from_value(json!({ "version": "current", "text": "# Plan\n\nShip it.\n" }));
-        state.files.push(("att_1".into(), words.expect("words")));
-    }
-    inbox
+/// The newest reply `last` offers, with a heading and two points.
+pub(super) const NEWEST: &str =
+    "# Rollout\n\nThe on-call engineer turns the new checkout off.\n\nWe ship on Friday.\n";
+
+/// `last` on two replies of Claude Code's session `ses_a`, newest first, without the loop.
+pub(super) fn last_app(newest: bool, delivery: RecordingDelivery) -> App {
+    last_app_with(&[("m2", NEWEST), ("m1", "First reply.\n")], newest, delivery)
 }
 
-/// A review of `inbox`'s thread `thr_1`, the picker up on its documents.
-pub(super) fn thread_app_of(inbox: &Rc<StandIn>) -> App {
-    let found = thread_documents(inbox.as_ref(), "thr_1", false).expect("documents");
-    App::open_inbox_thread(found, inbox.clone(), 80, Box::new(Discard)).expect("app")
+/// `last` on `replies`, `(id, words)` newest first, of Claude Code's session `ses_a`.
+pub(super) fn last_app_with(replies: &[(&str, &str)], newest: bool, delivery: RecordingDelivery) -> App {
+    let replies = replies
+        .iter()
+        .map(|(id, text)| plannotator_tui_hosts::Message {
+            id: (*id).into(),
+            role: plannotator_tui_hosts::Role::Assistant,
+            text: (*text).into(),
+            at: None,
+        })
+        .collect();
+    App::open_message(
+        "claude",
+        "/tmp/transcript.jsonl",
+        Some("ses_a"),
+        replies,
+        80,
+        Box::new(delivery),
+        newest,
+    )
+    .expect("app")
 }
 
-pub(super) fn thread_app() -> (App, Rc<StandIn>) {
-    let inbox = thread_inbox();
-    (thread_app_of(&inbox), inbox)
+/// The same with the review loop on, over `journal`.
+pub(super) fn loop_app_of(journal: &Rc<StandIn>, delivery: RecordingDelivery) -> App {
+    let mut app = last_app(true, delivery);
+    app.review_in_journal(Ok(Some(journal.clone())));
+    app
+}
+
+/// A review with the loop on over an empty journal, the newest reply open.
+pub(super) fn loop_app() -> (App, Rc<StandIn>, RecordingDelivery) {
+    let journal = Rc::new(StandIn::default());
+    let delivery = RecordingDelivery::default();
+    (loop_app_of(&journal, delivery.clone()), journal, delivery)
 }
 
 pub(super) fn press(app: &mut App, code: KeyCode) {
     app.handle_event(&Event::Key(KeyEvent::from(code))).expect("key");
+}
+
+pub(super) fn writes(journal: &StandIn) -> Vec<String> {
+    journal.state.borrow().writes.clone()
 }

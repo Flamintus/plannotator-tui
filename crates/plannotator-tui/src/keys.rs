@@ -60,8 +60,8 @@ pub(crate) enum Action {
     /// Copy the waiting selection to the clipboard.
     #[serde(rename = "copy")]
     CopySelection,
-    /// The current note's thread, through the Inbox: reply under it, resolve it or open it
-    /// again, open it as a document; and draw folded threads open, or fold them again.
+    /// The current note's thread, while the review loop runs: reply under it, resolve it or
+    /// open it again, open it as a document; and draw folded threads open, or fold them again.
     Reply,
     Resolve,
     OpenThread,

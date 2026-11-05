@@ -16,10 +16,6 @@ pub enum Provenance {
     Workspace { workspace_id: String, document_id: String },
     /// An agent's message, handed in by a host integration.
     AgentMessage { host: String, session: Option<String>, message_id: Option<String> },
-    /// A message of a Plannotator Inbox thread, or a file attached to it: the Inbox keeps
-    /// its comments. `message_id` is the Inbox's id of the message, or of the comment whose
-    /// thread is opened as a document.
-    Inbox { thread_id: String, message_id: String, attachment_id: Option<String> },
     /// Standard input or another one-off feed.
     Stdin,
 }

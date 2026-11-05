@@ -1,6 +1,6 @@
-//! Walking the Inbox's view of a thread's comments, a tree: each comment with its replies,
-//! and the sub-threads on the words of each, at any depth. Read only: the Inbox computes
-//! the tree; this finds what is in it.
+//! Walking the view of a review's threads, a tree: each comment with its replies, and the
+//! sub-threads on the words of each, at any depth. Read only: Plannotator computes the tree;
+//! this finds what is in it.
 
 use std::ops::Range;
 
@@ -35,7 +35,7 @@ pub(crate) fn drafts(node: &ThreadNode, out: &mut Vec<String>) {
     }
 }
 
-/// Every draft of the thread, in the view's order.
+/// Every draft of the review, in the view's order.
 pub(crate) fn all_drafts(view: &ThreadView) -> Vec<String> {
     let mut out = Vec::new();
     for node in &view.threads {
