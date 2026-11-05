@@ -34,6 +34,9 @@ impl App {
     }
 
     pub(super) fn resend_all(&mut self) -> Result<()> {
+        if self.path_resend_all() {
+            return Ok(());
+        }
         self.send_feedback_scope(SendScope::All)
     }
 

@@ -54,6 +54,12 @@ impl App {
     /// `E`: every draft of the review sent, ending the round, and the journal's text pasted
     /// into the agent's pane; a send the agent did not get yet goes again first.
     pub(in crate::app) fn send_journal(&mut self) {
+        self.send_journal_round(false);
+    }
+
+    /// The same; `named`: a round even with no draft, which names the threads still open to
+    /// the agent (the Review menu's resend all).
+    pub(in crate::app) fn send_journal_round(&mut self, named: bool) {
         let Some(review) = self.loop_review() else { return };
         let retry = self.keys.hint(Action::Send);
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
@@ -65,7 +71,7 @@ impl App {
             let Some(view) = self.waiting_view(&review) else { return };
             if let Some(left) = self.left_pending(&review, &view) {
                 left
-            } else if all_drafts(&view).is_empty() {
+            } else if !named && all_drafts(&view).is_empty() {
                 self.status = Some("nothing to send".into());
                 return;
             } else {

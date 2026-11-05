@@ -103,19 +103,50 @@ fn a_gated_review_ends_rounds_with_e_and_the_review_with_approve() {
 }
 
 #[test]
-fn the_review_menu_leaves_the_journals_comments_alone() {
+fn the_review_menu_acts_on_the_journals_threads() {
     let journal = Rc::new(StandIn::default());
     let (root, mut app, delivery) = file_loop("menu", &journal);
     app.add_quote_annotation("one", Kind::Comment, "First.".into()).expect("comment");
+    let id = app.open.store.placed()[0].annotation.id.clone();
     press(&mut app, KeyCode::Char('E'));
-    let before = writes(&journal);
-    for key in ['R', 'F', 'U', 'H'] {
-        press(&mut app, KeyCode::Char(key));
-        assert!(app.status.as_deref().unwrap_or_default().contains("outside the loop"), "{key}");
-    }
-    assert_eq!(writes(&journal), before);
-    assert_eq!(delivery.calls.borrow().len(), 1, "nothing resent");
-    assert_eq!(app.open.store.placed().len(), 1, "nothing archived");
+    app.add_quote_annotation("two", Kind::Comment, "A draft.".into()).expect("draft");
+    press(&mut app, KeyCode::Char('F'));
+    assert_eq!(writes(&journal).last().map(String::as_str), Some(format!("resolve {id} true").as_str()));
+    assert_eq!(app.status.as_deref(), Some("resolved 1 sent thread(s)"), "the draft stays");
+    press(&mut app, KeyCode::Char('U'));
+    assert_eq!(writes(&journal).last().map(String::as_str), Some(format!("resolve {id} false").as_str()));
+    press(&mut app, KeyCode::Char('F'));
+    press(&mut app, KeyCode::Char('H'));
+    assert_eq!(app.archive_items.len(), 1, "the archive lists the resolved thread");
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(writes(&journal).last().map(String::as_str), Some(format!("resolve {id} false").as_str()));
+    press(&mut app, KeyCode::Char('R'));
+    let sends = journal.state.borrow().sends.clone();
+    assert_eq!(sends.len(), 2, "resend all: a round naming the threads still open");
+    assert_eq!(delivery.calls.borrow().len(), 2);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn a_files_own_notes_become_drafts_of_its_review_once_and_stay_in_its_record() {
+    let journal = Rc::new(StandIn::default());
+    let (root, mut app, _) = file_app("own");
+    app.add_quote_annotation("two", Kind::Comment, "Kept outside the loop.".into()).expect("note");
+    let id = app.open.store.placed()[0].annotation.id.clone();
+    app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
+    assert_eq!(writes(&journal), [format!("comment {id}")]);
+    assert!(app.status.as_deref().unwrap_or_default().contains("1 note(s) kept outside the loop"));
+    journal.state.borrow_mut().comments.clear();
+    // The pane opened again on an empty review (one an approval closed): nothing goes twice.
+    let path = file_of(&app);
+    app.open = Open::new(crate::app::read_file(&path).expect("read"), 100, &app.data_dir, &app.project)
+        .expect("open");
+    app.review_loop = None;
+    app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
+    assert_eq!(writes(&journal).len(), 1);
+    let location = crate::store::Location::for_file(&app.data_dir, &app.project, &path);
+    let own = crate::store::Store::load(&location, &app.open.doc).expect("its record");
+    assert_eq!(own.len(), 1, "the record keeps it for when the loop is off");
     let _ = std::fs::remove_dir_all(root);
 }
 

@@ -374,8 +374,9 @@ the agent answers with too:
   it. A note the journal does not take stays here, `· not saved` in its title, until a write
   takes it. Nothing the journal says moves the document while a comment is typed. The review
   outlives the pane: `last` on the same session, or the same file or folder, brings back its
-  comments, the replies and the round. A file's notes kept outside the loop stay in its own
-  record, for when the loop is off.
+  comments, the replies and the round. A file's notes kept outside the loop, in its own record,
+  become drafts of its review the first time the file opens in the loop, once; the record keeps
+  them for when the loop is off.
 - `E` (or the Send button) sends every draft and ends the round: the journal marks them sent
   and composes what the agent reads, each comment under its id with how to answer through
   `plannotator reply`; plannotator-tui pastes that text into the agent's pane as it pastes any
@@ -386,9 +387,11 @@ the agent answers with too:
   host's to hand over). The button shows the round under way: `round 2 · Send 3 to claude
   in w1:p2 ▸`. A round carries every draft of the review, drafts left by an earlier pane
   included, which the footer counts when the pane opens.
-- A folder's tree counts the review's comments on each file. The Review menu (resend all,
-  finish, undo, the archive) acts on the notes a file's own record keeps, so it does nothing
-  while the loop runs, and says so.
+- A folder's tree counts the review's comments on each file. The Review menu acts on the
+  review's threads, a finished note being a resolved thread: `F` resolves the sent threads
+  still open (drafts stay), `U` opens again what it resolved, `H` lists the resolved threads
+  and restoring one opens it again, and `R` ends a round with nothing new, which names every
+  thread still open to the agent.
 - A gated review (`--gate`, `annotate.gate`) keeps its Approve: `E` ends a round and the review
   stays open, so a review closed without approving after its rounds is dismissed; Approve
   carries every draft (comments, replies, sub-threads) as its notes, as it carries unsent

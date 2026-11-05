@@ -235,7 +235,9 @@ impl Journal for StandIn {
             comment.send = Some(send_id.clone());
             carried.push(comment.id.clone());
         }
-        if mode == SendMode::Round && carried.is_empty() {
+        // A round names the threads still open, sent before: it is empty only without them.
+        let open = state.comments.iter().any(|c| !c.agent && !c.draft && !c.resolved && c.re.is_none());
+        if mode == SendMode::Round && carried.is_empty() && !open {
             return Err(refused("send", "empty"));
         }
         if mode == SendMode::Round {

@@ -7,6 +7,8 @@
 
 mod act;
 mod left;
+mod menu;
+mod own;
 mod paths;
 mod send;
 mod watch;

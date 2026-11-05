@@ -73,6 +73,9 @@ pub(crate) struct Delivered {
     pub(crate) annotation_ids: Vec<String>,
 }
 
+/// The field of a record's note that names the review of the review loop it was written to.
+const IN_JOURNAL: &str = "plannotator_tui_journal";
+
 /// A resolved annotation: the record plus where it currently sits in the source.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Placed<'a> {
@@ -317,6 +320,40 @@ impl Store {
             .collect();
         out.sort_by_key(|p| p.range.start);
         out
+    }
+
+    /// The active notes of a file's record not yet written to review `review` of the review
+    /// loop (`mark_in_journal`).
+    pub(crate) fn outside_journal(&self, review: &str) -> Vec<Annotation> {
+        let written =
+            |note: &&Annotation| note.other.get(IN_JOURNAL).and_then(|key| key.as_str()) == Some(review);
+        self.annotations.iter().filter(|note| !written(note)).cloned().collect()
+    }
+
+    /// Notes `ids` of a file's record are written to review `review` of the review loop: the
+    /// record says so, and keeps them for reviews outside the loop.
+    pub(crate) fn mark_in_journal(&mut self, ids: &[String], review: &str) -> Result<()> {
+        for note in self.annotations.iter_mut().filter(|note| ids.contains(&note.id)) {
+            note.other.insert(IN_JOURNAL.to_owned(), review.into());
+        }
+        self.save()
+    }
+
+    /// For a store the journal keeps: `notes` from elsewhere (a file's own record) written to
+    /// it as drafts, the ones it does not list yet; the ids it took.
+    pub(crate) fn adopt(&mut self, notes: Vec<Annotation>, doc: &Document) -> Vec<String> {
+        if !self.is_journal() {
+            return Vec::new();
+        }
+        let ids: Vec<String> = notes.iter().map(|note| note.id.clone()).collect();
+        for note in notes {
+            if !self.annotations.iter().any(|known| known.id == note.id) {
+                self.annotations.push(note);
+            }
+        }
+        self.resolve_all(doc);
+        self.save_to_journal();
+        ids.into_iter().filter(|id| !self.journal_unsaved(id)).collect()
     }
 
     pub(crate) fn has_images(&self, id: &str) -> bool {

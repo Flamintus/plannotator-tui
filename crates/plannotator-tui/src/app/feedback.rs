@@ -135,6 +135,14 @@ impl App {
     }
 
     pub(super) fn review_counts(&self) -> ReviewCounts {
+        if let Some(counts) = self.path_counts() {
+            return counts.values().fold(ReviewCounts::default(), |mut sum, count| {
+                sum.pending += count.pending;
+                sum.sent += count.sent;
+                sum.archived += count.archived;
+                sum
+            });
+        }
         if self.tree.is_none() {
             return ReviewCounts::for_store(&self.open.store);
         }
@@ -153,6 +161,9 @@ impl App {
     /// Both active and archive-only records belong to the review. Restrict project-wide
     /// records to this folder; a sibling in the same git project must not be sent.
     pub(super) fn review_files(&self) -> Vec<PathBuf> {
+        if let Some(files) = self.path_files() {
+            return files;
+        }
         let Some(tree) = &self.tree else {
             return match &self.open.source.provenance {
                 Provenance::File { path } => vec![path.clone()],

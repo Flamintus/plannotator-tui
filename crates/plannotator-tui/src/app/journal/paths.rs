@@ -1,16 +1,15 @@
 //! The review loop over a file or a folder sent to an agent in Herdr: one review, named by
 //! the file's or the folder's real path, each file's notes the journal's comments on it
 //! (`Target::File`), drafts until `E` sends the round. The tree and the Review menu count the
-//! review's comments by file. The menu's actions on the notes a file's own record keeps
-//! (resend all, finish, undo, the archive) stay with reviews outside the loop. An approval
-//! carries every draft as its notes, as it carries unsent notes today, and closes the review.
+//! review's comments by file, and the Review menu acts on them (`menu`). An approval carries
+//! every draft as its notes, as it carries unsent notes today, and closes the review.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use plannotator_tui_journal::{
-    Anchor as On, Author, CommentKind, ReviewTarget, SendTo, ThreadNode, ThreadView,
+    Anchor as On, Author, CommentKind, ReviewTarget, SendTo, State as ThreadState, ThreadNode, ThreadView,
 };
 use plannotator_tui_schema::{Annotation, Provenance};
 
@@ -56,6 +55,7 @@ impl App {
         }
         self.review_loop = Some(review_loop);
         self.strand_pending();
+        self.adopt_own_notes();
         self.paths_changed();
     }
 
@@ -85,15 +85,16 @@ impl App {
     }
 
     /// The view of a file's or a folder's review, as last read.
-    fn path_view(&self) -> Option<&ThreadView> {
+    pub(super) fn path_view(&self) -> Option<&ThreadView> {
         self.path_review()?;
         let open = self.open.store.journal_view().map(|(_, view)| view);
         open.or_else(|| self.review_loop.as_ref()?.view.as_ref())
     }
 
     /// The comments of a file's or a folder's review on each of its files, by real path:
-    /// drafts waiting, and sent. `None` without the review loop over a file or a folder.
-    fn path_counts(&self) -> Option<HashMap<PathBuf, ReviewCounts>> {
+    /// drafts waiting, sent and still open, and resolved (the menu's archive). `None` without
+    /// the review loop over a file or a folder.
+    pub(in crate::app) fn path_counts(&self) -> Option<HashMap<PathBuf, ReviewCounts>> {
         self.path_review()?;
         let mut counts: HashMap<PathBuf, ReviewCounts> = HashMap::new();
         for node in self.path_view().into_iter().flat_map(|view| &view.threads) {
@@ -101,6 +102,8 @@ impl App {
             let count = counts.entry(real_path(Path::new(path))).or_default();
             if node.draft {
                 count.pending += 1;
+            } else if node.state == ThreadState::Resolved {
+                count.archived += 1;
             } else {
                 count.sent += 1;
             }
@@ -112,7 +115,9 @@ impl App {
     /// folder, whose counts come from each file's record.
     pub(in crate::app) fn path_tree_counts(&self, tree: &mut Tree) -> bool {
         let Some(counts) = self.path_counts() else { return false };
-        tree.set_counts(|path| counts.get(&real_path(path)).map_or(0, |count| count.pending + count.sent));
+        tree.set_counts(|path| {
+            counts.get(&real_path(path)).map_or(0, |count| count.pending + count.sent + count.archived)
+        });
         true
     }
 
@@ -134,19 +139,6 @@ impl App {
         self.refresh_review_counts();
         self.sync_tree_counts();
         self.derive_send_state();
-    }
-
-    /// The Review menu's actions over the notes a file's record keeps do not apply to the
-    /// journal's comments: the footer says so, and what does.
-    pub(in crate::app) fn path_menu_off(&mut self) -> bool {
-        if self.path_review().is_none() {
-            return false;
-        }
-        let resolve = self.keys.hint(Action::Resolve);
-        self.status = Some(format!(
-            "review loop: {resolve} resolves a thread; resend all, finish, undo and the archive are for reviews outside the loop"
-        ));
-        true
     }
 
     /// What an approval carries over a file's or a folder's review: every draft, by file, as
@@ -245,6 +237,7 @@ impl App {
             self.status = Some(format!("review loop: {why} \u{b7} notes on this file stay here"));
         } else {
             self.open.store.carry_over(&before, &self.open.doc);
+            self.adopt_own_notes();
         }
         self.paths_changed();
     }

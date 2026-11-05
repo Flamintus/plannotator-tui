@@ -46,15 +46,20 @@ impl App {
             self.undo_archive = batches;
         }
         self.after_review_change();
-        let status = if count == 0 && errors.is_empty() {
-            "no sent annotations to archive".into()
-        } else {
-            format!("archived {count} annotation(s)")
+        let status = match (count == 0 && errors.is_empty(), self.path_review().is_some()) {
+            (true, false) => "no sent annotations to archive".into(),
+            (false, false) => format!("archived {count} annotation(s)"),
+            (true, true) => "no sent thread open to resolve".into(),
+            (false, true) => format!("resolved {count} sent thread(s)"),
         };
         self.status = Some(with_errors(status, "archive", &errors));
     }
 
     fn archive_review_file(&mut self, path: &Path) -> Result<Vec<String>> {
+        // Under the review loop a finished note is a resolved thread.
+        if let Some(resolved) = self.path_finish(path) {
+            return resolved;
+        }
         if self.is_open(path) {
             return self.open.store.archive_sent();
         }
@@ -85,6 +90,9 @@ impl App {
     }
 
     fn restore_review_file(&mut self, path: &Path, ids: &[String]) -> Result<usize> {
+        if let Some(opened) = self.path_reopen(ids) {
+            return opened;
+        }
         if self.is_open(path) {
             return self.open.store.restore_archived(&self.open.doc, ids);
         }
@@ -118,6 +126,11 @@ impl App {
     }
 
     fn refresh_archive_items(&mut self) -> Vec<String> {
+        if let Some(items) = self.path_archive() {
+            self.archive_items = items;
+            self.archive_cursor = self.archive_cursor.min(self.archive_items.len().saturating_sub(1));
+            return Vec::new();
+        }
         let mut items = Vec::new();
         let mut errors = Vec::new();
         for path in self.review_files() {
