@@ -286,6 +286,14 @@ impl App {
             // of a box's words, or a thread's fold line.
             Some(Action::Down) => self.step(true),
             Some(Action::Up) => self.step(false),
+            // On any line of a draft's box, its words, its head or its folded line, `edit` and
+            // `confirm` edit it there, as from its bubble: a draft takes no sub-thread, and
+            // `right` or a click still draws its folded line open.
+            Some(Action::Edit | Action::Confirm) if self.draft_box().is_some() => {
+                if let Some(id) = self.draft_box() {
+                    self.edit_note(&id);
+                }
+            }
             // On a thread's fold line, `right` and `confirm` draw it open, `left` folds it: it
             // has no words for the cursor or a sub-thread.
             Some(action @ (Action::Left | Action::Right | Action::Confirm))

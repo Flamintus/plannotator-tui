@@ -5,7 +5,8 @@
 //! the blank rows) are stepped over as the gaps between blocks are. On a line of words
 //! `comment` takes a sub-thread on them, as a block takes a comment, `visual` selects from its
 //! first word, and the thread keys act on its box; on a fold line the arrows, or a click, fold
-//! or unfold its thread, and the thread keys act on it. Only while the boxes' words take a
+//! or unfold its thread, and the thread keys act on it. On any of them in a draft's box, `edit`
+//! and `confirm` edit the draft there (`draft_box`). Only while the boxes' words take a
 //! selection: otherwise `down` and `up` go from block to block, as they always did.
 
 use anyhow::Result;

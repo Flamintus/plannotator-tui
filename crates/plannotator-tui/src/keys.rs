@@ -101,7 +101,8 @@ pub(crate) const GLOBAL: &[Action] = &[
 pub(crate) const TREE: &[Action] = &[Down, Up, Confirm, Right, ToggleHidden, Back];
 pub(crate) const RAIL: &[Action] =
     &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, SendNow, Back];
-/// `attach-image` and `remove-image` act on the selected block's note here.
+/// `attach-image` and `remove-image` act on the selected block's note here; `edit`, under the
+/// review loop, on the draft whose box the cursor is in.
 pub(crate) const DOCUMENT: &[Action] = &[
     Back,
     Visual,
@@ -116,6 +117,7 @@ pub(crate) const DOCUMENT: &[Action] = &[
     Bottom,
     Comment,
     Confirm,
+    Edit,
     ClearBlock,
     ClearAll,
     AttachImage,

@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold an open one · `l` or `Enter` on a box's folded line (`▸`) draws it open, `h` on its head (`▾`) folds it, a click on either does the same (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold an open one · `l` or `Enter` on a box's folded line (`▸`) draws it open, `h` on its head (`▾`) folds it, a click on either does the same · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -294,7 +294,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `review-menu` | `m` | the Review menu |
 | `resend-all` `finish-review` `undo-finish` `archive` | `R` `F` `U` `H` | file and folder review actions |
 | `toggle-hidden` | `.` | show/hide dot-prefixed entries in the tree |
-| `edit` `remove` | `e` `x`, `Delete` | the selected note |
+| `edit` `remove` | `e` `x`, `Delete` | the selected note; in the review loop, `edit` also on any line of a draft's box |
 | `attach-image` `remove-image` | `I` `D` | an image on the selected note, or the selected block's |
 | `visual` `move-cursor` | `v` `i` | select with the cursor; move it first |
 | `comment` `clear-block` | `c` `x` | on the block; clear its annotations |
@@ -416,9 +416,10 @@ the agent answers with too:
 - Any box folds and opens by hand, at any depth, of any kind, resolved, sent or a draft: `h` on
   its head folds it to one line, `▸` first, that says what its head says and what it holds
   (`▸ 💬 "…" · Replied · Round 1 · New · 2 messages`, `New` while a reply in it is), its `▸`
-  and its rule in the box's border colour; `l` or `Enter` there draws it open. A click on the
-  folded line or on the head does the same, the cursor on the line. The cursor stays on the
-  line, which turns from one to the other, and the thread keys (`s`, `C`, `V`) act on its note.
+  and its rule in the box's border colour; `l` or `Enter` (a draft's: `l`) there draws it
+  open. A click on the folded line or on the head does the same, the cursor on the line. The
+  cursor stays on the line, which turns from one to the other, and the thread keys (`s`, `C`,
+  `V`) act on its note.
   Folding resolves nothing and opening reopens nothing: `V` does that. `h` on a line of the
   words keeps its meaning (the cursor starts there).
 - A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
@@ -429,7 +430,10 @@ the agent answers with too:
   whose passage is no longer found comes after the message's words). It is the one way to a
   sub-thread. The passage stays marked in the message's words, at any depth,
   as a note's of the same kind is in the document. With nothing selected, `c` on a line takes a
-  comment on the line's words, as on a block. A draft's words take none until it is sent.
+  comment on the line's words, as on a block. A draft's words take none until it is sent:
+  on any line of a draft's box (`Not sent`), at any depth, its words, its head or its folded
+  line, `e` or `Enter` edits it right there, in place of its words, as `e` on its bubble does
+  (`l` or a click still draws its folded line open).
 - The rail stacks its bubbles from the top in the document's order, as the column of
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
   a comment whose words are no longer found last, as its box is under the last block, each

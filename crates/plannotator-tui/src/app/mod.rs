@@ -527,10 +527,19 @@ impl App {
 
     /// Begin editing the body of the annotation under the rail cursor.
     fn edit_selected_annotation(&mut self) {
-        let placed = self.open.store.notes();
-        let Some(target) = placed.get(self.rail_cursor) else { return };
+        let id = self.open.store.notes().get(self.rail_cursor).map(|placed| placed.annotation.id.clone());
+        if let Some(id) = id {
+            self.edit_note(&id);
+        }
+    }
+
+    /// Begin editing the body of note `id`: the rail's, or, under the review loop, the draft
+    /// whose box the cursor is in, typed in that box either way (`threads::field`).
+    fn edit_note(&mut self, id: &str) {
+        let notes = self.open.store.notes();
+        let Some(target) = notes.iter().find(|placed| placed.annotation.id == id) else { return };
         self.compose = Compose::with_text(&target.annotation.body);
-        self.mode = Mode::Edit(target.annotation.id.clone());
+        self.mode = Mode::Edit(id.to_owned());
     }
 
     fn remove_selected_annotation(&mut self) -> Result<()> {

@@ -14,7 +14,7 @@ use ratatui::layout::Rect;
 
 use super::super::draw::{marked, priority};
 use super::super::selection::Selection;
-use super::super::{App, Focus, Selected};
+use super::super::{App, Focus, Mode, Selected};
 use super::rows::BoxRow;
 use crate::journal::{self, passage};
 use crate::keys::Action;
@@ -195,8 +195,14 @@ impl App {
     }
 
     /// Where the cursor stands in a box, to find it again once the boxes move: the words it is
-    /// on, or a thread's fold line.
+    /// on, or a thread's fold line. The words of a note edited in its box give way to the field
+    /// it is typed in (`field`): the cursor in that box stands on its head meanwhile, and after.
     pub(super) fn kept_at_cursor(&self) -> Option<Kept> {
+        if let Mode::Edit(id) = &self.mode
+            && self.box_row(self.cursor.0).is_some_and(|(_, drawn)| drawn.thread.as_ref() == Some(id))
+        {
+            return Some(Kept::Fold(id.clone()));
+        }
         if let Some((id, _)) = self.fold_line(self.cursor.0) {
             return Some(Kept::Fold(id.to_owned()));
         }

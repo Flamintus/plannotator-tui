@@ -3,7 +3,8 @@
 //! thread open, or folds an open one, as `right` and `left` do on its fold line, whatever the
 //! box (`threads::fold`). These keys answer only while the review loop runs. A sub-thread has
 //! one way in: a passage selected in a message's words right in its box, noted as the
-//! document's words are (`App::annotate`).
+//! document's words are (`App::annotate`). On any line of a draft's box, `edit` and `confirm`
+//! edit it there (`draft_box`), as `edit` does on its bubble.
 
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 
@@ -100,6 +101,18 @@ impl App {
     fn thread_of(&self, id: &str) -> Option<(Review, ThreadNode)> {
         let (review, view) = self.open.store.journal_view()?;
         Some((review.clone(), tree::find(&view.threads, id)?.clone()))
+    }
+
+    /// The draft whose box the cursor stands on, at any depth: a line of its words, its head or
+    /// its folded line (its box `Not sent`), where `edit` and `confirm` edit it, as from its
+    /// bubble. The innermost box: a draft sub-thread's in a sent thread, not the thread's.
+    pub(in crate::app) fn draft_box(&self) -> Option<String> {
+        if !self.on_box_line() {
+            return None;
+        }
+        let id = self.thread_at_cursor()?;
+        let (_, view) = self.open.store.journal_view()?;
+        tree::find(&view.threads, &id).is_some_and(|node| node.draft).then_some(id)
     }
 
     fn resolve_current(&mut self) {

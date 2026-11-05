@@ -1,10 +1,10 @@
 //! Folding by hand, one way for every box, whatever its depth, kind and state
 //! (`Flow::fold_by_hand`): the keys, `toggle-thread` and the mouse all go through it. A
 //! thread's fold line, a stop of `down` and `up` (`lines`): `right` or `confirm` on its folded
-//! line (`▸`) draws it open, `left` on the head of its box (`▾`) folds it, with the boxes in it
-//! back to how they are drawn by default; a click on either does the same, the cursor standing
-//! on it as the arrows leave it. The cursor stays on the thread's first row, which turns from
-//! one to the other (`boxes_moved`). `toggle-thread`: the folded threads seen on the selected
+//! line (`▸`) draws it open (on a draft's, `confirm` edits it: `draft_box`), `left` on the head
+//! of its box (`▾`) folds it, with the boxes in it back to how they are drawn by default; a
+//! click on either does the same, the cursor standing on it as the arrows leave it. The cursor
+//! stays on the thread's first row, which turns from one to the other (`boxes_moved`). `toggle-thread`: the folded threads seen on the selected
 //! block's passages drawn open, or, when none is folded there, the block's threads folded;
 //! with the cursor in a box, the folded threads seen in that box, or that box. `left` on a line
 //! of a box's words keeps its meaning: the cursor starts there. Folding resolves nothing and
