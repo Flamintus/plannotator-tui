@@ -348,37 +348,49 @@ status line.
 ## Review loop
 
 Experimental, and off unless the environment turns it on, for `last` (and `annotate.last` in
-Herdr Annotate):
+Herdr Annotate) and for a file or a folder sent to an agent in Herdr (`annotate.open`,
+`annotate.gate`, a linked Markdown file):
 
 ```sh
 export PLANNOTATOR_TUI_REVIEW_LOOP=1
 ```
 
-For `annotate.last`, it has to be in the environment Herdr itself starts from. It also needs a `plannotator` on the `PATH` whose `plannotator threads` has the review
+For the Herdr actions, it has to be in the environment Herdr itself starts from. It also needs a `plannotator` on the `PATH` whose `plannotator threads` has the review
 journal's commands, which no Plannotator release has yet. The config file is not involved, so
-the released binary keeps reading the same one. Without such a `plannotator`, or for a session
-found only by its folder (a guess), `last` is what it always was, and the footer says why.
+the released binary keeps reading the same one. Without such a `plannotator`, for a session
+found only by its folder (a guess), or for a file or folder review with no agent in Herdr whose
+session Herdr knows exactly, the review is what it always was, and the footer says why.
 
-With the loop on, the replies of one agent session make one review, kept by Plannotator's
-review journal under its data directory (`reviews/<key>/journal.jsonl`; `PLANNOTATOR_DATA_DIR`
-moves it) and read and written through `plannotator threads`, the CLI the agent answers with
-too:
+With the loop on, the replies of one agent session make one review, and so does a file or a
+folder (by its real path, so a Plannotator screen on the same file finds the same review),
+kept by Plannotator's review journal under its data directory (`reviews/<key>/journal.jsonl`;
+`PLANNOTATOR_DATA_DIR` moves it) and read and written through `plannotator threads`, the CLI
+the agent answers with too:
 
 - A note is written to the journal the moment it is made, as a draft of a comment on that
-  reply, one write per action: editing or removing a draft writes that draft only. A sent
-  comment is not edited or removed; reply under it, or resolve it. An attached image goes as
-  an `Image: <path>` line of the comment's words, as the feedback names it. A note the journal
-  does not take stays here, `· not saved` in its title, until a write takes it. Nothing the
-  journal says moves the document while a comment is typed. The review outlives the pane:
-  `last` on the same session brings back its comments, the replies and the round.
+  reply or on that file's lines, one write per action: editing or removing a draft writes that
+  draft only. A sent comment is not edited or removed; reply under it, or resolve it. An
+  attached image goes as an `Image: <path>` line of the comment's words, as the feedback names
+  it. A note the journal does not take stays here, `· not saved` in its title, until a write
+  takes it. Nothing the journal says moves the document while a comment is typed. The review
+  outlives the pane: `last` on the same session, or the same file or folder, brings back its
+  comments, the replies and the round. A file's notes kept outside the loop stay in its own
+  record, for when the loop is off.
 - `E` (or the Send button) sends every draft and ends the round: the journal marks them sent
   and composes what the agent reads, each comment under its id with how to answer through
   `plannotator reply`; plannotator-tui pastes that text into the agent's pane as it pastes any
   feedback, keeps the window open for the next round, and archives the send as a feedback.
   `S` does the same and closes; `F` is unchanged. A paste the agent did not get (a dialog, no
-  agent) goes again with the next `E`, as the same send, while the pane stays open. The
-  button shows the round under way: `round 2 · Send 3 to claude in w1:p2 ▸`. A round carries
-  every draft of the session's review, drafts left by an earlier pane included.
+  agent) goes again with the next `E`, as the same send; one an earlier pane left goes again
+  first, before any draft. The button shows the round under way: `round 2 · Send 3 to claude
+  in w1:p2 ▸`. A round carries every draft of the review, drafts left by an earlier pane
+  included, which the footer counts when the pane opens.
+- A folder's tree counts the review's comments on each file. The Review menu (resend all,
+  finish, undo, the archive) acts on the notes a file's own record keeps, so it does nothing
+  while the loop runs, and says so.
+- A gated review (`--gate`, `annotate.gate`) keeps its Approve: `E` ends a round and the review
+  stays open; Approve carries the drafts as its notes, as it carries unsent notes, ends the
+  review with its decision, and closes the review in the journal.
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked new until that thread is acted on, and each box's head says what became of its send
@@ -389,8 +401,8 @@ too:
   folded thread open. These keys answer only while the loop runs, and are provisional, to be
   confirmed in use; like every key they can be rebound under `[keys]`.
 
-With the loop switched on, the feedback of any other review also names each note by its own
-id, the same from one send to the next, so an agent can name the note it answers:
+While the loop runs, the feedback plannotator-tui still composes itself (an approval's notes,
+a reply the journal could not list) names each note by its own id:
 `## Annotation 1 (line 12) (id local_…)`.
 
 Each read or write runs `plannotator` once, a few hundred milliseconds.
