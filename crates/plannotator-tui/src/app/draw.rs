@@ -98,7 +98,11 @@ impl App {
         }
         self.draw_footer(frame, footer);
         match &self.mode {
-            Mode::Compose => self.draw_compose(frame, &self.compose_title("comment")),
+            Mode::Compose => {
+                let passage = self.pending.as_ref().is_some_and(|p| matches!(p.on, Selected::Passage(_)));
+                let verb = if passage { "sub-thread" } else { "comment" };
+                self.draw_compose(frame, &self.compose_title(verb));
+            }
             Mode::Edit(_) => self.draw_compose(frame, &self.compose_title("edit")),
             Mode::Reply(_) => self.draw_compose(frame, &self.compose_title("reply")),
             Mode::AttachImage(_) => {

@@ -27,32 +27,46 @@ pub(in crate::app) fn resolved_style() -> Style {
     Style::new().fg(palette().looks_good).add_modifier(Modifier::BOLD)
 }
 
-/// One row of the flow: what is drawn, and, per column, the message's words it shows.
+/// One row of the flow: what is drawn, the innermost thread it belongs to, and, per column,
+/// the message's words it shows.
 #[derive(Debug)]
 pub(super) struct BoxRow {
     pub(super) line: Line<'static>,
+    /// The id of the thread whose box (or folded line) the row is in, the innermost one.
+    pub(super) thread: Option<String>,
     pub(super) words: Vec<Option<Spot>>,
 }
 
 impl BoxRow {
     /// A row that shows no message's words: a head, a rule, an author, a folded line.
     fn plain(line: Line<'static>) -> Self {
-        Self { line, words: Vec::new() }
+        Self { line, thread: None, words: Vec::new() }
     }
 
     /// The row between the sides of a box `inner` columns wide.
-    fn framed(self, inner: usize, border: Style) -> Self {
+    fn in_box(self, inner: usize, border: Style) -> Self {
         let words = [None, None].into_iter().chain(self.words).collect();
-        Self { line: framed(self.line, inner, border), words }
+        Self { line: framed(self.line, inner, border), thread: self.thread, words }
     }
 }
 
 /// A thread's rows, `width` columns wide: its folded line once settled, else its box. The
-/// messages whose words the box shows join `said`, and its rows name them by their place there.
+/// messages whose words the box shows join `said`, and its rows name them by their place there;
+/// each row names the innermost thread it is in.
 pub(super) fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    if thread.is_folded() || width < MIN_BOX_WIDTH {
-        return vec![BoxRow::plain(folded(thread, width))];
+    let mut rows = if thread.is_folded() || width < MIN_BOX_WIDTH {
+        vec![BoxRow::plain(folded(thread, width))]
+    } else {
+        box_of(thread, width, said)
+    };
+    for row in &mut rows {
+        row.thread.get_or_insert_with(|| thread.id.clone());
     }
+    rows
+}
+
+/// A thread's box, its sub-threads' rows inside.
+fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let border =
         if thread.resolved { Style::new().fg(Color::DarkGray) } else { Style::new().fg(accent(thread.kind)) };
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
@@ -67,19 +81,21 @@ pub(super) fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> V
             None => one_line(&message.author),
         };
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
-        rows.push(BoxRow::plain(author).framed(inner, border));
+        rows.push(BoxRow::plain(author).in_box(inner, border));
         let spoken = said.len();
-        said.push(Said::of(&message.id, &message.body, message.draft));
+        said.push(Said { id: message.id.clone(), words: message.body.clone(), draft: message.draft });
         for paragraph in printable_lines(&message.body) {
             let (words, bytes): (String, Vec<Option<usize>>) =
                 paragraph.into_iter().map(|(ch, byte)| (ch, Some(byte))).unzip();
             for row in wrap_line(&Line::styled(words, text), &bytes, inner) {
-                let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot::at(spoken, byte)));
-                rows.push(BoxRow { line: row.line, words: spots.collect() }.framed(inner, border));
+                let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot { message: spoken, byte }));
+                rows.push(
+                    BoxRow { line: row.line, thread: None, words: spots.collect() }.in_box(inner, border),
+                );
             }
         }
         for sub in &message.threads {
-            rows.extend(lines_of(sub, inner, said).into_iter().map(|row| row.framed(inner, border)));
+            rows.extend(lines_of(sub, inner, said).into_iter().map(|row| row.in_box(inner, border)));
         }
     }
     rows.push(BoxRow::plain(edge('╰', '╯', width, border)));
@@ -256,14 +272,15 @@ fn fit(text: &str, max: usize) -> String {
 }
 
 #[cfg(test)]
-#[allow(clippy::indexing_slicing, reason = "tests assert by panicking")]
+#[allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 mod tests {
     use plannotator_tui_schema::Kind;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
 
     use super::super::{Message, Thread};
-    use super::{Line, lines_of};
+    use super::{Line, RESOLVED, lines_of};
+    use crate::theme::palette;
 
     /// `lines_of`'s lines alone.
     fn drawn(thread: &Thread, width: usize) -> Vec<Line<'static>> {
@@ -329,5 +346,17 @@ mod tests {
         let lines = drawn(&top, 60);
         assert_eq!(lines.len(), 1, "everything resolved: one line");
         assert!(lines[0].to_string().contains("3 messages \u{b7} 2 sub-threads"), "{lines:#?}");
+    }
+
+    #[test]
+    fn the_resolved_mark_takes_the_looks_good_colour_open_or_folded() {
+        let open_under = thread("b", false, vec![message("You", "Still open.", Vec::new())]);
+        let held_open = thread("a", true, vec![message("You", "The note.", vec![open_under])]);
+        let folded = thread("c", true, vec![message("You", "Done.", Vec::new())]);
+        for top in [&held_open, &folded] {
+            let first = drawn(top, 60).into_iter().next().expect("a head or a folded line");
+            let mark = first.spans.iter().find(|span| span.content == RESOLVED);
+            assert_eq!(mark.and_then(|span| span.style.fg), Some(palette().looks_good), "{first}");
+        }
     }
 }

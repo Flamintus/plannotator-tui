@@ -42,11 +42,11 @@ impl App {
         }
     }
 
-    /// The current note's thread in the review's view, with the review; the footer says why
-    /// when there is none.
+    /// The current note's thread in the review's view, with the review: the box the cursor is
+    /// in, else the rail's note or the selected block's. The footer says why when there is none.
     fn current_thread(&mut self) -> Option<(Review, ThreadNode)> {
         let found = self.open.store.journal_view().and_then(|(review, view)| {
-            let id = self.current_note()?;
+            let id = self.thread_at_cursor().or_else(|| self.current_note())?;
             Some((review.clone(), tree::find(&view.threads, &id)?.clone()))
         });
         if found.is_none() {
@@ -249,7 +249,7 @@ impl App {
     /// last as the title is cut on the right.
     pub(in crate::app) fn journal_tag(&self, id: &str) -> String {
         if self.open.store.journal_unsaved(id) {
-            return " \u{b7} not saved".to_owned();
+            return " \u{b7} Not saved".to_owned();
         }
         let Some((_, view)) = self.open.store.journal_view() else { return String::new() };
         let Some(node) = tree::find(&view.threads, id).filter(|node| node.state != ThreadState::Resolved)

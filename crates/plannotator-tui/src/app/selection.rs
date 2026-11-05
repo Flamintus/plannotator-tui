@@ -1,6 +1,9 @@
-//! A mouse selection in document coordinates, and its conversion to a source range.
+//! A mouse selection in document coordinates, and its conversion to a source range; the
+//! finished selection waiting for its action.
 
 use std::ops::Range;
+
+use super::threads;
 
 /// Anchor and head are (row, column) in document coordinates.
 #[derive(Debug, Clone, Copy)]
@@ -45,6 +48,37 @@ impl Selection {
         let start = if row == a.0 { a.1 } else { 0 };
         let end = if row == b.0 { b.1 + 1 } else { row_width };
         (start < end).then_some(start..end)
+    }
+}
+
+/// A finished selection waiting for an action.
+#[derive(Debug, Clone)]
+pub(super) struct Pending {
+    pub(super) on: Selected,
+    /// Document (row, col) where the selection starts; anchors the toolbar and compose box.
+    pub(super) at: (usize, usize),
+}
+
+/// What a finished selection is on.
+#[derive(Debug, Clone)]
+pub(super) enum Selected {
+    /// The document's words, as a source range.
+    Source(Range<usize>),
+    /// A passage of a message's words in a thread's box, which takes a sub-thread.
+    Passage(threads::Passage),
+}
+
+impl Pending {
+    pub(super) fn source(range: Range<usize>, at: (usize, usize)) -> Self {
+        Self { on: Selected::Source(range), at }
+    }
+
+    /// The source range of a selection of the document's words.
+    pub(super) fn range(&self) -> Option<&Range<usize>> {
+        match &self.on {
+            Selected::Source(range) => Some(range),
+            Selected::Passage(_) => None,
+        }
     }
 }
 

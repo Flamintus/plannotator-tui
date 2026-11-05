@@ -9,7 +9,7 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
 use super::super::selection::Selection;
-use super::super::{App, Focus};
+use super::super::{App, Focus, Selected};
 use super::rows::BoxRow;
 use crate::journal::passage;
 use crate::keys::Action;
@@ -19,30 +19,18 @@ use crate::theme::palette;
 #[derive(Debug)]
 pub(super) struct Said {
     /// The note's or the reply's id.
-    id: String,
-    words: String,
+    pub(super) id: String,
+    pub(super) words: String,
     /// The person's draft: its words take no sub-thread until it is sent.
-    draft: bool,
-}
-
-impl Said {
-    pub(super) fn of(id: &str, words: &str, draft: bool) -> Self {
-        Self { id: id.to_owned(), words: words.to_owned(), draft }
-    }
+    pub(super) draft: bool,
 }
 
 /// A column of a box that shows a message's words: the message, by its place in the flow's
 /// `said`, and the byte of its words shown there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct Spot {
-    message: usize,
-    byte: usize,
-}
-
-impl Spot {
-    pub(super) fn at(message: usize, byte: usize) -> Self {
-        Self { message, byte }
-    }
+    pub(super) message: usize,
+    pub(super) byte: usize,
 }
 
 /// A passage selected in a message's words in its box: what a sub-thread on it is on.
@@ -54,6 +42,9 @@ pub(in crate::app) struct Passage {
     pub(in crate::app) quote: String,
     /// Where they start in the message's words, as Plannotator counts it (`passage::offset_in`).
     pub(in crate::app) offset: Option<u64>,
+    /// The byte of the message's words they start at: where the passage is found again when
+    /// the boxes move.
+    start: usize,
 }
 
 impl App {
@@ -84,10 +75,24 @@ impl App {
     }
 
     /// The block a box's words at document row `row` are under: the block whose thread they
-    /// are, so the thread keys act on it.
+    /// are.
     pub(in crate::app) fn box_block(&self, row: usize) -> Option<usize> {
         self.box_words(row)?;
         self.box_row(row).map(|(block, _)| block)
+    }
+
+    /// The thread whose box the cursor is in, the innermost one, while the boxes take a
+    /// selection: the thread keys act on it rather than on the block's first note.
+    pub(in crate::app) fn thread_at_cursor(&self) -> Option<String> {
+        if self.focus != Focus::Document || !self.box_words_selectable() {
+            return None;
+        }
+        self.box_row(self.cursor.0).and_then(|(_, drawn)| drawn.thread.clone())
+    }
+
+    /// Whether the cursor stands in a box's words: `comment` there wants a passage selected.
+    pub(in crate::app) fn cursor_in_box_words(&self) -> bool {
+        self.open.layout.row(self.cursor.0).is_none() && self.box_words(self.cursor.0).is_some()
     }
 
     /// The nearest row from `row` on, going down (or up), that the cursor can stand on: the
@@ -100,6 +105,15 @@ impl App {
         if down { (row..self.open.layout.total_rows).find(shows) } else { (0..=row).rev().find(shows) }
     }
 
+    /// The first column of document row `row` the cursor can reach: 0 in the document, a box's
+    /// first word column past its sides.
+    pub(in crate::app) fn row_start(&self, row: usize) -> usize {
+        match self.open.layout.row(row) {
+            Some(_) => 0,
+            None => self.box_words(row).and_then(|words| words.iter().position(Option::is_some)).unwrap_or(0),
+        }
+    }
+
     /// The columns of document row `row` the cursor can reach: the document's cells, or a box's
     /// up to the last of its words.
     pub(in crate::app) fn row_width(&self, row: usize) -> usize {
@@ -109,14 +123,19 @@ impl App {
         }
     }
 
-    /// The text of document row `row` as drawn, for the word motions: the document's, or a
-    /// box's row with its words.
+    /// The text of document row `row`, for the word motions: the document's as drawn, or a
+    /// box's words one character per column, the box's sides blank.
     pub(in crate::app) fn row_text(&self, row: usize) -> Option<String> {
         if let Some(drawn) = self.open.layout.row(row) {
             return Some(drawn.line.to_string());
         }
-        self.box_words(row)?;
-        self.box_row(row).map(|(_, drawn)| drawn.line.to_string())
+        let said = &self.open.flow.said;
+        let shown = |spot: &Option<Spot>| {
+            let spot = (*spot)?;
+            let ch = said.get(spot.message)?.words.get(spot.byte..)?.chars().next()?;
+            Some(if ch.is_whitespace() { ' ' } else { ch })
+        };
+        Some(self.box_words(row)?.iter().map(|spot| shown(spot).unwrap_or(' ')).collect())
     }
 
     /// The passage `selection` covers in a box's words: `None` when it covers none, `Err` with
@@ -154,11 +173,51 @@ impl App {
             parent: said.id.clone(),
             quote: quote.to_owned(),
             offset: passage::offset_in(&said.words, quote, nth),
+            start,
         }))
     }
 
+    /// After the boxes moved, while their words take a selection: a passage waiting for its
+    /// action follows its words, the cursor with it, or goes when they are no longer drawn (its
+    /// thread folded, or gone); a cursor that stood in a box, now on rows that moved, goes back
+    /// to the selected block, so the thread keys never act on a box it is no longer in.
+    pub(in crate::app) fn boxes_moved(&mut self) {
+        if !self.box_words_selectable() {
+            return;
+        }
+        let Some(Selected::Passage(passage)) = self.pending.as_ref().map(|pending| &pending.on) else {
+            if self.open.layout.row(self.cursor.0).is_none()
+                && let Some(block) = self.open.layout.blocks.get(self.selected)
+            {
+                self.cursor = (block.first_row, 0);
+            }
+            return;
+        };
+        let said = &self.open.flow.said;
+        let starts = |spot: &Spot| {
+            spot.byte == passage.start && said.get(spot.message).is_some_and(|said| said.id == passage.parent)
+        };
+        let layout = &self.open.layout;
+        let found = self.open.flow.rows.iter().find_map(|(block, rows)| {
+            let rendered = layout.blocks.get(*block)?;
+            let top = rendered.first_row + rendered.rows.len();
+            rows.iter().enumerate().find_map(|(index, drawn)| {
+                let column = drawn.words.iter().position(|spot| spot.as_ref().is_some_and(starts))?;
+                Some((top + index, column))
+            })
+        });
+        match (found, self.pending.as_mut()) {
+            (Some(at), Some(pending)) => {
+                pending.at = at;
+                self.cursor = at;
+            }
+            _ => self.pending = None,
+        }
+    }
+
     /// The selection and the keyboard cursor over a box's row, document row `row` on screen
-    /// row `y`: the selection on the words alone, not the box around them.
+    /// row `y`: the selection on the words alone, not the box around them, while it is drawn
+    /// or waits as a passage (a selection of the document's words leaves the boxes out).
     pub(super) fn mark_words(
         &self,
         buf: &mut Buffer,
@@ -170,7 +229,9 @@ impl App {
             return;
         }
         let width = usize::from(doc.width);
-        if let Some(columns) = self.selection.and_then(|selection| selection.columns_on(row, words.len())) {
+        let passage = self.pending.as_ref().is_some_and(|pending| matches!(pending.on, Selected::Passage(_)));
+        let selection = self.selection.filter(|selection| selection.dragging || passage);
+        if let Some(columns) = selection.and_then(|selection| selection.columns_on(row, words.len())) {
             let marked =
                 columns.filter(|column| *column < width && words.get(*column).is_some_and(Option::is_some));
             for column in marked {

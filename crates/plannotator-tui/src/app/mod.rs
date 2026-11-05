@@ -44,7 +44,7 @@ use crate::layout::DocLayout;
 use crate::store::{Location, Store};
 use crate::tree::Tree;
 use crate::workspace_paths;
-use selection::Selection;
+use selection::{Pending, Selected, Selection};
 use send::SendState;
 
 /// Width of the marker column left of the document.
@@ -114,37 +114,6 @@ struct Geometry {
     pick_rows: Vec<(Rect, usize)>,
     /// Quick Open result rows drawn last frame, with their position in the results.
     search_rows: Vec<(Rect, usize)>,
-}
-
-/// A finished selection waiting for an action.
-#[derive(Debug, Clone)]
-struct Pending {
-    on: Selected,
-    /// Document (row, col) where the selection starts; anchors the toolbar and compose box.
-    at: (usize, usize),
-}
-
-/// What a finished selection is on.
-#[derive(Debug, Clone)]
-enum Selected {
-    /// The document's words, as a source range.
-    Source(Range<usize>),
-    /// A passage of a message's words in a thread's box, which takes a sub-thread.
-    Passage(threads::Passage),
-}
-
-impl Pending {
-    fn source(range: Range<usize>, at: (usize, usize)) -> Self {
-        Self { on: Selected::Source(range), at }
-    }
-
-    /// The source range of a selection of the document's words.
-    fn range(&self) -> Option<&Range<usize>> {
-        match &self.on {
-            Selected::Source(range) => Some(range),
-            Selected::Passage(_) => None,
-        }
-    }
 }
 
 /// Everything about the open document; swapped wholesale when the tree switches files.
@@ -523,7 +492,10 @@ impl App {
                 self.compose = Compose::default();
             }
             // A sub-thread on a box's words is a comment: the toolbar offers nothing else there.
-            (Kind::LooksGood | Kind::Delete, Selected::Passage(_)) => {}
+            (Kind::LooksGood | Kind::Delete, Selected::Passage(_)) => {
+                let comment = self.keys.hint(Action::Comment);
+                self.status = Some(format!("a sub-thread is a comment: {comment} writes it"));
+            }
             (Kind::LooksGood | Kind::Delete, Selected::Source(range)) => {
                 self.annotate(range, kind, String::new())?;
                 self.clear_selection();

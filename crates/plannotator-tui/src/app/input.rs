@@ -296,6 +296,13 @@ impl App {
             Some(Action::Bottom) => {
                 self.select_block(self.open.doc.blocks.len().saturating_sub(1));
             }
+            // In a box's words, a comment is a sub-thread on a passage: one is selected first.
+            Some(Action::Comment | Action::Confirm) if self.cursor_in_box_words() => {
+                let (select, comment) = (self.keys.hint(Action::Visual), self.keys.hint(Action::Comment));
+                self.status = Some(format!(
+                    "{select} selects a passage of this message, then {comment} starts a sub-thread on it"
+                ));
+            }
             Some(Action::Comment | Action::Confirm) => {
                 // No selection: comment on the whole selected block.
                 if let (Some(block), Some(rendered)) =
@@ -364,7 +371,7 @@ impl App {
             Some(Action::Up) => self.move_cursor(-1, 0),
             Some(Action::WordForward) => self.move_word(1),
             Some(Action::WordBack) => self.move_word(-1),
-            Some(Action::LineStart) => self.cursor.1 = 0,
+            Some(Action::LineStart) => self.cursor.1 = self.row_start(self.cursor.0),
             Some(Action::LineEnd) => self.cursor.1 = self.row_width(self.cursor.0).saturating_sub(1),
             _ => return false,
         }
@@ -389,8 +396,10 @@ impl App {
             let Some(text) = self.text_row_from(next, rows > 0) else { break };
             row = text;
         }
-        let width = self.row_width(row);
-        let col = (self.cursor.1 as i64 + cols).clamp(0, width.saturating_sub(1) as i64) as usize;
+        let (start, width) = (self.row_start(row), self.row_width(row));
+        let col =
+            (self.cursor.1 as i64 + cols).clamp(start as i64, width.saturating_sub(1).max(start) as i64);
+        let col = col as usize;
         self.cursor = (row, col);
         if let Some(block) = self.open.layout.block_at_row(row).or_else(|| self.box_block(row)) {
             self.selected = block;

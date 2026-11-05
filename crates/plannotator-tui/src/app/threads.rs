@@ -43,7 +43,7 @@ pub(super) struct Thread {
     /// Drawn folded: the source's word when it has one (the review's view), else `settled`;
     /// open when unfolded by hand.
     folded: Option<bool>,
-    /// What the head says after the state: not found, the round, what became of its send, live.
+    /// What the head says after the state: not found, what became of its send, live, the round.
     marks: Vec<String>,
     messages: Vec<Message>,
 }
@@ -54,7 +54,7 @@ struct Message {
     /// The note's or the reply's id: what a sub-thread on its words is under.
     id: String,
     author: String,
-    /// What the line naming the author adds: its round, a draft, what became of a send, new.
+    /// What the line naming the author adds: its round or a draft, what became of a send, new.
     tag: Option<String>,
     body: String,
     /// The person's draft, not sent yet: its words take no sub-thread.
@@ -207,7 +207,7 @@ impl App {
             // Rows below a changed box moved, as on a reflow: a selection drawn by rows no
             // longer covers what it did. The selection waiting for an action is a source
             // range, which has not moved: it only follows its first row. A passage of a box's
-            // words keeps its place in the words: its toolbar stays where it was.
+            // words follows its words, or goes with them (`boxes_moved`).
             self.selection = None;
             if let Some(pending) = self.pending.as_mut()
                 && let Some(range) = pending.range()
@@ -217,6 +217,7 @@ impl App {
                 pending.at.0 = row.unwrap_or(pending.at.0);
             }
             self.scroll_by(0);
+            self.boxes_moved();
         }
     }
 

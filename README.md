@@ -69,10 +69,11 @@ agent opens it from your disk; nothing is copied or uploaded. `D` removes the la
 Adding or removing an image makes a sent note pending again.
 
 A note's bubble also shows what its record says about it beyond your text: each reply under
-it, with who wrote it, and `· ✓ Resolved` in its title once it is resolved, dimmed. Another
-client of the same record writes those; plannotator-tui reads them when the file opens and on
-`r`, and writes none itself. It saves the record as it last read it, so reload before a change
-of your own when someone may have answered since; removing a note removes its replies too.
+it, with who wrote it, and `· ✓ Resolved` in its title once it is resolved, its words dimmed.
+Another client of the same record writes those; plannotator-tui reads them when the file opens
+and on `r`, and writes none itself. It saves the record as it last read it, so reload before a
+change of your own when someone may have answered since; removing a note removes its replies
+too.
 
 A note with replies, or resolved, is also drawn as a thread: a box right under the block its
 passage is in (under a whole list or table when the passage is inside one), with the passage
@@ -402,18 +403,19 @@ the agent answers with too:
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
   Inbox: each message says its round (`Round 2`) or `Not sent` for a draft, the head of a box
-  what became of its send (`Queued`, `Delivered`, `Read`, `Working`, `Replied`) and `Live`, and a
-  bubble counts the replies under the passage (`↳ 1 reply under the passage`), its thread open
-  or folded.
+  what became of its send (`Queued`, `Delivered`, `Read`, `Working`, `Replied`), `Live`, and
+  `Unanchored` once its words are no longer found, and a bubble counts the replies under the
+  passage (`↳ 1 reply under the passage`), its thread open or folded.
 - A passage of a comment or a reply selected in its box, with the mouse or with `i` and `v` as
   in the document, takes a sub-thread: `c` (or the toolbar's comment) writes it, a draft the
   next `E` sends, drawn as a box in the box under that message. A draft's words take none until
   it is sent.
-- `C` replies under the current note's comment, a draft the next `E` sends; `V` resolves it or
-  opens it again; `O` opens its thread as a document: a passage of one of its messages
-  selected, `c` starts a sub-thread on it, a box in the box once back (`Esc`). `z` draws a
-  folded thread open. These keys answer only while the loop runs, and are provisional, to be
-  confirmed in use; like every key they can be rebound under `[keys]`.
+- `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
+  block's note), a draft the next `E` sends; `V` resolves it or opens it again; `O` opens its
+  thread as a document: a passage of one of its messages selected, `c` starts a sub-thread on
+  it, a box in the box once back (`Esc`). `z` draws a folded thread open. These keys answer
+  only while the loop runs, and are provisional, to be confirmed in use; like every key they
+  can be rebound under `[keys]`.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

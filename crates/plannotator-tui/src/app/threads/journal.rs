@@ -39,7 +39,10 @@ fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> String {
         Author::Agent { .. } => (!seen.contains(&reply.id)).then_some("New"),
     };
     let round = round(reply.draft, reply.round);
-    after.map_or_else(|| round.clone(), |after| format!("{round} \u{b7} {after}"))
+    match after {
+        Some(after) => format!("{round} \u{b7} {after}"),
+        None => round,
+    }
 }
 
 impl Thread {
