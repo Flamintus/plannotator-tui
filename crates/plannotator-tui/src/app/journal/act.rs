@@ -3,14 +3,14 @@
 //! messages takes a sub-thread as a comment does anywhere; `back` returns to the document it
 //! was opened from; `toggle-thread` draws a folded thread open, or folds it again. These keys
 //! answer only while the review loop runs. A passage selected in a message's words right in
-//! its box takes a sub-thread too (`save_sub_thread`).
+//! its box takes a sub-thread too, noted as the document's words are (`App::annotate`).
 
 use anyhow::Result;
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 use plannotator_tui_schema::{DocumentSource, Provenance};
 
 use super::super::draw::short_id;
-use super::super::threads::{Passage, status_word};
+use super::super::threads::status_word;
 use super::super::{App, Focus, Mode, Open};
 use crate::journal::{Review, Target, tree};
 use crate::keys::Action;
@@ -96,33 +96,13 @@ impl App {
         self.refresh_journal();
     }
 
-    /// The person's sub-thread `body` on `passage`, selected in a message's words in its box:
-    /// a draft the next send carries, as one made in the thread opened as a document is.
-    pub(in crate::app) fn save_sub_thread(&mut self, passage: &Passage, body: String) {
-        let Some((review, view)) = self.open.store.journal_view() else {
-            self.status =
-                Some("sub-thread not saved: the review's journal does not keep this document".to_owned());
-            return;
-        };
-        let review = review.clone();
-        let holder = tree::holding(&view.threads, &passage.parent).cloned();
-        let comment = NewComment {
-            id: crate::store::local_id(),
-            text: body,
-            placement: Placement::Passage {
-                parent: passage.parent.clone(),
-                quote: passage.quote.clone(),
-                quote_offset: passage.offset,
-            },
-        };
-        self.status = Some(match review.journal.comment(&review.target, &comment) {
-            Ok(()) => format!("sub-thread saved \u{b7} {} sends it", self.keys.hint(Action::Send)),
-            Err(err) => format!("review loop: {err}"),
-        });
-        if let Some(node) = holder {
+    /// The person notes a passage of message `id` in its box: the thread holding it is acted
+    /// on, its replies no longer new.
+    pub(in crate::app) fn saw_message(&mut self, id: &str) {
+        let view = self.open.store.journal_view().map(|(_, view)| view);
+        if let Some(node) = view.and_then(|view| tree::holding(&view.threads, id)).cloned() {
             self.saw(&node);
         }
-        self.refresh_journal();
     }
 
     /// Thread `id` in the open document's view, with the review.

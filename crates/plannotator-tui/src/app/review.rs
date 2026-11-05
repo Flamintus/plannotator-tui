@@ -103,7 +103,7 @@ impl App {
     }
 
     fn after_review_change(&mut self) {
-        let remaining = self.open.store.placed().len();
+        let remaining = self.open.store.notes().len();
         self.rail_cursor = self.rail_cursor.min(remaining.saturating_sub(1));
         if remaining == 0 && self.focus == Focus::Rail {
             self.focus = Focus::Document;

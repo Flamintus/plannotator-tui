@@ -193,7 +193,7 @@ impl App {
             Ok(()) => self.status = Some(format!("journal refused: {}", refused.join(" \u{b7} "))),
             Err(err) => self.status = Some(format!("review loop: {err:#}")),
         }
-        self.rail_cursor = self.rail_cursor.min(self.open.store.placed().len().saturating_sub(1));
+        self.rail_cursor = self.rail_cursor.min(self.open.store.notes().len().saturating_sub(1));
         self.derive_send_state();
         self.paths_changed();
     }

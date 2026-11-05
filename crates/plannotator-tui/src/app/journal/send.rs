@@ -188,7 +188,7 @@ impl App {
         let notes: Vec<_> = self
             .replies()
             .into_iter()
-            .flat_map(|(_, open)| open.store.placed())
+            .flat_map(|(_, open)| open.store.notes())
             .filter(|placed| carried.contains(&placed.annotation.id))
             .map(|placed| placed.annotation.clone())
             .collect();

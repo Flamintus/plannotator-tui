@@ -1,9 +1,10 @@
 //! The words of the messages in the threads' boxes, selected as the document's are. Each row
 //! of the flow knows, per column, the message whose words it shows and their byte there
 //! (`Spot`), so the selection the document uses, by mouse or by keyboard, works in a box too,
-//! and a passage selected in one message's words takes a sub-thread on that message, as one
-//! selected in the thread opened as a document does. Only while the review loop keeps the
-//! document's comments: the journal is what takes a sub-thread.
+//! and a passage selected in one message's words takes what the document's words take, a note
+//! of any kind, a sub-thread on that message (`App::annotate`), as one selected in the thread
+//! opened as a document does. Only while the review loop keeps the document's comments: the
+//! journal is what takes a sub-thread.
 
 use std::ops::Range;
 
@@ -15,7 +16,7 @@ use super::super::draw::{marked, priority};
 use super::super::selection::Selection;
 use super::super::{App, Focus, Selected};
 use super::rows::BoxRow;
-use crate::journal::passage;
+use crate::journal::{self, passage};
 use crate::keys::Action;
 use crate::theme::palette;
 
@@ -43,12 +44,8 @@ pub(super) struct Spot {
 /// A passage selected in a message's words in its box: what a sub-thread on it is on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(in crate::app) struct Passage {
-    /// The message: a comment's or a reply's id.
-    pub(in crate::app) parent: String,
-    /// The words selected, as the message has them.
-    pub(in crate::app) quote: String,
-    /// Where they start in the message's words, as Plannotator counts it (`passage::offset_in`).
-    pub(in crate::app) offset: Option<u64>,
+    /// The message, the words selected as it has them, and where they start in its words.
+    pub(in crate::app) on: journal::Passage,
     /// The byte of the message's words they start at: where the passage is found again when
     /// the boxes move.
     start: usize,
@@ -176,12 +173,12 @@ impl App {
         let start = first + (selected.len() - selected.trim_start().len());
         let chars: Vec<(char, usize)> = said.words.char_indices().map(|(at, ch)| (ch, at)).collect();
         let nth = passage::occurrence(&chars, quote, start);
-        Some(Ok(Passage {
+        let on = journal::Passage {
             parent: said.id.clone(),
             quote: quote.to_owned(),
             offset: passage::offset_in(&said.words, quote, nth),
-            start,
-        }))
+        };
+        Some(Ok(Passage { on, start }))
     }
 
     /// The words the cursor stands on in a box: their message's id and byte, to find them
@@ -234,7 +231,7 @@ impl App {
             }
             return;
         };
-        let found = self.find_words(&passage.parent, passage.start);
+        let found = self.find_words(&passage.on.parent, passage.start);
         match (found, self.pending.as_mut()) {
             (Some(at), Some(pending)) => {
                 pending.at = at;

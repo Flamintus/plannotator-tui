@@ -20,7 +20,7 @@ impl App {
     /// The note `attach-image` and `remove-image` act on: the rail's selected note, or in
     /// the document the selected block's note (the rail's selection when it is in the block).
     pub(super) fn current_note(&self) -> Option<String> {
-        let placed = self.open.store.placed();
+        let placed = self.open.store.notes();
         if self.focus == Focus::Rail {
             return placed.get(self.rail_cursor).map(|p| p.annotation.id.clone());
         }

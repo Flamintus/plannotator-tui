@@ -8,6 +8,11 @@
 //! removal of a sent comment) is kept for the footer, and the next read of the view, which
 //! every write asks for, puts the notes back as the journal has them.
 //!
+//! The sub-threads under the document's comments, on passages of their messages drawn in the
+//! threads' boxes, are notes of this store too: noted as a note on the document's words is,
+//! of the same kinds, listed after their thread's note (`notes`), written to the journal the
+//! same way; they have no place in the document's words.
+//!
 //! Which of the view's comments are on the document, and where, is `words.rs`.
 
 mod words;
@@ -20,9 +25,9 @@ use anyhow::{Context, Result};
 use plannotator_tui_journal::{ThreadNode, ThreadView, Viewed};
 use plannotator_tui_schema::{Anchor, Annotation, Kind, Resolution};
 
-use super::{Backing, Store};
+use super::{Backing, Placed, Store, local_id};
 use crate::doc::Document;
-use crate::journal::{Review, Target};
+use crate::journal::{Passage, Review, Target, tree};
 use crate::layout::DocLayout;
 
 /// What a journal-backed store knows besides its notes.
@@ -39,6 +44,10 @@ pub(crate) struct Kept {
     /// Where this review put the comments it made, by id: they stay on the words selected,
     /// even where the same words come earlier, with the kind of note they are.
     anchors: HashMap<String, Anchor>,
+    /// The notes on a passage of a message in a thread's box, by id: the sub-threads under
+    /// the document's comments, which are not on its words. None on a comment's thread opened
+    /// as a document, whose sub-threads are on its words.
+    passages: HashMap<String, Passage>,
     /// The document's words and its rendered characters with their source offsets, as last
     /// laid out: where quotes are found.
     source: String,
@@ -79,6 +88,24 @@ impl Kept {
         words::with_images(&words, &annotation.plannotator_tui.images)
     }
 
+    /// The sub-threads among `nodes`, this document's comments, on the passages of their
+    /// messages in the threads' boxes; on a comment's thread opened as a document they are on
+    /// its words instead.
+    fn place_passages(&mut self, nodes: &[&ThreadNode]) {
+        if matches!(self.target, Target::Thread { .. }) {
+            return;
+        }
+        for node in nodes {
+            let Some(parent) = &node.place.parent else { continue };
+            let passage = Passage {
+                parent: parent.id.clone(),
+                quote: node.place.quote.clone(),
+                offset: Some(parent.quote_offset),
+            };
+            self.passages.insert(node.id.clone(), passage);
+        }
+    }
+
     /// Comment `annotation` written as `text`: listed as the journal now has it.
     fn wrote(&mut self, annotation: &Annotation, text: String) {
         if let Some(listed) = self.listed.iter_mut().find(|listed| listed.id == annotation.id) {
@@ -105,6 +132,7 @@ impl Store {
             listed: Vec::new(),
             view: None,
             anchors: HashMap::new(),
+            passages: HashMap::new(),
             source: String::new(),
             chars: Vec::new(),
             stale: false,
@@ -136,6 +164,7 @@ impl Store {
         kept.source.clone_from(&doc.source);
         kept.chars = layout.rendered_chars(&doc.source, &(0..doc.source.len()));
         let nodes: Vec<&ThreadNode> = kept.comments(&view);
+        kept.place_passages(&nodes);
         kept.listed = nodes
             .iter()
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
@@ -211,10 +240,62 @@ impl Store {
         Some(&kept.target)
     }
 
-    /// The notes whose words are no longer found in the document.
+    /// The notes whose words are no longer found in the document; a note on a box's passage
+    /// was never on them.
     pub(crate) fn orphaned(&self) -> Vec<&Annotation> {
         let notes = self.annotations.iter().zip(&self.resolved);
-        notes.filter(|(_, resolution)| **resolution == Resolution::Orphan).map(|(note, _)| note).collect()
+        let lost = |(note, resolution): &(&Annotation, &Resolution)| {
+            **resolution == Resolution::Orphan && !self.on_passage(&note.id)
+        };
+        notes.filter(lost).map(|(note, _)| note).collect()
+    }
+
+    /// Whether note `id` is on a passage of a message in a thread's box, a sub-thread, rather
+    /// than on the document's words.
+    pub(super) fn on_passage(&self, id: &str) -> bool {
+        matches!(&self.backing, Backing::Journal(kept) if kept.passages.contains_key(id))
+    }
+
+    /// Note `passage` of a message in a thread's box, a sub-thread: a note as one on the
+    /// document's words is, of any kind, written to the journal on that passage. Only a store
+    /// the journal keeps has boxes to select in; any other notes nothing.
+    pub(crate) fn add_on_passage(&mut self, passage: Passage, kind: Kind, body: String) -> Result<()> {
+        let Backing::Journal(kept) = &mut self.backing else { return Ok(()) };
+        let anchor = words::quoted(&passage.quote, kind);
+        let id = local_id();
+        kept.passages.insert(id.clone(), passage);
+        self.push(id, anchor, body, Resolution::Orphan)
+    }
+
+    /// Every note in the document's order: each one placed in the document's words, then,
+    /// under the review loop, the notes on the passages of its thread's messages at any depth
+    /// (its sub-threads), in the order its box draws them; they take its range.
+    pub(crate) fn notes(&self) -> Vec<Placed<'_>> {
+        let placed = self.placed();
+        let Backing::Journal(kept) = &self.backing else { return placed };
+        let Some(view) = &kept.view else { return placed };
+        let mut notes = Vec::with_capacity(self.annotations.len());
+        for note in placed {
+            notes.push(note);
+            let Some(thread) = view.threads.iter().find(|node| node.id == note.annotation.id) else {
+                continue;
+            };
+            let order = tree::under(thread);
+            // A sub-thread is under this thread when the message its passage is of is in it; one
+            // the view does not list yet (just written, or not taken) goes after the others.
+            let mut subs: Vec<(usize, &Annotation)> = self
+                .annotations
+                .iter()
+                .filter_map(|sub| {
+                    let passage = kept.passages.get(&sub.id)?;
+                    tree::holding(std::slice::from_ref(thread), &passage.parent)?;
+                    Some((order.iter().position(|node| node.id == sub.id).unwrap_or(usize::MAX), sub))
+                })
+                .collect();
+            subs.sort_by_key(|(at, _)| *at);
+            notes.extend(subs.into_iter().map(|(_, annotation)| Placed { annotation, range: note.range }));
+        }
+        notes
     }
 
     /// Have the review's view read again at the next wake.

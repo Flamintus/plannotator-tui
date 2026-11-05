@@ -108,11 +108,7 @@ impl App {
         }
         self.draw_footer(frame, footer);
         match &self.mode {
-            Mode::Compose => {
-                let passage = self.pending.as_ref().is_some_and(|p| matches!(p.on, Selected::Passage(_)));
-                let verb = if passage { "sub-thread" } else { "comment" };
-                self.draw_compose(frame, &self.compose_title(verb));
-            }
+            Mode::Compose => self.draw_compose(frame, &self.compose_title("comment")),
             Mode::Edit(_) => self.draw_compose(frame, &self.compose_title("edit")),
             Mode::Reply(_) => self.draw_compose(frame, &self.compose_title("reply")),
             Mode::AttachImage(_) => {
@@ -262,18 +258,14 @@ impl App {
     }
 
     fn draw_toolbar(&mut self, frame: &mut Frame) {
-        // An item the selection does not take is left out (`toolbar_offers`); its span stays
-        // empty, so no click lands on it.
-        let labels: Vec<Option<String>> = TOOLBAR
+        let labels: Vec<String> = TOOLBAR
             .iter()
-            .map(|(g, l, a, kind)| {
-                self.toolbar_offers(*kind).then(|| match self.keys.hint(*a) {
-                    key if key.is_empty() => format!(" {g} {l} "),
-                    key => format!(" {g} {l} ({key}) "),
-                })
+            .map(|(g, l, a, _)| match self.keys.hint(*a) {
+                key if key.is_empty() => format!(" {g} {l} "),
+                key => format!(" {g} {l} ({key}) "),
             })
             .collect();
-        let width: u16 = labels.iter().flatten().map(|l| l.width() as u16).sum::<u16>() + 1;
+        let width: u16 = labels.iter().map(|l| l.width() as u16).sum::<u16>() + 1;
         let Some(rect) = self.float_origin(1, width) else { return };
         frame.render_widget(Clear, rect);
         let buf = frame.buffer_mut();
@@ -281,7 +273,6 @@ impl App {
         let mut x = rect.x + 1;
         let mut spans = [0..0, 0..0, 0..0];
         for ((label, item), span) in labels.iter().zip(TOOLBAR.iter()).zip(spans.iter_mut()) {
-            let Some(label) = label else { continue };
             let w = label.width() as u16;
             let style = Style::new().fg(accent(item.3)).bg(palette().toolbar_bg).bold();
             buf.set_span(x, rect.y, &Span::styled(label.as_str(), style), w);
@@ -349,7 +340,7 @@ impl App {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;
         let mut next_y = rail.y;
-        let placed = self.open.store.placed();
+        let placed = self.open.store.notes();
         let mut bubbles = Vec::new();
         for (index, placed) in placed.iter().enumerate() {
             let Some(block) = self.open.doc.block_containing(placed.range.start) else { continue };
@@ -471,7 +462,7 @@ impl App {
                         Selected::Source(range) => {
                             self.open.doc.source.get(range.clone()).map_or(0, |s| s.chars().count())
                         }
-                        Selected::Passage(passage) => passage.quote.chars().count(),
+                        Selected::Passage(passage) => passage.on.quote.chars().count(),
                     };
                     format!("selected {chars} chars")
                 }
@@ -522,9 +513,9 @@ impl App {
         let remove_image = has_images.then(|| key(Action::RemoveImage, "remove image")).flatten();
         let help: Vec<Option<String>> = match self.focus {
             _ if self.pending.is_some() => vec![
-                self.toolbar_offers(Kind::LooksGood).then(|| key(Action::LooksGood, "looks good")).flatten(),
+                key(Action::LooksGood, "looks good"),
                 key(Action::Comment, "comment"),
-                self.toolbar_offers(Kind::Delete).then(|| key(Action::Delete, "delete")).flatten(),
+                key(Action::Delete, "delete"),
                 (!self.ui.copy_on_select).then(|| key(Action::CopySelection, "copy")).flatten(),
                 key(Action::Back, "clear"),
             ],

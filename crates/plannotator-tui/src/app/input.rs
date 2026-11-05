@@ -209,7 +209,7 @@ impl App {
     }
 
     fn rail_key(&mut self, key: KeyEvent) -> Result<()> {
-        let len = self.open.store.placed().len();
+        let len = self.open.store.notes().len();
         match self.keys.action(&key, keys::RAIL) {
             Some(Action::Down) => {
                 self.rail_cursor = (self.rail_cursor + 1).min(len.saturating_sub(1));
@@ -225,7 +225,7 @@ impl App {
             Some(Action::Back) => self.focus = Focus::Document,
             _ => {}
         }
-        if let Some(target) = self.open.store.placed().get(self.rail_cursor)
+        if let Some(target) = self.open.store.notes().get(self.rail_cursor)
             && let Some(block) = self.open.doc.block_containing(target.range.start)
         {
             self.selected = block;
@@ -448,13 +448,8 @@ impl App {
                         if !body.is_empty()
                             && let Some(pending) = self.pending.take()
                         {
-                            match pending.on {
-                                Selected::Source(range) => {
-                                    self.annotate(range, Kind::Comment, body)?;
-                                    self.status = Some("comment saved".into());
-                                }
-                                Selected::Passage(passage) => self.save_sub_thread(&passage, body),
-                            }
+                            self.annotate(pending.on, Kind::Comment, body)?;
+                            self.status = Some("comment saved".into());
                         }
                         self.clear_selection();
                     }
@@ -590,7 +585,7 @@ impl App {
                 column >= rect.x && column < rect.right() && row >= rect.y && row < rect.bottom()
             })
             .map(|(_, id)| id.clone())?;
-        self.open.store.placed().iter().position(|p| p.annotation.id == id)
+        self.open.store.notes().iter().position(|p| p.annotation.id == id)
     }
 
     /// Screen cell -> document (row, column). With `clamp`, positions outside the
@@ -663,7 +658,7 @@ impl App {
     /// A passage of a box's words waits for its action, as a selection of the document does.
     fn pending_passage(&mut self, passage: super::threads::Passage, at: (usize, usize)) {
         if self.clipboard && self.ui.copy_on_select {
-            let _ = crate::delivery::Clipboard.deliver(&passage.quote);
+            let _ = crate::delivery::Clipboard.deliver(&passage.on.quote);
         }
         if let Some(block) = self.box_block(at.0) {
             self.selected = block;

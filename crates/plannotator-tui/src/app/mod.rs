@@ -473,11 +473,21 @@ impl App {
         self.frame_max_ms = self.frame_max_ms.max(ms);
     }
 
-    /// Annotate a source range: the rendered text is derived from the layout so the
-    /// Workspaces web client can find it. Saved immediately.
-    fn annotate(&mut self, range: Range<usize>, kind: Kind, body: String) -> Result<()> {
-        let rendered = self.open.layout.rendered_in_range(&self.open.doc.source, &range);
-        self.open.store.add(&self.open.doc, range, rendered, kind, body)?;
+    /// Note what a selection is on, saved immediately: a source range, its rendered text derived
+    /// from the layout so the Workspaces web client can find it; or, under the review loop, a
+    /// passage of a message in a thread's box, a sub-thread. The same note either way: the
+    /// same kinds, a bubble in the rail, written to the journal alike.
+    fn annotate(&mut self, on: Selected, kind: Kind, body: String) -> Result<()> {
+        match on {
+            Selected::Source(range) => {
+                let rendered = self.open.layout.rendered_in_range(&self.open.doc.source, &range);
+                self.open.store.add(&self.open.doc, range, rendered, kind, body)?;
+            }
+            Selected::Passage(passage) => {
+                self.saw_message(&passage.on.parent);
+                self.open.store.add_on_passage(passage.on, kind, body)?;
+            }
+        }
         self.mark_unsent();
         self.sync_tree_counts();
         Ok(())
@@ -486,29 +496,18 @@ impl App {
     /// Apply a toolbar action to the pending selection.
     fn act(&mut self, kind: Kind) -> Result<()> {
         let Some(pending) = self.pending.clone() else { return Ok(()) };
-        match (kind, pending.on) {
-            (Kind::Comment, _) => {
+        match kind {
+            Kind::Comment => {
                 self.mode = Mode::Compose;
                 self.compose = Compose::default();
             }
-            // A sub-thread on a box's words is a comment: the toolbar offers nothing else there.
-            (Kind::LooksGood | Kind::Delete, Selected::Passage(_)) => {
-                let comment = self.keys.hint(Action::Comment);
-                self.status = Some(format!("a sub-thread is a comment: {comment} writes it"));
-            }
-            (Kind::LooksGood | Kind::Delete, Selected::Source(range)) => {
-                self.annotate(range, kind, String::new())?;
+            Kind::LooksGood | Kind::Delete => {
+                self.annotate(pending.on, kind, String::new())?;
                 self.clear_selection();
                 self.status = Some(format!("{} saved", label(kind)));
             }
         }
         Ok(())
-    }
-
-    /// Whether the toolbar offers `kind` for the pending selection: a passage of a box's words
-    /// takes a comment only, its sub-thread.
-    fn toolbar_offers(&self, kind: Kind) -> bool {
-        kind == Kind::Comment || self.pending.as_ref().is_none_or(|pending| pending.range().is_some())
     }
 
     /// `copy`: the waiting selection's text to the clipboard: its source, or the words of a
@@ -517,7 +516,7 @@ impl App {
         let Some(pending) = &self.pending else { return };
         let text = match &pending.on {
             Selected::Source(range) => self.open.doc.source.get(range.clone()),
-            Selected::Passage(passage) => Some(passage.quote.as_str()),
+            Selected::Passage(passage) => Some(passage.on.quote.as_str()),
         };
         let Some(text) = text else { return };
         if self.clipboard {
@@ -528,19 +527,19 @@ impl App {
 
     /// Begin editing the body of the annotation under the rail cursor.
     fn edit_selected_annotation(&mut self) {
-        let placed = self.open.store.placed();
+        let placed = self.open.store.notes();
         let Some(target) = placed.get(self.rail_cursor) else { return };
         self.compose = Compose::with_text(&target.annotation.body);
         self.mode = Mode::Edit(target.annotation.id.clone());
     }
 
     fn remove_selected_annotation(&mut self) -> Result<()> {
-        let id = self.open.store.placed().get(self.rail_cursor).map(|p| p.annotation.id.clone());
+        let id = self.open.store.notes().get(self.rail_cursor).map(|p| p.annotation.id.clone());
         let Some(id) = id else { return Ok(()) };
         if self.open.store.remove(&id)? {
             self.mark_unsent();
             self.status = Some("annotation removed".into());
-            self.rail_cursor = self.rail_cursor.min(self.open.store.placed().len().saturating_sub(1));
+            self.rail_cursor = self.rail_cursor.min(self.open.store.notes().len().saturating_sub(1));
             self.sync_tree_counts();
         }
         Ok(())
@@ -695,7 +694,7 @@ impl App {
         let range = range.ok_or_else(|| {
             anyhow::anyhow!("block {block} out of range ({} blocks)", self.open.doc.blocks.len())
         })?;
-        self.annotate(range, kind, body)
+        self.annotate(Selected::Source(range), kind, body)
     }
 
     /// Annotate the first occurrence of `quote` in the source.
@@ -721,7 +720,7 @@ impl App {
             }
             anyhow::bail!("occurrence {occurrence} of {quote:?} not found: it appears {found} time(s)");
         };
-        self.annotate(start..start + quote.len(), kind, body)
+        self.annotate(Selected::Source(start..start + quote.len()), kind, body)
     }
 
     pub(crate) fn describe_blocks(&self) -> Vec<String> {

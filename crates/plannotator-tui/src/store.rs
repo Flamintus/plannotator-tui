@@ -76,7 +76,8 @@ pub(crate) struct Delivered {
 /// The field of a record's note that names the review of the review loop it was written to.
 const IN_JOURNAL: &str = "plannotator_tui_journal";
 
-/// A resolved annotation: the record plus where it currently sits in the source.
+/// A resolved annotation: the record plus where it currently sits in the source; for a note
+/// on a passage of a thread's box (`Store::notes`), where its thread's note sits.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Placed<'a> {
     pub(crate) annotation: &'a Annotation,
@@ -240,9 +241,14 @@ impl Store {
             version: plannotator_tui_schema::blob_sha(doc.source.as_bytes()),
         };
         let anchor = Anchor::new(rendered, &doc.source, source_range, kind, block);
+        self.push(local_id(), anchor, body, Resolution::Range(range))
+    }
+
+    /// A new note `id` on `anchor`, found at `resolution`, saved.
+    fn push(&mut self, id: String, anchor: Anchor, body: String, resolution: Resolution) -> Result<()> {
         let now = timestamp()?;
         self.annotations.push(Annotation {
-            id: local_id(),
+            id,
             document_id: String::new(),
             anchor,
             body,
@@ -256,7 +262,7 @@ impl Store {
             replies: Vec::new(),
             other: std::collections::BTreeMap::default(),
         });
-        self.resolved.push(Resolution::Range(range));
+        self.resolved.push(resolution);
         self.save()
     }
 
@@ -299,12 +305,20 @@ impl Store {
         true
     }
 
+    /// Where each note is in the document's words; a note on a passage of a thread's box is
+    /// not looked for there.
     pub(crate) fn resolve_all(&mut self, doc: &Document) {
-        self.resolved = self
+        let resolved = self
             .annotations
             .iter()
-            .map(|a| resolve(&a.anchor, &doc.source, |o| doc.block_containing(o)))
+            .map(|a| {
+                if self.on_passage(&a.id) {
+                    return Resolution::Orphan;
+                }
+                resolve(&a.anchor, &doc.source, |o| doc.block_containing(o))
+            })
             .collect();
+        self.resolved = resolved;
     }
 
     /// Every resolved annotation, in source order.
@@ -356,6 +370,11 @@ impl Store {
         ids.into_iter().filter(|id| !self.journal_unsaved(id)).collect()
     }
 
+    /// Note `id`'s kind.
+    pub(crate) fn kind(&self, id: &str) -> Option<Kind> {
+        self.annotations.iter().find(|note| note.id == id).map(|note| note.anchor.kind())
+    }
+
     pub(crate) fn has_images(&self, id: &str) -> bool {
         self.annotations.iter().any(|a| a.id == id && !a.plannotator_tui.images.is_empty())
     }
@@ -365,7 +384,7 @@ impl Store {
     }
 
     pub(crate) fn orphans(&self) -> usize {
-        self.resolved.iter().filter(|r| **r == Resolution::Orphan).count()
+        self.orphaned().len()
     }
 }
 

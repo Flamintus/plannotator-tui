@@ -134,6 +134,19 @@ pub(crate) enum Target {
     Thread { comment_id: String, messages: Vec<(String, Range<usize>)> },
 }
 
+/// A passage of a sent message of a thread (a comment, a reply or a sub-thread) as drawn in
+/// its box: what a sub-thread is on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Passage {
+    /// The message's id.
+    pub(crate) parent: String,
+    /// The words, as the message has them.
+    pub(crate) quote: String,
+    /// Where they start in the message's words, as Plannotator counts it
+    /// (`passage::offset_in`); `None`: the journal finds them.
+    pub(crate) offset: Option<u64>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::switched_on;

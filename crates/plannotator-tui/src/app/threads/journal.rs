@@ -56,6 +56,19 @@ fn passage_range(words: &str, sub: &ThreadNode) -> Option<Range<usize>> {
 }
 
 impl Thread {
+    /// Each thread's kind at any depth, as its note in the rail has it (`kind` names it by id):
+    /// a sub-thread's as a comment's.
+    fn take_kinds(&mut self, kind: &impl Fn(&str) -> Option<plannotator_tui_schema::Kind>) {
+        if let Some(kind) = kind(&self.id) {
+            self.kind = kind;
+        }
+        for message in &mut self.messages {
+            for sub in &mut message.threads {
+                sub.take_kinds(kind);
+            }
+        }
+    }
+
     fn of_node(node: &ThreadNode, seen: &HashSet<String>) -> Self {
         let threads = |subs: &[ThreadNode], words: &str| {
             let sub =
@@ -109,6 +122,7 @@ impl App {
         let seen = self.review_loop.as_mut()?.seen(view);
         let open = &self.open;
         let node = |id: &str| tree::find(&view.threads, id);
+        let kind = |id: &str| open.store.kind(id);
         let mut threads = Vec::new();
         for placed in open.store.placed() {
             let (Some(block), Some(node)) =
@@ -120,13 +134,14 @@ impl App {
                 continue;
             }
             let mut thread = Thread::of_node(node, seen);
-            thread.kind = placed.kind();
+            thread.take_kinds(&kind);
             threads.push((block, thread));
         }
         let last = open.doc.blocks.len().checked_sub(1);
         for orphan in open.store.orphaned() {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
             let mut thread = Thread::of_node(node, seen);
+            thread.take_kinds(&kind);
             thread.marks.insert(0, "Unanchored".to_owned());
             threads.push((block, thread));
         }

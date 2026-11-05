@@ -28,6 +28,24 @@ pub(crate) fn holding<'a>(nodes: &'a [ThreadNode], id: &str) -> Option<&'a Threa
     })
 }
 
+/// The sub-threads under `node`, at any depth, in the order its box draws them: on the
+/// comment's words, then on each reply's, each message's by where their passages start, each
+/// followed by the ones under it.
+pub(crate) fn under(node: &ThreadNode) -> Vec<&ThreadNode> {
+    let mut out = Vec::new();
+    let messages =
+        std::iter::once(&node.sub_threads).chain(node.replies.iter().map(|reply| &reply.sub_threads));
+    for subs in messages {
+        let mut subs: Vec<&ThreadNode> = subs.iter().collect();
+        subs.sort_by_key(|sub| sub.place.parent.as_ref().map(|parent| parent.quote_offset));
+        for sub in subs {
+            out.push(sub);
+            out.extend(under(sub));
+        }
+    }
+    out
+}
+
 /// The drafts of `node` and of everything under it: what one note's send carries.
 pub(crate) fn drafts(node: &ThreadNode, out: &mut Vec<String>) {
     if node.draft {

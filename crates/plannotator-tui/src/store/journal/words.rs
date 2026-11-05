@@ -1,7 +1,7 @@
 //! Where a comment of the journal is in its document: which comments of the review's view
-//! are on the document's words, where each one's quote is in them, the passage a new
-//! sub-thread is on in a comment's thread opened as a document, and a note's images in the
-//! words the journal keeps.
+//! are on the document's words, and which sub-threads under them on a box's passage, where
+//! each one's quote is in them, the passage a new sub-thread is on in a comment's thread
+//! opened as a document, and a note's images in the words the journal keeps.
 
 use std::collections::BTreeMap;
 use std::ops::Range;
@@ -51,19 +51,26 @@ fn split_images(text: &str) -> (String, Vec<String>) {
 }
 
 impl Kept {
-    /// Write `annotation` as a new comment, or as an edit of its draft, its words `text`.
+    /// Write `annotation` as a new comment, or as an edit of its draft, its words `text`: on
+    /// the document's words, or a sub-thread on its box's passage, of its kind either way.
     pub(super) fn comment(&self, annotation: &Annotation, text: &str) -> Result<()> {
         let quote = annotation.anchor.rendered().to_owned();
         let deletion = annotation.anchor.kind() == Kind::Delete;
-        let placement = match &self.target {
-            Target::Message { message_id } => {
+        let placement = match (&self.target, self.passages.get(&annotation.id)) {
+            (_, Some(passage)) => Placement::Passage {
+                parent: passage.parent.clone(),
+                quote: passage.quote.clone(),
+                quote_offset: passage.offset,
+                deletion,
+            },
+            (Target::Message { message_id }, None) => {
                 Placement::On { on: On::Message { message_id: message_id.clone() }, quote, deletion }
             }
-            Target::File { path } => {
+            (Target::File { path }, None) => {
                 let on = On::File { path: path.display().to_string(), lines: self.lines(annotation) };
                 Placement::On { on, quote, deletion }
             }
-            Target::Thread { .. } => self.passage(annotation)?,
+            (Target::Thread { .. }, None) => self.passage(annotation, deletion)?,
         };
         let comment = NewComment { id: annotation.id.clone(), text: text.to_owned(), placement };
         let review = &self.review;
@@ -77,9 +84,11 @@ impl Kept {
         Some([first as u64, last as u64])
     }
 
-    /// The comments of `view` on this document's own words: on a message or a file, its
-    /// comments; on a comment's thread, the sub-threads on its messages.
+    /// The comments of `view` this document's notes are: on a message or a file, its
+    /// comments, each followed by the sub-threads under it at any depth, on the passages of its
+    /// box; on a comment's thread, the sub-threads on its messages.
     pub(super) fn comments<'v>(&self, view: &'v ThreadView) -> Vec<&'v ThreadNode> {
+        let with_sub_threads = |node: &'v ThreadNode| std::iter::once(node).chain(tree::under(node));
         match &self.target {
             Target::Message { message_id } => view
                 .threads
@@ -88,11 +97,13 @@ impl Kept {
                     node.place.parent.is_none()
                         && matches!(&node.place.on, On::Message { message_id: on } if on == message_id)
                 })
+                .flat_map(with_sub_threads)
                 .collect(),
             Target::File { path } => view
                 .threads
                 .iter()
                 .filter(|node| node.place.parent.is_none() && on_file(&node.place.on, path))
+                .flat_map(with_sub_threads)
                 .collect(),
             Target::Thread { comment_id, .. } => {
                 let Some(thread) = tree::find(&view.threads, comment_id) else { return Vec::new() };
@@ -115,7 +126,7 @@ impl Kept {
 
     /// The passage a new sub-thread is on: the message whose words hold the selection, its
     /// quote, and where it starts in that message's words, as the journal counts it.
-    fn passage(&self, annotation: &Annotation) -> Result<Placement> {
+    fn passage(&self, annotation: &Annotation, deletion: bool) -> Result<Placement> {
         let Target::Thread { messages, .. } = &self.target else { anyhow::bail!("not a comment's thread") };
         let source = annotation.anchor.plannotator_tui.as_ref().and_then(|extras| extras.source.as_ref());
         let (start, end) = source.map(|range| (range.start, range.end)).context("no selection to place")?;
@@ -127,15 +138,18 @@ impl Kept {
         let occurrence = passage::occurrence(&self.chars_in(range), &quote, start);
         let words = self.source.get(range.clone()).unwrap_or_default();
         let quote_offset = passage::offset_in(words, &quote, occurrence);
-        Ok(Placement::Passage { parent: parent.clone(), quote, quote_offset })
+        Ok(Placement::Passage { parent: parent.clone(), quote, quote_offset, deletion })
     }
 
     /// Where `node`'s quote is in the document: where this review put it, else the first
     /// place the words as drawn hold it (within its message's, for a sub-thread), else an
-    /// anchor that resolves to nothing.
+    /// anchor that resolves to nothing, as a sub-thread on a box's passage has, of its kind.
     pub(super) fn anchor(&self, node: &ThreadNode, doc: &Document) -> Anchor {
         if let Some(anchor) = self.anchors.get(&node.id) {
             return anchor.clone();
+        }
+        if self.passages.contains_key(&node.id) {
+            return quoted(&node.place.quote, kind_of(node));
         }
         let quote = node.place.quote.clone();
         let found = match &node.place.parent {
@@ -152,28 +166,36 @@ impl Kept {
                     end: range.end,
                     version: blob_sha(doc.source.as_bytes()),
                 };
-                // A deletion stays one, so writing its draft again keeps it.
-                let kind = if node.kind == CommentKind::Deletion { Kind::Delete } else { Kind::Comment };
-                Anchor::new(quote, &doc.source, range, kind, block)
+                Anchor::new(quote, &doc.source, range, kind_of(node), block)
             }
-            None => {
-                Anchor { original_text: quote.clone(), quote, plannotator_tui: None, other: BTreeMap::new() }
-            }
+            None => quoted(&quote, kind_of(node)),
         }
+    }
+}
+
+/// The kind of note a comment of the view is: a deletion stays one, so writing its draft again
+/// keeps it.
+fn kind_of(node: &ThreadNode) -> Kind {
+    if node.kind == CommentKind::Deletion { Kind::Delete } else { Kind::Comment }
+}
+
+/// An anchor on `quote` with no place in the document's words, that keeps the note's kind: a
+/// note whose words are not found there, or one on a passage of a thread's box.
+pub(super) fn quoted(quote: &str, kind: Kind) -> Anchor {
+    let extras =
+        (kind != Kind::Comment).then(|| plannotator_tui_schema::Extras { kind, ..Default::default() });
+    Anchor {
+        original_text: quote.to_owned(),
+        quote: quote.to_owned(),
+        plannotator_tui: extras,
+        other: BTreeMap::new(),
     }
 }
 
 /// A draft of the review's view as a note on `quote`, with no place in a document: its images
 /// taken from its words; a deletion's anchor says so.
 pub(crate) fn draft_note(id: &str, quote: &str, text: &str, deletion: bool) -> Annotation {
-    let extras =
-        deletion.then(|| plannotator_tui_schema::Extras { kind: Kind::Delete, ..Default::default() });
-    let anchor = Anchor {
-        original_text: quote.to_owned(),
-        quote: quote.to_owned(),
-        plannotator_tui: extras,
-        other: BTreeMap::new(),
-    };
+    let anchor = quoted(quote, if deletion { Kind::Delete } else { Kind::Comment });
     let (body, images) = split_images(text);
     Annotation {
         id: id.to_owned(),
