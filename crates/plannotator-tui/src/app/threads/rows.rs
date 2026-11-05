@@ -1,7 +1,8 @@
-//! A thread's rows as drawn: its box, the passage and the marks at its head, each message
-//! under who wrote it, the threads on a message's words as boxes in the box, each under the
-//! line its passage starts on; or, settled, one folded line. Each row keeps, per column, the
-//! message's words it shows (`words::Spot`).
+//! A thread's rows as drawn, at every depth and of every kind: its box, the passage and the
+//! marks at its head, each message under who wrote it, the threads on a message's words as
+//! boxes in the box, each under the line its passage starts on, a blank row above and below
+//! each (`spaced`); or, settled, one folded line. Each row keeps, per column, the message's
+//! words it shows (`words::Spot`).
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -9,8 +10,8 @@ use unicode_width::UnicodeWidthStr;
 
 use super::super::draw::{accent, short_id};
 use super::super::glyph;
-use super::Thread;
 use super::words::{Said, Spot};
+use super::{Message, Thread};
 use crate::theme::palette;
 use crate::wrap::wrap_line;
 
@@ -44,6 +45,11 @@ impl BoxRow {
         Self { line, thread: None, words: Vec::new() }
     }
 
+    /// A row that shows nothing: a blank line of a message's words.
+    fn is_blank(&self) -> bool {
+        self.line.width() == 0
+    }
+
     /// The row between the sides of a box `inner` columns wide.
     fn in_box(self, inner: usize, border: Style) -> Self {
         let words = [None, None].into_iter().chain(self.words).collect();
@@ -51,10 +57,32 @@ impl BoxRow {
     }
 }
 
+/// The boxes of `threads`, all under one line of the words they are on (a block of the
+/// document, a line of a message's words in a box), `width` columns wide: a blank row above
+/// each and one below the last, so every box has one above it and one below it, at every depth
+/// and of every kind. `blank_follows`: the words go on under them with a blank row of their own
+/// (the gap under a block, a blank line of a message), which is the one below.
+pub(super) fn spaced<'t>(
+    threads: impl IntoIterator<Item = &'t Thread>,
+    width: usize,
+    said: &mut Vec<Said>,
+    blank_follows: bool,
+) -> Vec<BoxRow> {
+    let mut rows = Vec::new();
+    for thread in threads {
+        rows.push(BoxRow::plain(Line::default()));
+        rows.extend(lines_of(thread, width, said));
+    }
+    if !rows.is_empty() && !blank_follows {
+        rows.push(BoxRow::plain(Line::default()));
+    }
+    rows
+}
+
 /// A thread's rows, `width` columns wide: its folded line once settled, else its box. The
 /// messages whose words the box shows join `said`, and its rows name them by their place there;
 /// each row names the innermost thread it is in.
-pub(super) fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
+fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let mut rows = if thread.is_folded() || width < MIN_BOX_WIDTH {
         vec![BoxRow::plain(folded(thread, width))]
     } else {
@@ -66,7 +94,9 @@ pub(super) fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> V
     rows
 }
 
-/// A thread's box, its sub-threads' rows inside.
+/// A thread's box: its head, then each message under who wrote it, the threads on its words
+/// (`spaced`) under the line their passage starts on, as a thread is under the block its
+/// passage starts in; one whose passage is not found there, after the message's words.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let border =
         if thread.resolved { Style::new().fg(Color::DarkGray) } else { Style::new().fg(accent(thread.kind)) };
@@ -83,61 +113,59 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         };
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         rows.push(BoxRow::plain(author).in_box(inner, border));
-        let spoken = said.len();
-        let passages =
-            message.threads.iter().filter_map(|sub| Some((sub.range.clone()?, sub.kind))).collect();
-        said.push(Said {
-            id: message.id.clone(),
-            words: message.body.clone(),
-            draft: message.draft,
-            passages,
-        });
-        let mut lines = Vec::new();
-        for paragraph in printable_lines(&message.body) {
-            let (words, bytes): (String, Vec<Option<usize>>) =
-                paragraph.into_iter().map(|(ch, byte)| (ch, Some(byte))).unzip();
-            for row in wrap_line(&Line::styled(words, text), &bytes, inner) {
-                let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot { message: spoken, byte }));
-                lines.push(BoxRow { line: row.line, thread: None, words: spots.collect() });
-            }
-        }
-        // Each sub-thread right under the line its passage starts on, as a thread is under the
-        // block its passage starts in; one whose words are not found there, under the message.
-        let firsts: Vec<Option<usize>> =
-            lines.iter().map(|line| line.words.iter().flatten().map(|spot| spot.byte).min()).collect();
-        let line_of = |sub: &Thread| {
-            let start = sub.range.as_ref()?.start;
-            firsts.iter().rposition(|first| first.is_some_and(|first| first <= start))
-        };
-        let mut subs: Vec<(usize, &Thread)> =
-            message.threads.iter().map(|sub| (line_of(sub).unwrap_or(usize::MAX), sub)).collect();
-        subs.sort_by_key(|(line, _)| *line);
-        let mut subs = subs.into_iter().peekable();
-        for (at, line) in lines.into_iter().enumerate() {
-            rows.push(line.in_box(inner, border));
-            while let Some((_, sub)) = subs.next_if(|(line, _)| *line == at) {
-                rows.extend(sub_rows(sub, inner, border, said));
-            }
-        }
-        for (_, sub) in subs {
-            rows.extend(sub_rows(sub, inner, border, said));
+        let lines = words_of(message, inner, text, said);
+        let under = under_lines(&lines, &message.threads);
+        let mut lines = lines.into_iter().map(Some).chain([None]).zip(under).peekable();
+        while let Some((line, threads)) = lines.next() {
+            rows.extend(line.map(|line| line.in_box(inner, border)));
+            let blank = lines.peek().is_some_and(|(next, _)| next.as_ref().is_some_and(BoxRow::is_blank));
+            let boxes = spaced(threads, inner, said, blank);
+            rows.extend(boxes.into_iter().map(|row| row.in_box(inner, border)));
         }
     }
     rows.push(BoxRow::plain(edge('╰', '╯', width, border)));
     rows
 }
 
-/// A sub-thread's rows inside its parent's box, `inner` columns wide: a blank row between the
-/// parent's sides keeps it apart from the words over it, as a thread is from its block.
-fn sub_rows(sub: &Thread, inner: usize, border: Style, said: &mut Vec<Said>) -> Vec<BoxRow> {
-    std::iter::once(BoxRow::plain(Line::default()))
-        .chain(lines_of(sub, inner, said))
-        .map(|row| row.in_box(inner, border))
-        .collect()
+/// A message's words wrapped to `inner` columns, each row knowing the byte of the words each
+/// column shows; the message joins `said`, with the passages of the threads on its words.
+fn words_of(message: &Message, inner: usize, text: Style, said: &mut Vec<Said>) -> Vec<BoxRow> {
+    let spoken = said.len();
+    let passages = message.threads.iter().filter_map(|sub| Some((sub.range.clone()?, sub.kind))).collect();
+    said.push(Said { id: message.id.clone(), words: message.body.clone(), draft: message.draft, passages });
+    let mut lines = Vec::new();
+    for paragraph in printable_lines(&message.body) {
+        let (words, bytes): (String, Vec<Option<usize>>) =
+            paragraph.into_iter().map(|(ch, byte)| (ch, Some(byte))).unzip();
+        for row in wrap_line(&Line::styled(words, text), &bytes, inner) {
+            let spots = row.cells.iter().map(|cell| cell.map(|byte| Spot { message: spoken, byte }));
+            lines.push(BoxRow { line: row.line, thread: None, words: spots.collect() });
+        }
+    }
+    lines
 }
 
-/// `╭ 💬 "passage" ──── Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit, the state,
-/// the marks and the tail of the note's id, which its bubble's title shows too.
+/// The threads on a message's words under each of its `lines`, in their passages' order, and,
+/// last, those whose passage is not found there.
+fn under_lines<'t>(lines: &[BoxRow], threads: &'t [Thread]) -> Vec<Vec<&'t Thread>> {
+    let firsts: Vec<Option<usize>> =
+        lines.iter().map(|line| line.words.iter().flatten().map(|spot| spot.byte).min()).collect();
+    let mut under = vec![Vec::new(); lines.len() + 1];
+    let mut threads: Vec<&Thread> = threads.iter().collect();
+    threads.sort_by_key(|sub| sub.range.as_ref().map(|range| range.start));
+    for sub in threads {
+        let start = sub.range.as_ref().map(|range| range.start);
+        let line = start
+            .and_then(|start| firsts.iter().rposition(|first| first.is_some_and(|first| first <= start)));
+        if let Some(at) = under.get_mut(line.unwrap_or(lines.len())) {
+            at.push(sub);
+        }
+    }
+    under
+}
+
+/// `╭ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit,
+/// the state, the marks and the tail of the note's id, which its bubble's title shows too.
 /// In a narrow box the marks go first, the last first, then the state, then the id, before the
 /// passage gets too short.
 fn head(thread: &Thread, width: usize, border: Style) -> Line<'static> {
