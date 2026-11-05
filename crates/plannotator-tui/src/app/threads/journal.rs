@@ -38,15 +38,19 @@ impl Thread {
     fn of_node(node: &ThreadNode, seen: &HashSet<String>) -> Self {
         let threads = |subs: &[ThreadNode]| subs.iter().map(|sub| Self::of_node(sub, seen)).collect();
         let comment = Message {
+            id: node.id.clone(),
             author: "You".to_owned(),
             tag: node.draft.then(|| "draft".to_owned()),
             body: node.text.clone(),
+            draft: node.draft,
             threads: threads(&node.sub_threads),
         };
         let replies = node.replies.iter().map(|reply| Message {
+            id: reply.id.clone(),
             author: tree::author(reply),
             tag: reply_tag(reply, seen),
             body: reply.text.clone(),
+            draft: reply.draft,
             threads: threads(&reply.sub_threads),
         });
         let resolved = node.state == ThreadState::Resolved;

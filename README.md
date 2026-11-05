@@ -400,6 +400,10 @@ the agent answers with too:
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked new until that thread is acted on, and each box's head says what became of its send
   (pending, delivered, read, replied).
+- A passage of a comment or a reply selected in its box, with the mouse or with `i` and `v` as
+  in the document, takes a sub-thread: `c` (or the toolbar's comment) writes it, a draft the
+  next `E` sends, drawn as a box in the box under that message. A draft's words take none until
+  it is sent.
 - `C` replies under the current note's comment, a draft the next `E` sends; `V` resolves it or
   opens it again; `O` opens its thread as a document: a passage of one of its messages
   selected, `c` starts a sub-thread on it, a box in the box once back (`Esc`). `z` draws a

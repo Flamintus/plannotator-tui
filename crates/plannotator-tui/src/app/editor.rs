@@ -82,8 +82,8 @@ impl App {
         let roaming =
             || self.open.layout.row(self.cursor.0).and_then(|row| row.cells.iter().find_map(|cell| *cell));
         let block = || self.open.doc.blocks.get(self.selected).map(|b| b.range.start);
-        let offset = match &self.pending {
-            Some(pending) => Some(pending.range.start),
+        let offset = match self.pending.as_ref().and_then(super::Pending::range) {
+            Some(range) => Some(range.start),
             None if self.roam => roaming().or_else(block),
             None => block(),
         };

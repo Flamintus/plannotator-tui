@@ -112,6 +112,35 @@ pub(super) fn click(app: &mut App, rect: Rect) {
     .expect("click");
 }
 
+/// Where the `nth` (from 0) `needle` starts on a screen `draw` returned: (column, row). One
+/// character of the screen is one cell, the second cell of a wide one a space.
+pub(super) fn on_screen(screen: &str, needle: &str, nth: usize) -> (u16, u16) {
+    let found = screen.lines().enumerate().flat_map(|(y, row)| {
+        row.match_indices(needle).map(move |(at, _)| (row.get(..at).unwrap_or_default().chars().count(), y))
+    });
+    let (x, y) = found.into_iter().nth(nth).expect(needle);
+    (x as u16, y as u16)
+}
+
+/// Press the mouse at `from`, drag it to `to` and let go, screen (column, row) both.
+pub(super) fn drag(app: &mut App, from: (u16, u16), to: (u16, u16)) {
+    let steps = [
+        (MouseEventKind::Down(MouseButton::Left), from),
+        (MouseEventKind::Drag(MouseButton::Left), to),
+        (MouseEventKind::Up(MouseButton::Left), to),
+    ];
+    for (kind, (column, row)) in steps {
+        let event = MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE };
+        app.handle_event(&Event::Mouse(event)).expect("mouse");
+    }
+}
+
+/// `drag` over the `nth` (from 0) `needle` on `screen`, as a person selects it.
+pub(super) fn drag_over(app: &mut App, screen: &str, needle: &str, nth: usize) {
+    let (x, y) = on_screen(screen, needle, nth);
+    drag(app, (x, y), (x + needle.chars().count() as u16 - 1, y));
+}
+
 pub(super) fn draw(app: &mut App, width: u16, height: u16) -> String {
     let mut terminal = Terminal::new(TestBackend::new(width, height)).expect("terminal");
     terminal.draw(|frame| app.draw(frame)).expect("draw");

@@ -119,9 +119,32 @@ struct Geometry {
 /// A finished selection waiting for an action.
 #[derive(Debug, Clone)]
 struct Pending {
-    range: Range<usize>,
+    on: Selected,
     /// Document (row, col) where the selection starts; anchors the toolbar and compose box.
     at: (usize, usize),
+}
+
+/// What a finished selection is on.
+#[derive(Debug, Clone)]
+enum Selected {
+    /// The document's words, as a source range.
+    Source(Range<usize>),
+    /// A passage of a message's words in a thread's box, which takes a sub-thread.
+    Passage(threads::Passage),
+}
+
+impl Pending {
+    fn source(range: Range<usize>, at: (usize, usize)) -> Self {
+        Self { on: Selected::Source(range), at }
+    }
+
+    /// The source range of a selection of the document's words.
+    fn range(&self) -> Option<&Range<usize>> {
+        match &self.on {
+            Selected::Source(range) => Some(range),
+            Selected::Passage(_) => None,
+        }
+    }
 }
 
 /// Everything about the open document; swapped wholesale when the tree switches files.
@@ -494,13 +517,15 @@ impl App {
     /// Apply a toolbar action to the pending selection.
     fn act(&mut self, kind: Kind) -> Result<()> {
         let Some(pending) = self.pending.clone() else { return Ok(()) };
-        match kind {
-            Kind::Comment => {
+        match (kind, pending.on) {
+            (Kind::Comment, _) => {
                 self.mode = Mode::Compose;
                 self.compose = Compose::default();
             }
-            Kind::LooksGood | Kind::Delete => {
-                self.annotate(pending.range, kind, String::new())?;
+            // A sub-thread on a box's words is a comment: the toolbar offers nothing else there.
+            (Kind::LooksGood | Kind::Delete, Selected::Passage(_)) => {}
+            (Kind::LooksGood | Kind::Delete, Selected::Source(range)) => {
+                self.annotate(range, kind, String::new())?;
                 self.clear_selection();
                 self.status = Some(format!("{} saved", label(kind)));
             }
@@ -508,10 +533,21 @@ impl App {
         Ok(())
     }
 
-    /// `copy`: the waiting selection's source text to the clipboard. It stays selected.
+    /// Whether the toolbar offers `kind` for the pending selection: a passage of a box's words
+    /// takes a comment only, its sub-thread.
+    fn toolbar_offers(&self, kind: Kind) -> bool {
+        kind == Kind::Comment || self.pending.as_ref().is_none_or(|pending| pending.range().is_some())
+    }
+
+    /// `copy`: the waiting selection's text to the clipboard: its source, or the words of a
+    /// box's passage. It stays selected.
     fn copy_pending(&mut self) {
         let Some(pending) = &self.pending else { return };
-        let Some(text) = self.open.doc.source.get(pending.range.clone()) else { return };
+        let text = match &pending.on {
+            Selected::Source(range) => self.open.doc.source.get(range.clone()),
+            Selected::Passage(passage) => Some(passage.quote.as_str()),
+        };
+        let Some(text) = text else { return };
         if self.clipboard {
             let _ = crate::delivery::Clipboard.deliver(text);
         }

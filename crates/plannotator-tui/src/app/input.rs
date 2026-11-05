@@ -8,7 +8,7 @@ use super::compose::ComposeAction;
 use super::menu::ReviewAction;
 use super::selection::Selection;
 use super::send::SendState;
-use super::{App, Focus, GUTTER, Mode, Pending, TOOLBAR};
+use super::{App, Focus, GUTTER, Mode, Pending, Selected, TOOLBAR};
 use crate::delivery::Delivery as _;
 use crate::gate::Gate;
 use crate::keys::{self, Action};
@@ -301,7 +301,7 @@ impl App {
                 if let (Some(block), Some(rendered)) =
                     (self.open.doc.blocks.get(self.selected), self.open.layout.blocks.get(self.selected))
                 {
-                    self.pending = Some(Pending { range: block.range.clone(), at: (rendered.first_row, 0) });
+                    self.pending = Some(Pending::source(block.range.clone(), (rendered.first_row, 0)));
                     self.act(Kind::Comment)?;
                 }
             }
@@ -365,10 +365,7 @@ impl App {
             Some(Action::WordForward) => self.move_word(1),
             Some(Action::WordBack) => self.move_word(-1),
             Some(Action::LineStart) => self.cursor.1 = 0,
-            Some(Action::LineEnd) => {
-                self.cursor.1 =
-                    self.open.layout.row(self.cursor.0).map_or(0, |r| r.cells.len().saturating_sub(1));
-            }
+            Some(Action::LineEnd) => self.cursor.1 = self.row_width(self.cursor.0).saturating_sub(1),
             _ => return false,
         }
         self.ensure_cursor_visible();
@@ -387,14 +384,15 @@ impl App {
             if next >= total || next == row {
                 break;
             }
-            // A gap row, or a thread's box under a block: on to the next text, if there is any.
-            let Some(text) = self.open.layout.text_row_from(next, rows > 0) else { break };
+            // A gap row, or a thread's box under a block: on to the next text, if there is any
+            // (a box's words are text while the review loop keeps the document's comments).
+            let Some(text) = self.text_row_from(next, rows > 0) else { break };
             row = text;
         }
-        let width = self.open.layout.row(row).map_or(0, |r| r.cells.len());
+        let width = self.row_width(row);
         let col = (self.cursor.1 as i64 + cols).clamp(0, width.saturating_sub(1) as i64) as usize;
         self.cursor = (row, col);
-        if let Some(block) = self.open.layout.block_at_row(row) {
+        if let Some(block) = self.open.layout.block_at_row(row).or_else(|| self.box_block(row)) {
             self.selected = block;
         }
         self.ensure_cursor_visible();
@@ -402,8 +400,7 @@ impl App {
 
     /// Jump to the next (+1) or previous (-1) word start on the current row.
     fn move_word(&mut self, direction: i64) {
-        let Some(row) = self.open.layout.row(self.cursor.0) else { return };
-        let text = row.line.to_string();
+        let Some(text) = self.row_text(self.cursor.0) else { return };
         let chars: Vec<char> = text.chars().collect();
         let is_boundary = |i: usize| {
             let here = chars.get(i).is_some_and(|c| !c.is_whitespace());
@@ -446,8 +443,13 @@ impl App {
                         if !body.is_empty()
                             && let Some(pending) = self.pending.take()
                         {
-                            self.annotate(pending.range, Kind::Comment, body)?;
-                            self.status = Some("comment saved".into());
+                            match pending.on {
+                                Selected::Source(range) => {
+                                    self.annotate(range, Kind::Comment, body)?;
+                                    self.status = Some("comment saved".into());
+                                }
+                                Selected::Passage(passage) => self.save_sub_thread(&passage, body),
+                            }
                         }
                         self.clear_selection();
                     }
@@ -513,10 +515,10 @@ impl App {
                     self.selection = None;
                     self.cursor = pos;
                     self.status = None;
-                    self.pending = Some(Pending { range, at: pos });
+                    self.pending = Some(Pending::source(range, pos));
                     return Ok(());
                 }
-                if let Some(block) = self.open.layout.block_at_row(pos.0) {
+                if let Some(block) = self.open.layout.block_at_row(pos.0).or_else(|| self.box_block(pos.0)) {
                     self.selected = block;
                 }
                 self.cursor = pos;
@@ -606,7 +608,8 @@ impl App {
         Some((doc_row, usize::from(col)))
     }
 
-    /// Turn the selection into a source range; it may span blocks.
+    /// Turn the selection into a source range; it may span blocks. One on no text of the
+    /// document may be on the words of a thread's box: a passage, which takes a sub-thread.
     pub(super) fn finish_selection(&mut self) {
         let Some(sel) = self.selection.as_mut() else { return };
         sel.dragging = false;
@@ -626,7 +629,14 @@ impl App {
             }
         }
         let Some((lo, hi)) = bounds else {
-            self.selection = None;
+            match self.box_passage(&sel) {
+                Some(Ok(passage)) => self.pending_passage(passage, a),
+                Some(Err(why)) => {
+                    self.selection = None;
+                    self.status = Some(why);
+                }
+                None => self.selection = None,
+            }
             return;
         };
         let source = &self.open.doc.source;
@@ -642,6 +652,18 @@ impl App {
             self.selected = block;
         }
         self.status = None;
-        self.pending = Some(Pending { range, at: a });
+        self.pending = Some(Pending::source(range, a));
+    }
+
+    /// A passage of a box's words waits for its action, as a selection of the document does.
+    fn pending_passage(&mut self, passage: super::threads::Passage, at: (usize, usize)) {
+        if self.clipboard && self.ui.copy_on_select {
+            let _ = crate::delivery::Clipboard.deliver(&passage.quote);
+        }
+        if let Some(block) = self.box_block(at.0) {
+            self.selected = block;
+        }
+        self.status = None;
+        self.pending = Some(Pending { on: Selected::Passage(passage), at });
     }
 }

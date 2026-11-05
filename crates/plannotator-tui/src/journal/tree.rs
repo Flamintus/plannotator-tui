@@ -17,6 +17,17 @@ pub(crate) fn find<'a>(nodes: &'a [ThreadNode], id: &str) -> Option<&'a ThreadNo
     })
 }
 
+/// The thread whose comment or reply is message `id`, at any depth.
+pub(crate) fn holding<'a>(nodes: &'a [ThreadNode], id: &str) -> Option<&'a ThreadNode> {
+    nodes.iter().find_map(|node| {
+        if node.id == id || node.replies.iter().any(|reply| reply.id == id) {
+            return Some(node);
+        }
+        holding(&node.sub_threads, id)
+            .or_else(|| node.replies.iter().find_map(|reply| holding(&reply.sub_threads, id)))
+    })
+}
+
 /// The drafts of `node` and of everything under it: what one note's send carries.
 pub(crate) fn drafts(node: &ThreadNode, out: &mut Vec<String>) {
     if node.draft {

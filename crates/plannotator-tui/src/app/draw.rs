@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, Focus, GUTTER, Geometry, Mode, TOOLBAR, bubble, glyph, label};
+use super::{App, Focus, GUTTER, Geometry, Mode, Selected, TOOLBAR, bubble, glyph, label};
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
@@ -253,14 +253,18 @@ impl App {
     }
 
     fn draw_toolbar(&mut self, frame: &mut Frame) {
-        let labels: Vec<String> = TOOLBAR
+        // An item the selection does not take is left out (`toolbar_offers`); its span stays
+        // empty, so no click lands on it.
+        let labels: Vec<Option<String>> = TOOLBAR
             .iter()
-            .map(|(g, l, a, _)| match self.keys.hint(*a) {
-                key if key.is_empty() => format!(" {g} {l} "),
-                key => format!(" {g} {l} ({key}) "),
+            .map(|(g, l, a, kind)| {
+                self.toolbar_offers(*kind).then(|| match self.keys.hint(*a) {
+                    key if key.is_empty() => format!(" {g} {l} "),
+                    key => format!(" {g} {l} ({key}) "),
+                })
             })
             .collect();
-        let width: u16 = labels.iter().map(|l| l.width() as u16).sum::<u16>() + 1;
+        let width: u16 = labels.iter().flatten().map(|l| l.width() as u16).sum::<u16>() + 1;
         let Some(rect) = self.float_origin(1, width) else { return };
         frame.render_widget(Clear, rect);
         let buf = frame.buffer_mut();
@@ -268,6 +272,7 @@ impl App {
         let mut x = rect.x + 1;
         let mut spans = [0..0, 0..0, 0..0];
         for ((label, item), span) in labels.iter().zip(TOOLBAR.iter()).zip(spans.iter_mut()) {
+            let Some(label) = label else { continue };
             let w = label.width() as u16;
             let style = Style::new().fg(accent(item.3)).bg(palette().toolbar_bg).bold();
             buf.set_span(x, rect.y, &Span::styled(label.as_str(), style), w);
@@ -450,7 +455,12 @@ impl App {
             ),
             match &self.pending {
                 Some(p) => {
-                    let chars = self.open.doc.source.get(p.range.clone()).map_or(0, |s| s.chars().count());
+                    let chars = match &p.on {
+                        Selected::Source(range) => {
+                            self.open.doc.source.get(range.clone()).map_or(0, |s| s.chars().count())
+                        }
+                        Selected::Passage(passage) => passage.quote.chars().count(),
+                    };
                     format!("selected {chars} chars")
                 }
                 None => format!("block {}/{}", self.selected + 1, self.open.doc.blocks.len()),
@@ -500,9 +510,9 @@ impl App {
         let remove_image = has_images.then(|| key(Action::RemoveImage, "remove image")).flatten();
         let help: Vec<Option<String>> = match self.focus {
             _ if self.pending.is_some() => vec![
-                key(Action::LooksGood, "looks good"),
+                self.toolbar_offers(Kind::LooksGood).then(|| key(Action::LooksGood, "looks good")).flatten(),
                 key(Action::Comment, "comment"),
-                key(Action::Delete, "delete"),
+                self.toolbar_offers(Kind::Delete).then(|| key(Action::Delete, "delete")).flatten(),
                 (!self.ui.copy_on_select).then(|| key(Action::CopySelection, "copy")).flatten(),
                 key(Action::Back, "clear"),
             ],

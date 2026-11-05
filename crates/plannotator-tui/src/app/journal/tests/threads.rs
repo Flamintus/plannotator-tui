@@ -1,6 +1,6 @@
 //! Threads through the journal: the agent's replies, statuses and what is new drawn in the
 //! boxes under the passage, the person's replies, resolving, folding by hand, and sub-threads
-//! from a thread opened as a document.
+//! from a thread opened as a document or from a passage selected in a box.
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
@@ -10,7 +10,7 @@ use plannotator_tui_schema::{Kind, Provenance};
 use ratatui::crossterm::event::{Event as Input, KeyCode};
 
 use super::super::super::App;
-use super::super::super::review_test_support::{RecordingDelivery, draw};
+use super::super::super::review_test_support::{RecordingDelivery, drag, drag_over, draw, on_screen};
 use super::{loop_app_of, press};
 use crate::journal::stand_in::{Comment, StandIn};
 
@@ -205,4 +205,71 @@ fn a_note_not_saved_in_a_thread_survives_a_reply_rewriting_the_thread() {
     assert_eq!(kept, ["Which one?"], "the person's words are not lost");
     let id = app.open.store.placed()[0].annotation.id.clone();
     assert_eq!(app.journal_tag(&id), " \u{b7} not saved");
+}
+
+fn sub_thread_with(app: &mut App, text: &str) {
+    press(app, KeyCode::Char('c'));
+    app.handle_event(&Input::Paste(text.into())).expect("typed");
+    press(app, KeyCode::Enter);
+}
+
+#[test]
+fn a_passage_selected_in_a_reply_in_its_box_takes_a_sub_thread_on_it() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel. The panel is new.");
+    app.poll_journal();
+    let screen = draw(&mut app, 80, 30);
+    drag_over(&mut app, &screen, "panel", 1);
+    let footer = draw(&mut app, 80, 30).lines().last().unwrap_or_default().to_owned();
+    assert!(footer.contains("c comment") && !footer.contains("looks good"), "a comment alone: {footer}");
+    sub_thread_with(&mut app, "Which panel?");
+    {
+        let state = journal.state.borrow();
+        let sub = state.comments.last().expect("a sub-thread");
+        assert_eq!((sub.parent.as_deref(), sub.quote.as_str(), sub.draft), (Some("rep_1"), "panel", true));
+        assert_eq!(sub.quote_offset, Some(25), "the second one, counted as Plannotator counts it");
+    }
+    assert_eq!(app.status.as_deref(), Some("sub-thread saved \u{b7} E sends it"));
+    let screen = draw(&mut app, 80, 40);
+    assert!(
+        row_with(&screen, "Which panel?").starts_with("  \u{2502} \u{2502}"),
+        "a box in the box: {screen}"
+    );
+}
+
+#[test]
+fn the_keyboard_reaches_the_words_in_a_box_and_selects_in_them() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel.");
+    app.poll_journal();
+    draw(&mut app, 80, 30);
+    app.select_block(1);
+    // Down from the paragraph, over the box's head and author lines: the comment's words, then
+    // the reply's; `w` to "admin", `v`, four columns on.
+    let keys = "ijjwwwvllll".chars().map(KeyCode::Char).chain([KeyCode::Enter]);
+    for code in keys {
+        press(&mut app, code);
+    }
+    sub_thread_with(&mut app, "Which admin?");
+    let state = journal.state.borrow();
+    let sub = state.comments.last().expect("a sub-thread");
+    assert_eq!((sub.parent.as_deref(), sub.quote.as_str()), (Some("rep_1"), "admin"));
+}
+
+#[test]
+fn a_sub_thread_is_on_the_words_of_one_sent_message() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel.");
+    app.poll_journal();
+    reply_with(&mut app, "And the runbook?");
+    let screen = draw(&mut app, 80, 30);
+    // The comment's words are in its bubble too, on the right: the box's are the second.
+    drag(&mut app, on_screen(&screen, "night?", 1), on_screen(&screen, "admin", 0));
+    assert_eq!(app.status.as_deref(), Some("a sub-thread is on one message's words: select within one"));
+    assert!(app.pending.is_none());
+    drag_over(&mut app, &screen, "runbook", 0);
+    assert_eq!(app.status.as_deref(), Some("a draft takes no sub-thread: E sends it first"));
+    assert!(app.pending.is_none());
+    let subs = journal.state.borrow().comments.iter().filter(|comment| comment.parent.is_some()).count();
+    assert_eq!(subs, 0, "no sub-thread written");
 }

@@ -14,7 +14,7 @@ use ratatui::crossterm::event::{
 };
 
 use super::send::SendState;
-use super::{App, Mode};
+use super::{App, Mode, Pending};
 use crate::delivery::{Delivery, Discard, HerdrAgent};
 
 /// A fresh, empty data directory for one test. `App::open` resolves the real one, and a
@@ -423,8 +423,8 @@ fn a_mouse_selection_in_a_centered_app_selects_the_text_under_the_pointer() {
     click(&mut app, MouseEventKind::Down(MouseButton::Left), doc.x, doc.y);
     click(&mut app, MouseEventKind::Drag(MouseButton::Left), doc.x + 3, doc.y);
     click(&mut app, MouseEventKind::Up(MouseButton::Left), doc.x + 3, doc.y);
-    let pending = app.pending.as_ref().expect("selection");
-    assert_eq!(&app.open.doc.source[pending.range.clone()], "Plan");
+    let range = app.pending.as_ref().and_then(Pending::range).expect("selection");
+    assert_eq!(&app.open.doc.source[range.clone()], "Plan");
 }
 
 fn open_path(app: &App) -> String {
@@ -590,8 +590,8 @@ fn roaming_moves_by_row_so_a_selection_can_start_mid_block() {
     app.handle_event(&key(KeyCode::Char('v'), KeyModifiers::NONE)).expect("v");
     app.handle_event(&key(KeyCode::Char('$'), KeyModifiers::NONE)).expect("$");
     app.handle_event(&key(KeyCode::Enter, KeyModifiers::NONE)).expect("enter");
-    let pending = app.pending.as_ref().expect("selection finished");
-    assert_eq!(app.open.doc.source.get(pending.range.clone()), Some("second line"));
+    let range = app.pending.as_ref().and_then(Pending::range).expect("selection finished");
+    assert_eq!(app.open.doc.source.get(range.clone()), Some("second line"));
 
     // Esc clears the selection, a second Esc leaves roaming, and j jumps blocks again.
     app.handle_event(&key(KeyCode::Esc, KeyModifiers::NONE)).expect("clear");
