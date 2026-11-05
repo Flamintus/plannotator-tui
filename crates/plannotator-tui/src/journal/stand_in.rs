@@ -147,11 +147,12 @@ impl Journal for StandIn {
                 kept.re = Some(re.clone());
                 kept
             }
-            Placement::Passage { parent, quote, quote_offset } => {
+            Placement::Passage { parent, quote, quote_offset, deletion } => {
                 let on = sent(&state, parent).ok_or_else(|| refused("comment", "not_found"))?.on;
                 let mut kept = Comment::draft(&comment.id, on, quote, &comment.text);
                 kept.parent = Some(parent.clone());
                 kept.quote_offset = *quote_offset;
+                kept.deletion = *deletion;
                 kept
             }
         };

@@ -67,7 +67,8 @@ pub enum Placement {
     /// A sub-thread on `quote`, a passage of sent message `parent` (a comment, a reply or a
     /// sub-thread), starting `quote_offset` into its words as a passage counts them
     /// (whitespace runs as one); the journal finds the first occurrence when it is `None`.
-    Passage { parent: String, quote: String, quote_offset: Option<u64> },
+    /// `deletion`: the person asks for the words to go, as on the target's words.
+    Passage { parent: String, quote: String, quote_offset: Option<u64>, deletion: bool },
 }
 
 /// The person's comment, reply or sub-thread: a draft until a send carries it. Writing the
@@ -96,11 +97,14 @@ impl NewComment {
             Placement::Under { re } => {
                 fields.insert("re".to_owned(), json!(re));
             }
-            Placement::Passage { parent, quote, quote_offset } => {
+            Placement::Passage { parent, quote, quote_offset, deletion } => {
                 fields.insert("parent".to_owned(), json!(parent));
                 fields.insert("quote".to_owned(), json!(quote));
                 if let Some(offset) = quote_offset {
                     fields.insert("quote_offset".to_owned(), json!(offset));
+                }
+                if *deletion {
+                    fields.insert("type".to_owned(), json!("deletion"));
                 }
             }
         }
@@ -150,6 +154,7 @@ mod tests {
                 parent: "rep_1".into(),
                 quote: "a word".into(),
                 quote_offset: Some(4),
+                deletion: false,
             },
         };
         assert_eq!(
