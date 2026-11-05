@@ -381,14 +381,9 @@ impl App {
             if next >= total || next == row {
                 break;
             }
-            row = next;
-            if self.open.layout.row(row).is_none() {
-                // gap row: keep going in the same direction
-                let after = if rows > 0 { row + 1 } else { row.saturating_sub(1) };
-                if after < total && self.open.layout.row(after).is_some() {
-                    row = after;
-                }
-            }
+            // A gap row, or a thread's box under a block: on to the next text, if there is any.
+            let Some(text) = self.open.layout.text_row_from(next, rows > 0) else { break };
+            row = text;
         }
         let width = self.open.layout.row(row).map_or(0, |r| r.cells.len());
         let col = (self.cursor.1 as i64 + cols).clamp(0, width.saturating_sub(1) as i64) as usize;

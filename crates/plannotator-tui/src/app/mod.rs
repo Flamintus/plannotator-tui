@@ -23,6 +23,7 @@ mod selection;
 mod send;
 #[cfg(test)]
 mod tests;
+mod threads;
 mod viewport;
 
 use std::collections::HashMap;
@@ -131,6 +132,8 @@ struct Open {
     disk: Option<disk::DiskStamp>,
     /// The last change on disk the footer already reported, so it is said once.
     disk_noticed: Option<disk::DiskStamp>,
+    /// The threads drawn under their passages, and their rows.
+    flow: threads::Flow,
 }
 
 impl Open {
@@ -144,7 +147,7 @@ impl Open {
             }
             _ => Store::transient(),
         };
-        Ok(Self { source, doc, layout, store, disk, disk_noticed: None })
+        Ok(Self { source, doc, layout, store, disk, disk_noticed: None, flow: threads::Flow::default() })
     }
 }
 

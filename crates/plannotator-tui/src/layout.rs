@@ -63,6 +63,9 @@ pub(crate) struct DocLayout {
     pub(crate) width: usize,
     pub(crate) blocks: Vec<RenderedBlock>,
     pub(crate) total_rows: usize,
+    /// Rows kept free right under a block, as `(block, rows)` in block order: where the app
+    /// draws the threads on that block's passages. Like a gap, they belong to no block.
+    under: Vec<(usize, usize)>,
 }
 
 fn render_block(doc: &Document, index: usize) -> (Text<'static>, Vec<LineOffsets>) {
@@ -99,7 +102,7 @@ impl DocLayout {
                 RenderedBlock { text, offsets, kind: block.kind, rows: Vec::new(), first_row: 0 }
             })
             .collect();
-        let mut layout = Self { width: 0, blocks, total_rows: 0 };
+        let mut layout = Self { width: 0, blocks, total_rows: 0, under: Vec::new() };
         layout.reflow(width);
         layout
     }
@@ -108,9 +111,7 @@ impl DocLayout {
     pub(crate) fn reflow(&mut self, width: usize) {
         let width = width.max(1);
         self.width = width;
-        let mut row = 0usize;
         for block in &mut self.blocks {
-            block.first_row = row;
             let lines = || block.text.lines.iter().zip(&block.offsets);
             block.rows = if block.kind == BlockKind::Table {
                 wrap_table(&block.text.lines, &block.offsets, width)
@@ -119,7 +120,32 @@ impl DocLayout {
             } else {
                 lines().flat_map(|(l, o)| wrap_line(l, o, width)).collect()
             };
+        }
+        self.place();
+    }
+
+    /// Keep `under` rows free under the blocks it names (`(block, rows)`, in block order) and
+    /// move the blocks below down by as much, without re-wrapping. Returns whether it moved
+    /// anything.
+    pub(crate) fn reserve_under(&mut self, under: &[(usize, usize)]) -> bool {
+        if self.under == under {
+            return false;
+        }
+        under.clone_into(&mut self.under);
+        self.place();
+        true
+    }
+
+    /// Each block's first row, from the wrapped rows, the rows kept under blocks and the gaps.
+    fn place(&mut self) {
+        let mut under = self.under.iter().peekable();
+        let mut row = 0usize;
+        for (index, block) in self.blocks.iter_mut().enumerate() {
+            block.first_row = row;
             row += block.rows.len() + BLOCK_GAP;
+            if let Some((_, rows)) = under.next_if(|(at, _)| *at == index) {
+                row += rows;
+            }
         }
         self.total_rows = row.saturating_sub(BLOCK_GAP);
     }
@@ -130,6 +156,21 @@ impl DocLayout {
         let i = idx.checked_sub(1)?;
         let block = self.blocks.get(i)?;
         (row < block.first_row + block.rows.len()).then_some(i)
+    }
+
+    /// The nearest row from `row` on, going down (or up), that shows text: past a gap and
+    /// past the rows kept under a block. `None` when there is none that way.
+    pub(crate) fn text_row_from(&self, row: usize, down: bool) -> Option<usize> {
+        if self.row(row).is_some() {
+            return Some(row);
+        }
+        let after = self.blocks.partition_point(|b| b.first_row <= row);
+        if down {
+            self.blocks.iter().skip(after).find(|b| !b.rows.is_empty()).map(|b| b.first_row)
+        } else {
+            let before = self.blocks.iter().take(after).rev().find(|b| !b.rows.is_empty());
+            before.map(|b| b.first_row + b.rows.len() - 1)
+        }
     }
 
     /// The row at document coordinate `row`, if it exists (None for gap rows).
@@ -193,6 +234,32 @@ mod tests {
         let bold = doc.source.find("**login").expect("present");
         let bold_range = bold..bold + "**login page**".len();
         assert_eq!(layout.rendered_in_range(&doc.source, &bold_range), "login page");
+    }
+
+    fn kept_under_the_first(rows: usize) -> DocLayout {
+        let doc = Document::parse("First.\n\nSecond.\n".to_owned());
+        let mut layout = DocLayout::build(&doc, 80);
+        layout.reserve_under(&[(0, rows)]);
+        layout
+    }
+
+    #[test]
+    fn rows_kept_under_a_block_push_the_next_one_down_and_belong_to_no_block() {
+        let mut layout = kept_under_the_first(3);
+        for _ in 0..2 {
+            assert_eq!(layout.blocks.get(1).map(|b| b.first_row), Some(5), "3 rows, then the gap");
+            assert_eq!(layout.total_rows, 6);
+            assert!((1..5).all(|row| layout.block_at_row(row).is_none()), "the kept rows are nobody's");
+            layout.reflow(40);
+        }
+    }
+
+    #[test]
+    fn the_nearest_text_row_steps_over_the_rows_kept_under_a_block() {
+        let layout = kept_under_the_first(3);
+        assert_eq!(layout.text_row_from(1, true), Some(5));
+        assert_eq!(layout.text_row_from(3, false), Some(0));
+        assert_eq!(layout.text_row_from(5, true), Some(5), "a text row is its own nearest");
     }
 
     #[test]

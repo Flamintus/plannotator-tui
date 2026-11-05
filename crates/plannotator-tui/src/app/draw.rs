@@ -24,7 +24,7 @@ const TREE_WIDTH: u16 = 28;
 pub(super) const TREE_MIN_TOTAL_WIDTH: u16 = 120;
 const COMPOSE_WIDTH: u16 = 48;
 
-fn accent(kind: Kind) -> Color {
+pub(super) fn accent(kind: Kind) -> Color {
     match kind {
         Kind::Comment => palette().comment,
         Kind::LooksGood => palette().looks_good,
@@ -83,6 +83,7 @@ impl App {
             self.clear_selection();
             self.scroll_by(0);
         }
+        self.sync_threads();
 
         self.draw_header(frame, header);
         if show_tree {
@@ -91,6 +92,7 @@ impl App {
             self.draw_tree(frame, tree);
         }
         self.draw_document(frame, gutter, doc);
+        self.draw_threads(frame.buffer_mut(), doc);
         if rail_width > 0 {
             self.draw_rail(frame, rail);
         }
@@ -349,7 +351,8 @@ impl App {
             let y = anchored_y.max(next_y);
             let kind = placed.kind();
             let inner_width = usize::from(rail.width.saturating_sub(4));
-            let lines = bubble::lines(placed.annotation, label(kind), inner_width);
+            let in_flow = self.open.flow.shows_replies(&placed.annotation.id);
+            let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_flow);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
                 break;
@@ -545,7 +548,7 @@ impl App {
 }
 
 /// The tail of an id, enough to tell bubbles apart: `anno_…F0123` → `F0123`.
-fn short_id(id: &str) -> String {
+pub(super) fn short_id(id: &str) -> String {
     let tail: Vec<char> = id.chars().rev().take(5).collect();
     tail.into_iter().rev().collect()
 }

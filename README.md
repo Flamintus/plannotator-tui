@@ -75,6 +75,12 @@ client of the same record writes those; plannotator-tui reads them when the file
 `r`, and writes none itself. It saves the record as it last read it, so reload before a change
 of your own when someone may have answered since; removing a note removes its replies too.
 
+A note with replies, or resolved, is also drawn as a thread: a box right under the block its
+passage is in (under a whole list or table when the passage is inside one), with the passage
+at its head and the note and each reply, by author, inside. Its bubble then counts the
+replies instead of repeating them. A resolved thread folds to one line (`✓ … resolved · 2
+messages`), and its bubble lists the replies again.
+
 Copies go to the clipboard as OSC 52, which is the terminal you are looking at, so on Herdr 0.9.0
 they reach your own machine even when the app runs on a remote server; Herdr Annotate's global
 `copy-context` and `copy-archive` actions do not, because they run outside a pane.

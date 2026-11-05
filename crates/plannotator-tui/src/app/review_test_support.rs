@@ -17,6 +17,7 @@ use ratatui::layout::Rect;
 
 use super::{App, Open, read_file};
 use crate::delivery::{Delivery, DeliveryError};
+use crate::store::Location;
 use crate::tree::Tree;
 
 #[derive(Debug, Default, Clone, Copy)]
@@ -124,6 +125,31 @@ pub(super) fn draw(app: &mut App, width: u16, height: u16) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// Give the open file's note at `index` (in record order) `replies` and `state` in its record
+/// on disk, as another client of the record would, and read the record back.
+pub(super) fn answer_on_disk(app: &mut App, index: usize, replies: serde_json::Value, state: &str) {
+    let path = match &app.open.source.provenance {
+        Provenance::File { path } => Some(path.clone()),
+        _ => None,
+    };
+    let record = Location::for_file(&app.data_dir, &app.project, &path.expect("a file review")).record;
+    let text = std::fs::read_to_string(&record).expect("record");
+    let mut json: serde_json::Value = serde_json::from_str(&text).expect("json");
+    let note = json.get_mut("annotations").and_then(|notes| notes.get_mut(index)).expect("the note");
+    note["replies"] = replies;
+    note["state"] = state.into();
+    std::fs::write(&record, json.to_string()).expect("write record");
+    reopen(app);
+}
+
+/// One reply in the record's shape, by `author`.
+pub(super) fn reply_json(body: &str, author: &str) -> serde_json::Value {
+    serde_json::json!({
+        "id": format!("reply-{author}-{}", body.len()), "annotation_id": "x", "body": body, "author": author,
+        "created_at": "2026-11-05T10:00:00.000Z", "updated_at": "2026-11-05T10:00:00.000Z"
+    })
 }
 
 pub(super) fn reopen(app: &mut App) {
