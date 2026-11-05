@@ -404,8 +404,10 @@ the agent answers with too:
 - A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
   to start elsewhere) as in the document, takes a sub-thread: `c` (or the toolbar's comment)
   writes it, a draft the next `E` sends, drawn as a box in the box right under the line its
-  passage starts on, a blank row above it. With nothing selected, `c` on a line takes one on
-  the line's words, as on a block. A draft's words take none until it is sent.
+  passage starts on, a blank row above it. The passage stays marked in the message's words, at
+  any depth, as a comment's is in the document (`comment-bg`). With nothing selected, `c` on a
+  line takes one on the line's words, as on a block. A draft's words take none until it is
+  sent.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note), a draft the next `E` sends; `V` resolves it or opens it again; `O` opens its
   thread as a document: a passage of one of its messages selected, `c` starts a sub-thread on

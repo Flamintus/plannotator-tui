@@ -6,6 +6,7 @@
 //! what folds; a draft no one answered stays a bubble in the rail.
 
 use std::collections::HashSet;
+use std::ops::Range;
 
 use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, ThreadNode};
 
@@ -45,23 +46,22 @@ fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> String {
     }
 }
 
-/// Where `sub`'s passage starts in `words`, the message it is on: the byte of the occurrence
+/// Where `sub`'s passage is in `words`, the message it is on: the bytes of the occurrence
 /// nearest the journal's offset, as Plannotator finds it; `None` when the words do not hold it.
-fn passage_start(words: &str, sub: &ThreadNode) -> Option<usize> {
+fn passage_range(words: &str, sub: &ThreadNode) -> Option<Range<usize>> {
     let chars: Vec<(char, usize)> = words.char_indices().map(|(at, ch)| (ch, at)).collect();
     let quote = &sub.place.quote;
-    let found = match &sub.place.parent {
+    match &sub.place.parent {
         Some(parent) => passage::find_near(&chars, words, quote, parent.quote_offset),
         None => passage::find(&chars, words, quote, 0),
-    };
-    found.map(|range| range.start)
+    }
 }
 
 impl Thread {
     fn of_node(node: &ThreadNode, seen: &HashSet<String>) -> Self {
         let threads = |subs: &[ThreadNode], words: &str| {
             let sub =
-                |sub: &ThreadNode| Self { start: passage_start(words, sub), ..Self::of_node(sub, seen) };
+                |sub: &ThreadNode| Self { range: passage_range(words, sub), ..Self::of_node(sub, seen) };
             subs.iter().map(sub).collect()
         };
         let comment = Message {
@@ -93,7 +93,7 @@ impl Thread {
             id: node.id.clone(),
             kind: plannotator_tui_schema::Kind::Comment,
             quote: node.place.quote.clone(),
-            start: None,
+            range: None,
             resolved,
             folded: Some(node.folded),
             marks,

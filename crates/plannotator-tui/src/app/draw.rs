@@ -33,11 +33,21 @@ pub(super) fn accent(kind: Kind) -> Color {
 }
 
 /// Painting precedence when annotations overlap a cell.
-fn priority(kind: Kind) -> u8 {
+pub(super) fn priority(kind: Kind) -> u8 {
     match kind {
         Kind::Comment => 0,
         Kind::LooksGood => 1,
         Kind::Delete => 2,
+    }
+}
+
+/// How a passage an annotation of `kind` is on is drawn: in the document's words, and in a
+/// box's words for a sub-thread's.
+pub(super) fn marked(kind: Kind) -> Style {
+    match kind {
+        Kind::Comment => Style::new().bg(palette().comment_bg),
+        Kind::LooksGood => Style::new().bg(palette().approve_bg),
+        Kind::Delete => Style::new().fg(palette().delete).add_modifier(Modifier::CROSSED_OUT | Modifier::DIM),
     }
 }
 
@@ -199,14 +209,7 @@ impl App {
                     .max_by_key(|&k| priority(k));
                 let Some(kind) = kind else { continue };
                 row_has_annotation = true;
-                let style = match kind {
-                    Kind::Comment => Style::new().bg(palette().comment_bg),
-                    Kind::LooksGood => Style::new().bg(palette().approve_bg),
-                    Kind::Delete => {
-                        Style::new().fg(palette().delete).add_modifier(Modifier::CROSSED_OUT | Modifier::DIM)
-                    }
-                };
-                buf.set_style(Rect { x: doc.x + col as u16, y: screen_y, width: 1, height: 1 }, style);
+                buf.set_style(Rect { x: doc.x + col as u16, y: screen_y, width: 1, height: 1 }, marked(kind));
             }
 
             if let Some(cols) = self.selection.and_then(|s| s.columns_on(row_index, row.cells.len().max(1))) {

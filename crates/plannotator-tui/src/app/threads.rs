@@ -2,7 +2,8 @@
 //! comment someone answered, or resolved, is drawn as a box right under the block its passage
 //! starts in: the passage at its head, then the comment and each reply with who wrote it. A
 //! thread opened on one of those messages is a box inside the box, under the line its passage
-//! starts on, at the same indent at every depth; a blank row is above each box. A resolved box
+//! starts on, at the same indent at every depth, its passage marked in the message's words as
+//! the document marks a comment's; a blank row is above each box. A resolved box
 //! folds to one line once nothing under it, at any depth, is open; until then it stays open,
 //! marked resolved. A draft no one has answered stays a bubble in the rail only. Without the
 //! loop nothing is drawn here: a record's replies and resolved state change nothing on screen,
@@ -25,6 +26,7 @@ mod rows;
 mod words;
 
 use std::collections::HashSet;
+use std::ops::Range;
 
 use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
@@ -44,9 +46,10 @@ pub(super) struct Thread {
     id: String,
     kind: Kind,
     quote: String,
-    /// A sub-thread: the byte of its message's words its passage starts at, under whose line
-    /// its box goes; `None` on the document, or when the words no longer hold the passage.
-    start: Option<usize>,
+    /// A sub-thread: the bytes of its message's words its passage covers, marked there as the
+    /// document's passages are, its box under the line they start on; `None` on the document,
+    /// or when the words no longer hold the passage.
+    range: Option<Range<usize>>,
     resolved: bool,
     /// Drawn folded: the review's view's word, else `settled`; open when unfolded by hand.
     folded: Option<bool>,
@@ -176,7 +179,8 @@ impl App {
     }
 
     /// The flow's rows that are in view, on the rows the layout keeps free for them, with the
-    /// selection and the cursor over their words, and the line `down` and `up` selected.
+    /// passages of the sub-threads, the selection and the cursor over their words, and the
+    /// line `down` and `up` selected.
     pub(super) fn draw_threads(&self, buf: &mut Buffer, gutter: Rect, doc: Rect) {
         let view = self.scroll..self.scroll + usize::from(doc.height);
         for (block, rows) in &self.open.flow.rows {
@@ -187,6 +191,7 @@ impl App {
                 let y = doc.y + (row - self.scroll) as u16;
                 buf.set_line(doc.x, y, &drawn.line, doc.width);
                 self.mark_line(buf, (gutter, doc), (row, y));
+                self.mark_passages(buf, doc, y, &drawn.words);
                 self.mark_words(buf, doc, (row, y), &drawn.words);
             }
         }

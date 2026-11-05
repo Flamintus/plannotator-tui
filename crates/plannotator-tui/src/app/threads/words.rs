@@ -5,9 +5,13 @@
 //! selected in the thread opened as a document does. Only while the review loop keeps the
 //! document's comments: the journal is what takes a sub-thread.
 
+use std::ops::Range;
+
+use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
+use super::super::draw::{marked, priority};
 use super::super::selection::Selection;
 use super::super::{App, Focus, Selected};
 use super::rows::BoxRow;
@@ -23,6 +27,9 @@ pub(super) struct Said {
     pub(super) words: String,
     /// The person's draft: its words take no sub-thread until it is sent.
     pub(super) draft: bool,
+    /// The bytes of its words each sub-thread on them is on, with the sub-thread's kind: marked
+    /// as the document's passages are.
+    pub(super) passages: Vec<(Range<usize>, Kind)>,
 }
 
 /// A column of a box that shows a message's words: the message, by its place in the flow's
@@ -234,6 +241,25 @@ impl App {
                 self.cursor = at;
             }
             _ => self.pending = None,
+        }
+    }
+
+    /// The passages of the sub-threads on a box's row's words, on screen row `y`, marked as the
+    /// document marks its comments' passages, whatever their state: under the selection and
+    /// the cursor, which are drawn over them (`mark_words`).
+    pub(super) fn mark_passages(&self, buf: &mut Buffer, doc: Rect, y: u16, words: &[Option<Spot>]) {
+        let said = &self.open.flow.said;
+        for (column, spot) in words.iter().enumerate().take(usize::from(doc.width)) {
+            let Some(spot) = spot else { continue };
+            let Some(said) = said.get(spot.message) else { continue };
+            let kind = said
+                .passages
+                .iter()
+                .filter(|(range, _)| range.contains(&spot.byte))
+                .map(|(_, kind)| *kind)
+                .max_by_key(|&kind| priority(kind));
+            let Some(kind) = kind else { continue };
+            buf.set_style(Rect { x: doc.x + column as u16, y, width: 1, height: 1 }, marked(kind));
         }
     }
 

@@ -84,7 +84,14 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         rows.push(BoxRow::plain(author).in_box(inner, border));
         let spoken = said.len();
-        said.push(Said { id: message.id.clone(), words: message.body.clone(), draft: message.draft });
+        let passages =
+            message.threads.iter().filter_map(|sub| Some((sub.range.clone()?, sub.kind))).collect();
+        said.push(Said {
+            id: message.id.clone(),
+            words: message.body.clone(),
+            draft: message.draft,
+            passages,
+        });
         let mut lines = Vec::new();
         for paragraph in printable_lines(&message.body) {
             let (words, bytes): (String, Vec<Option<usize>>) =
@@ -99,7 +106,7 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         let firsts: Vec<Option<usize>> =
             lines.iter().map(|line| line.words.iter().flatten().map(|spot| spot.byte).min()).collect();
         let line_of = |sub: &Thread| {
-            let start = sub.start?;
+            let start = sub.range.as_ref()?.start;
             firsts.iter().rposition(|first| first.is_some_and(|first| first <= start))
         };
         let mut subs: Vec<(usize, &Thread)> =
@@ -331,7 +338,7 @@ mod tests {
             id: id.into(),
             kind: Kind::Comment,
             quote,
-            start: None,
+            range: None,
             resolved,
             folded: None,
             marks: Vec::new(),
