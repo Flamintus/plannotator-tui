@@ -10,7 +10,8 @@ use std::cell::RefCell;
 use plannotator_tui_inbox::{
     Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, FileVersion,
     Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Place, ProjectSessions, ReviewTarget,
-    SendMode, State as ThreadState, Target, Thread, ThreadNode, ThreadRow, ThreadView, Watch,
+    SendMode, SendTarget, State as ThreadState, Status, Target, Thread, ThreadNode, ThreadRow, ThreadView,
+    Watch,
 };
 
 #[derive(Debug, Default)]
@@ -31,6 +32,12 @@ pub(crate) struct State {
     pub(crate) comments: Vec<Comment>,
     /// Every write, in order: `comment <id>`, `remove <id>`.
     pub(crate) writes: Vec<String>,
+    /// Rounds finished: the round under way is the next one.
+    pub(crate) finished: u64,
+    /// Every send asked for: its mode, the comments it names and its key.
+    pub(crate) sends: Vec<(SendMode, Vec<String>, String)>,
+    /// How many sends to come lose their connection.
+    pub(crate) failing_sends: usize,
 }
 
 /// A comment as the stand-in keeps it.
@@ -41,13 +48,16 @@ pub(crate) struct Comment {
     pub(crate) quote: String,
     pub(crate) text: String,
     pub(crate) draft: bool,
+    pub(crate) status: Option<Status>,
+    pub(crate) live: bool,
 }
 
 impl Comment {
     /// A comment the window made on message `message_id`'s `quote`, sent unless `draft`.
     pub(crate) fn on_message(id: &str, message_id: &str, quote: &str, text: &str, draft: bool) -> Self {
         let on = On::Message { message_id: message_id.into() };
-        Self { id: id.into(), on, quote: quote.into(), text: text.into(), draft }
+        let status = (!draft).then_some(Status::Delivered);
+        Self { id: id.into(), on, quote: quote.into(), text: text.into(), draft, status, live: false }
     }
 
     fn node(&self) -> ThreadNode {
@@ -60,8 +70,8 @@ impl Comment {
             text: self.text.clone(),
             draft: self.draft,
             folded: false,
-            status: None,
-            live: false,
+            status: self.status,
+            live: self.live,
             replies: Vec::new(),
             sub_threads: Vec::new(),
             other: serde_json::Map::new(),
@@ -113,6 +123,8 @@ impl StandIn {
                 quote: comment.quote.clone(),
                 text: comment.text.clone(),
                 draft: true,
+                status: None,
+                live: false,
             }),
         }
         Ok(record(&comment.id))
@@ -196,8 +208,9 @@ impl Inbox for StandIn {
 
     fn thread_view(&self, _thread_id: &str) -> Result<ThreadView, Error> {
         self.missing("threads/:id/comments")?;
-        let threads = self.state.borrow().comments.iter().map(Comment::node).collect();
-        Ok(ThreadView { v: 1, round: 1, threads, other: serde_json::Map::new() })
+        let state = self.state.borrow();
+        let threads = state.comments.iter().map(Comment::node).collect();
+        Ok(ThreadView { v: 1, round: state.finished + 1, threads, other: serde_json::Map::new() })
     }
 
     fn attachment_text(
@@ -285,14 +298,50 @@ impl Inbox for StandIn {
         Ok(record(comment_id))
     }
 
+    /// `now` sends the drafts named and makes their threads live; `round` sends every draft
+    /// left and finishes the round.
     fn send(
         &self,
-        _: &str,
-        _: SendMode,
-        _: &[String],
-        _: &IdempotencyKey,
+        thread_id: &str,
+        mode: SendMode,
+        ids: &[String],
+        key: &IdempotencyKey,
     ) -> Result<Vec<CommentSend>, Error> {
-        missing("threads/:id/comment-sends")
+        self.missing("threads/:id/comment-sends")?;
+        let mut state = self.state.borrow_mut();
+        state.sends.push((mode, ids.to_vec(), key.as_str().to_owned()));
+        if state.failing_sends > 0 {
+            state.failing_sends -= 1;
+            return Err(Error::Transport {
+                route: "threads/:id/comment-sends".into(),
+                detail: "connection reset".into(),
+            });
+        }
+        let round = state.finished + 1;
+        let mut carried = Vec::new();
+        for comment in
+            state.comments.iter_mut().filter(|c| c.draft && (mode == SendMode::Round || ids.contains(&c.id)))
+        {
+            comment.draft = false;
+            comment.status = Some(Status::Pending);
+            comment.live = mode == SendMode::Now;
+            carried.push(comment.id.clone());
+        }
+        if mode == SendMode::Round {
+            state.finished += 1;
+        }
+        let to = SendTarget { host: Some("claude-code".into()), session: "ses_a".into() };
+        Ok(vec![CommentSend {
+            id: "snd_1".into(),
+            thread_id: thread_id.into(),
+            batch: "b_1".into(),
+            to,
+            round,
+            mode,
+            comments: carried,
+            created_at: String::new(),
+            other: serde_json::Map::new(),
+        }])
     }
 
     fn watch(&self, _from: Option<u64>, _thread_id: Option<&str>) -> Result<Watch, Error> {

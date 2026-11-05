@@ -28,6 +28,8 @@ pub(crate) struct Kept {
     target: Target,
     /// The comments on this document as the Inbox last listed them: what a save compares with.
     listed: Vec<Listed>,
+    /// The whole thread's view as last read: its round, its drafts, what the flow draws.
+    view: Option<ThreadView>,
     /// Where this review put the comments it made, by id: they stay on the words selected,
     /// even where the same words come earlier.
     anchors: HashMap<String, Anchor>,
@@ -164,6 +166,7 @@ impl Store {
             inbox,
             target,
             listed: Vec::new(),
+            view: None,
             anchors: HashMap::new(),
             stale: false,
             refused: Vec::new(),
@@ -187,12 +190,19 @@ impl Store {
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
             .collect();
         self.annotations = nodes.iter().map(|node| note(node, kept.anchor(node, doc, &chars))).collect();
+        kept.view = Some(view);
         self.resolve_all(doc);
         Ok(())
     }
 
     pub(crate) fn is_inbox(&self) -> bool {
         matches!(self.backing, Backing::Inbox(_))
+    }
+
+    /// The Inbox, the thread and its view as last read, for an Inbox-backed store.
+    pub(crate) fn inbox_thread(&self) -> Option<(&Shared, &str, &ThreadView)> {
+        let Backing::Inbox(kept) = &self.backing else { return None };
+        Some((&kept.inbox, kept.target.thread_id(), kept.view.as_ref()?))
     }
 
     /// Whether a write asks for the Inbox's view to be read again.

@@ -1,10 +1,11 @@
 //! The Inbox review against a stand-in Inbox (`crate::inbox::stand_in`): opening its
-//! documents (`open`), the comments it keeps (`kept`).
+//! documents (`open`), the comments it keeps (`kept`), sending them (`send`).
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
 mod kept;
 mod open;
+mod send;
 
 use std::rc::Rc;
 

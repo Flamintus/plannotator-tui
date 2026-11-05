@@ -35,6 +35,8 @@ impl App {
             .replies()
             .into_iter()
             .filter(|(_, open)| !open.store.placed().is_empty())
+            // The Inbox's comments go through the Inbox, never to the agent's pane as well.
+            .filter(|(_, open)| !open.store.is_inbox())
             .filter(|(index, open)| *index == self.pick_open || !open.store.all_delivered())
             .collect();
         let mut feedback = Feedback::default();

@@ -24,6 +24,10 @@ pub(super) enum SendState {
 
 impl App {
     pub(super) fn send_feedback(&mut self) -> Result<()> {
+        if self.open.store.is_inbox() {
+            self.send_inbox(plannotator_tui_inbox::SendMode::Now);
+            return Ok(());
+        }
         let scope = if self.is_file_review() { SendScope::Pending } else { SendScope::All };
         self.send_feedback_scope(scope)
     }
@@ -191,6 +195,9 @@ impl App {
     }
 
     pub(super) fn send_count(&self) -> usize {
+        if let Some(waiting) = self.inbox_drafts() {
+            return waiting;
+        }
         if self.is_file_review() {
             self.review_counts().pending
         } else {
@@ -199,6 +206,9 @@ impl App {
     }
 
     pub(super) fn send_label(&self) -> String {
+        if let Some(label) = self.inbox_send_label() {
+            return label;
+        }
         let target = self.delivery.describe();
         let count = self.send_count();
         if self.is_file_review() {
@@ -230,7 +240,7 @@ impl App {
     }
 
     pub(super) fn has_unsent(&self) -> bool {
-        self.delivery.is_agent()
+        (self.delivery.is_agent() || self.open.store.is_inbox())
             && self.send_count() > 0
             && (self.is_file_review() || self.send_state != SendState::Sent)
     }
@@ -252,6 +262,10 @@ impl App {
     }
 
     pub(super) fn derive_send_state(&mut self) {
+        if let Some(state) = self.inbox_send_state() {
+            self.send_state = state;
+            return;
+        }
         let delivered = if self.is_file_review() {
             let counts = self.review_counts();
             counts.pending == 0 && counts.sent > 0

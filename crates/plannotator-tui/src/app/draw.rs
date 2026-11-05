@@ -401,8 +401,7 @@ impl App {
                 .filter_map(|(action, label)| self.keys.labelled(action, label))
                 .collect::<Vec<_>>()
                 .join(" · ");
-            let question =
-                format!(" send feedback to {} before quitting? {answers}", self.delivery.describe());
+            let question = format!(" send feedback to {} before quitting? {answers}", self.send_target());
             frame.render_widget(Paragraph::new(Line::from(Span::raw(question).bold())), area);
             return;
         }

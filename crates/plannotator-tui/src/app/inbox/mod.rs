@@ -1,9 +1,10 @@
 //! Reviewing through the Plannotator Inbox (`crate::inbox`): an Inbox thread's agent
 //! messages and attached files in the picker, each opened as a document whose comments the
-//! Inbox keeps (here), and `last`'s replies deposited in their session's review thread
-//! (`deposit`).
+//! Inbox keeps (here), `last`'s replies deposited in their session's review thread
+//! (`deposit`), and the comments sent now or at the end of a round (`send`).
 
 mod deposit;
+mod send;
 
 use anyhow::Result;
 use plannotator_tui_schema::Provenance;
@@ -25,11 +26,13 @@ pub(super) struct InboxReview {
     depositor: Option<Depositor>,
     /// Why the Inbox could not list the comments of the document opened last.
     unlisted: Option<String>,
+    /// The last send that did not reach the Inbox, to try again under its key.
+    press: Option<send::Press>,
 }
 
 impl InboxReview {
     fn new(inbox: Shared, documents: Vec<Document>, depositor: Option<Depositor>) -> Self {
-        Self { inbox, documents, depositor, unlisted: None }
+        Self { inbox, documents, depositor, unlisted: None, press: None }
     }
 }
 
