@@ -99,24 +99,29 @@ fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
 }
 
 /// A folded thread in one line, saying what the head of its box says, then what the box holds:
-/// `▸ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`,
+/// `▸ 💬 "passage" · ✓ Resolved · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`,
 /// `▸ ✗ "passage" · Deletion · Replied · Round 2 · New · 2 messages · 3e05f ─╴` (`New` while a
 /// reply in it, at any depth, is), which `right` or a click draws open there; `╶` first for a
 /// box too narrow to draw, which does not open. `▸` and the rule take its box's border.
 pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     let (messages, threads) = thread.size();
-    let state = if thread.resolved { format!("{RESOLVED} \u{b7} ") } else { String::new() };
     let start = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
     let plural = |n: usize| if n == 1 { "" } else { "s" };
     let counts = match threads {
         0 => format!("{messages} message{}", plural(messages)),
         _ => format!("{messages} message{} \u{b7} {threads} sub-thread{}", plural(messages), plural(threads)),
     };
-    let lead = format!("{start}{state}{} ", glyph(thread.kind));
+    let lead = format!("{start}{} ", glyph(thread.kind));
     let passage = one_line(&thread.quote);
     let new = thread.holds_new().then_some(NEW);
-    let marks: String =
-        thread.marks.iter().map(String::as_str).chain(new).flat_map(|mark| [" \u{b7} ", mark]).collect();
+    // The head's chips in the head's order, the resolved mark first, then what is new.
+    let resolved = thread.resolved.then_some(RESOLVED);
+    let marks: String = resolved
+        .into_iter()
+        .chain(thread.marks.iter().map(String::as_str))
+        .chain(new)
+        .flat_map(|mark| [" \u{b7} ", mark])
+        .collect();
     // The passage tells folded threads apart better than the id and the marks: they go first.
     let tails = [
         format!("{marks} \u{b7} {counts} \u{b7} {} ", short_id(&thread.id)),
@@ -139,15 +144,21 @@ pub(super) fn folded(thread: &Thread, width: usize) -> Line<'static> {
     // The mark that opens the line and the rule that closes it are the folded box's border.
     let border = border(thread);
     let mut spans = vec![Span::styled(start, border)];
-    let rest = match rest.strip_prefix(RESOLVED) {
-        Some(rest) if thread.resolved => {
-            spans.push(Span::styled(RESOLVED, resolved_style()));
-            rest
-        }
-        _ => rest,
-    };
     let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
-    spans.push(Span::styled(words.to_owned(), grey));
+    // The resolved mark, right after the passage, in its colour as at the head.
+    let after_quote = lead.len() - start.len() + quote.len();
+    let mark = thread
+        .resolved
+        .then(|| words.get(after_quote..)?.find(RESOLVED).map(|at| after_quote + at))
+        .flatten();
+    match mark {
+        Some(at) => {
+            spans.push(Span::styled(words[..at].to_owned(), grey));
+            spans.push(Span::styled(RESOLVED, resolved_style()));
+            spans.push(Span::styled(words[at + RESOLVED.len()..].to_owned(), grey));
+        }
+        None => spans.push(Span::styled(words.to_owned(), grey)),
+    }
     spans.push(Span::styled(rest[words.len()..].to_owned(), border));
     Line::from(spans)
 }
