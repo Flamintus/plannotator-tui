@@ -1,34 +1,20 @@
-//! A thread's rows as drawn, at every depth and of every kind: its box, the passage and the
-//! marks at its head, each message under who wrote it, the threads on a message's words as
-//! boxes in the box, each under the line its passage starts on, a blank row above and below
-//! each (`spaced`); or, settled, one folded line. Each row keeps, per column, the message's
-//! words it shows (`words::Spot`).
+//! A thread's rows as drawn, at every depth and of every kind: its box, its head (`head`), each
+//! message under who wrote it, the threads on a message's words as boxes in the box, each under
+//! the line its passage starts on, a blank row above and below each (`spaced`); or, settled,
+//! its folded line. Each row keeps, per column, the message's words it shows (`words::Spot`).
 
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::super::draw::{accent, short_id};
-use super::super::glyph;
+use super::super::draw::accent;
+use super::head::{folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
-use crate::theme::palette;
 use crate::wrap::wrap_line;
 
 /// Narrowest box worth drawing; a thread nested past it shows its folded line instead.
 const MIN_BOX_WIDTH: usize = 16;
-/// Columns of the passage a folded line keeps before it gives up the note's id.
-const MIN_QUOTE_WIDTH: usize = 16;
-
-/// The mark of a resolved thread: at its box's head, on its folded line, in its bubble's title.
-pub(in crate::app) const RESOLVED: &str = "\u{2713} Resolved";
-
-/// How the resolved mark is drawn: in the looks-good colour, so it stands apart from the grey
-/// of the rest of the line.
-pub(in crate::app) fn resolved_style() -> Style {
-    Style::new().fg(palette().looks_good).add_modifier(Modifier::BOLD)
-}
-
 /// One row of the flow: what is drawn, the innermost thread it belongs to, and, per column,
 /// the message's words it shows.
 #[derive(Debug)]
@@ -164,107 +150,6 @@ fn under_lines<'t>(lines: &[BoxRow], threads: &'t [Thread]) -> Vec<Vec<&'t Threa
     under
 }
 
-/// `╭ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: the passage cut to fit,
-/// the state, the marks and the tail of the note's id, which its bubble's title shows too.
-/// In a narrow box the marks go first, the last first, then the state, then the id, before the
-/// passage gets too short.
-fn head(thread: &Thread, width: usize, border: Style) -> Line<'static> {
-    let lead = format!("\u{256d} {} ", glyph(thread.kind));
-    let id = short_id(&thread.id);
-    let chips: Vec<&str> = thread
-        .resolved
-        .then_some(RESOLVED)
-        .into_iter()
-        .chain(thread.marks.iter().map(String::as_str))
-        .collect();
-    let mut rights: Vec<Vec<&str>> = (1..=chips.len())
-        .rev()
-        .map(|kept| chips.iter().take(kept).copied().chain([id.as_str()]).collect())
-        .collect();
-    rights.push(vec![id.as_str()]);
-    let passage = one_line(&thread.quote);
-    let wanted = passage.width().min(MIN_QUOTE_WIDTH);
-    let right = rights
-        .iter()
-        .find(|right| width.saturating_sub(lead.width() + chips_width(right) + 4) >= wanted)
-        .map_or(&[][..], Vec::as_slice);
-    let room = width.saturating_sub(lead.width() + chips_width(right) + 4);
-    let quote = format!("\"{}\"", fit(&passage, room));
-    let fill = width.saturating_sub(lead.width() + quote.width() + chips_width(right) + 2);
-    let mut spans = vec![
-        Span::styled(lead, border),
-        Span::styled(quote, border.add_modifier(Modifier::ITALIC)),
-        Span::styled(format!(" {}", "\u{2500}".repeat(fill)), border),
-    ];
-    spans.extend(chips_spans(right));
-    spans.push(Span::styled("\u{256e}", border));
-    Line::from(spans)
-}
-
-/// Columns `chips_spans` takes: the chips with their separators and a space each side; one
-/// space for none.
-fn chips_width(chips: &[&str]) -> usize {
-    if chips.is_empty() { 1 } else { chips.join(" \u{b7} ").width() + 2 }
-}
-
-/// ` ✓ Resolved · Round 2 · 3e05f `: the resolved mark in its colour, the rest grey.
-fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
-    let grey = Style::new().fg(Color::DarkGray);
-    let mut spans = vec![Span::styled(" ", grey)];
-    for (index, chip) in chips.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(" \u{b7} ", grey));
-        }
-        let style = if *chip == RESOLVED { resolved_style() } else { grey };
-        spans.push(Span::styled((*chip).to_owned(), style));
-    }
-    if !chips.is_empty() {
-        spans.push(Span::styled(" ", grey));
-    }
-    spans
-}
-
-/// A folded thread in one line:
-/// `╶ ✓ Resolved · 💬 "passage" · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`.
-fn folded(thread: &Thread, width: usize) -> Line<'static> {
-    let (messages, threads) = thread.size();
-    let state = if thread.resolved { RESOLVED } else { "\u{25b8} Open" };
-    let plural = |n: usize| if n == 1 { "" } else { "s" };
-    let counts = match threads {
-        0 => format!("{messages} message{}", plural(messages)),
-        _ => format!("{messages} message{} \u{b7} {threads} sub-thread{}", plural(messages), plural(threads)),
-    };
-    let lead = format!("\u{2576} {state} \u{b7} {} ", glyph(thread.kind));
-    let passage = one_line(&thread.quote);
-    let marks: String = thread.marks.iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect();
-    // The passage tells folded threads apart better than the id and the marks: they go first.
-    let tails = [
-        format!("{marks} \u{b7} {counts} \u{b7} {} ", short_id(&thread.id)),
-        format!("{marks} \u{b7} {counts} "),
-        format!(" \u{b7} {counts} "),
-    ];
-    let wanted = passage.width().min(MIN_QUOTE_WIDTH);
-    let tail = tails
-        .iter()
-        .find(|tail| width.saturating_sub(lead.width() + tail.width() + 3) >= wanted)
-        .or_else(|| tails.last())
-        .cloned()
-        .unwrap_or_default();
-    let room = width.saturating_sub(lead.width() + tail.width() + 3);
-    let quote = format!("\"{}\"", fit(&passage, room));
-    let fill = width.saturating_sub(lead.width() + quote.width() + tail.width() + 1);
-    let line = fit(&format!("{lead}{quote}{tail}{}\u{2574}", "\u{2500}".repeat(fill)), width);
-    let grey = Style::new().fg(Color::DarkGray);
-    match line.strip_prefix("\u{2576} ").and_then(|rest| rest.strip_prefix(RESOLVED)) {
-        Some(rest) if thread.resolved => Line::from(vec![
-            Span::styled("\u{2576} ", grey),
-            Span::styled(RESOLVED, resolved_style()),
-            Span::styled(rest.to_owned(), grey),
-        ]),
-        _ => Line::styled(line, grey),
-    }
-}
-
 /// `left` and `right` with a rule between them, `width` columns in all.
 fn edge(left: char, right: char, width: usize, border: Style) -> Line<'static> {
     Line::styled(format!("{left}{}{right}", "\u{2500}".repeat(width.saturating_sub(2))), border)
@@ -310,12 +195,12 @@ fn printable_lines(text: &str) -> Vec<Vec<(char, usize)>> {
 }
 
 /// `printable`, on one line with single spaces.
-fn one_line(text: &str) -> String {
+pub(super) fn one_line(text: &str) -> String {
     printable(text).split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// `text` cut to `max` columns, ending in `…` when cut.
-fn fit(text: &str, max: usize) -> String {
+pub(super) fn fit(text: &str, max: usize) -> String {
     if text.width() <= max {
         return text.to_owned();
     }
@@ -340,8 +225,9 @@ mod tests {
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
 
+    use super::super::head::RESOLVED;
     use super::super::{Message, Thread};
-    use super::{Line, RESOLVED, lines_of};
+    use super::{Line, lines_of};
     use crate::theme::palette;
 
     /// `lines_of`'s lines alone.

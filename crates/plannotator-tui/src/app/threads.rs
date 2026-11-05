@@ -21,6 +21,7 @@
 //! included; `toggle-thread` draws a folded thread open, or folds it again (`fold`).
 
 mod fold;
+mod head;
 mod journal;
 mod lines;
 mod rows;
@@ -36,8 +37,8 @@ use ratatui::layout::Rect;
 use super::App;
 use rows::{BoxRow, spaced};
 
+pub(super) use head::{RESOLVED, resolved_style};
 pub(super) use journal::state_marks;
-pub(super) use rows::{RESOLVED, resolved_style};
 pub(super) use words::Passage;
 
 /// One thread as drawn: the passage it is on, then its messages.
