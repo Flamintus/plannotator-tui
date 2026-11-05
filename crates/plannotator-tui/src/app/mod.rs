@@ -3,6 +3,7 @@
 
 mod approve;
 mod archive_view;
+mod bubble;
 mod compose;
 mod disk;
 mod draw;
