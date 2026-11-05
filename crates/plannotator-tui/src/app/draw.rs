@@ -336,29 +336,37 @@ impl App {
         Some(Rect { x, y: rect.y, width: width.min(area.width), height })
     }
 
+    /// The notes' bubbles. Under the review loop they stack from the top, in the document's
+    /// order, a sub-thread's after its thread's note, as the column of Plannotator's screens
+    /// lists its comments; without it each sits level with its passage, as it always did.
     fn draw_rail(&mut self, frame: &mut Frame, rail: Rect) {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;
+        // Under the review loop the replies are under the passage, in a box or a folded line.
+        let in_loop = self.open.store.is_journal();
+        let inner_width = usize::from(rail.width.saturating_sub(4));
         let mut next_y = rail.y;
-        let placed = self.open.store.notes();
+        let notes = self.open.store.notes();
+        let first = if in_loop { self.first_stacked(&notes, inner_width, rail.height) } else { 0 };
         let mut bubbles = Vec::new();
-        for (index, placed) in placed.iter().enumerate() {
+        for (index, placed) in notes.iter().enumerate().skip(first) {
             let Some(block) = self.open.doc.block_containing(placed.range.start) else { continue };
-            let Some(rendered) = self.open.layout.blocks.get(block) else { continue };
-            let anchor_row =
-                self.open.layout.first_row_in_range(block, placed.range).unwrap_or(rendered.first_row);
-            if anchor_row + 1 < self.scroll.saturating_sub(2)
-                || anchor_row >= view_end
-                || next_y >= rail.bottom()
-            {
-                continue;
-            }
-            let anchored_y = rail.y + anchor_row.saturating_sub(self.scroll) as u16;
-            let y = anchored_y.max(next_y);
+            let y = if in_loop {
+                next_y
+            } else {
+                let Some(rendered) = self.open.layout.blocks.get(block) else { continue };
+                let anchor_row =
+                    self.open.layout.first_row_in_range(block, placed.range).unwrap_or(rendered.first_row);
+                if anchor_row + 1 < self.scroll.saturating_sub(2)
+                    || anchor_row >= view_end
+                    || next_y >= rail.bottom()
+                {
+                    continue;
+                }
+                let anchored_y = rail.y + anchor_row.saturating_sub(self.scroll) as u16;
+                anchored_y.max(next_y)
+            };
             let kind = placed.kind();
-            let inner_width = usize::from(rail.width.saturating_sub(4));
-            // Under the review loop the replies are under the passage, in a box or a folded line.
-            let in_loop = self.open.store.is_journal();
             let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_loop);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
@@ -408,6 +416,33 @@ impl App {
             next_y = y + height;
         }
         self.geometry.bubbles = bubbles;
+    }
+
+    /// The first of the stacked bubbles drawn: the top one, unless the note the rail shows
+    /// (the rail's cursor, else the selected block's first note) would be cut; then the rail
+    /// scrolls only as far as shows it whole.
+    fn first_stacked(&self, notes: &[crate::store::Placed<'_>], width: usize, height: u16) -> usize {
+        let shown = if self.focus == Focus::Rail {
+            self.rail_cursor
+        } else {
+            let in_block = |p: &crate::store::Placed<'_>| {
+                self.open.doc.block_containing(p.range.start) == Some(self.selected)
+            };
+            notes.iter().position(in_block).unwrap_or(0)
+        };
+        let tall = |p: &crate::store::Placed<'_>| {
+            bubble::lines(p.annotation, label(p.kind()), width, true).len() + 2
+        };
+        let mut first = shown.min(notes.len().saturating_sub(1));
+        let mut used = notes.get(first).map_or(0, tall);
+        while let Some(above) = first.checked_sub(1).and_then(|index| notes.get(index)) {
+            used += tall(above);
+            if used > usize::from(height) {
+                break;
+            }
+            first -= 1;
+        }
+        first
     }
 
     fn draw_footer(&mut self, frame: &mut Frame, mut area: Rect) {

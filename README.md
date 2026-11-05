@@ -408,8 +408,11 @@ the agent answers with too:
   blank row above it. The passage stays marked in the message's words, at any depth, as a
   note's of the same kind is in the document. With nothing selected, `c` on a line takes a
   comment on the line's words, as on a block. A draft's words take none until it is sent.
-- Each sub-thread has its bubble in the rail right after its thread's, drawn and acted on as
-  any note's (edit, remove, image, reply, resolve).
+- The rail stacks its bubbles from the top in the document's order, as the column of
+  Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
+  drawn and acted on as any note's (edit, remove, image, reply, resolve); it scrolls only as far
+  as keeps the rail's note, or the selected block's, in full. Without the loop each bubble sits
+  level with its passage, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note), a draft the next `E` sends; `V` resolves it or opens it again; `O` opens its
   thread as a document: a passage of one of its messages selected, `c` starts a sub-thread on
