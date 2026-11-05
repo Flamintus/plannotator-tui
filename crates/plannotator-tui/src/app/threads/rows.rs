@@ -1,15 +1,17 @@
 //! A thread's rows as drawn, at every depth and of every kind: its box, its head (`head`), each
 //! message under who wrote it, the threads on a message's words as boxes in the box, each under
-//! the paragraph its passage starts in, a blank row above and below each (`spaced`), then the
-//! field of a reply being typed, a box in the box too (`field`); or, folded, its folded line.
-//! Each row keeps, per column, the message's words it shows (`words::Spot`), and a thread's
-//! first row says when it is its fold line.
+//! the paragraph its passage starts in, a blank row above and below each (`spaced`), and the
+//! field the person types in, a box in the box too, at its place (`field`): a reply's at the
+//! bottom, a sub-thread's among the boxes under the paragraph its passage starts in, an edit's
+//! in place of the note's words; or, folded, its folded line. Each row keeps, per column, the
+//! message's words it shows (`words::Spot`), and a thread's first row says when it is its fold
+//! line.
 
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
-use super::field::Field;
+use super::field::{Field, Place};
 use super::head::{border, folded, head};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
@@ -33,7 +35,7 @@ pub(super) struct BoxRow {
     /// folded (its folded line, which `right` or a click draws open) or open (the head of its
     /// box, which `left` or a click folds).
     pub(super) fold: Option<bool>,
-    /// The row is one of the words of the field a reply is typed in, drawn over it (`field`).
+    /// The row is one of the words of the field the person types in, drawn over it (`field`).
     pub(super) field: bool,
 }
 
@@ -56,26 +58,36 @@ impl BoxRow {
 }
 
 /// Columns inside a box `width` columns wide, between its sides: what its messages' words, a
-/// box in it and the field of a reply take.
+/// box in it and the field the person types in take.
 pub(super) fn inside(width: usize) -> usize {
     width.saturating_sub(4)
 }
 
-/// The boxes of `threads`, all under one line of the words they are on (a block of the
-/// document, a line of a message's words in a box), `width` columns wide: a blank row above
-/// each and one below the last, so every box has one above it and one below it, at every depth
-/// and of every kind. `blank_follows`: the words go on under them with a blank row of their own
-/// (the gap under a block, a blank line of a message), which is the one below.
+/// A box under a line of words: a thread's, or the field a comment on them is typed in.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Under<'t> {
+    Thread(&'t Thread),
+    Field(&'t Field),
+}
+
+/// The boxes `under` one line of the words they are on (a block of the document, a line of a
+/// message's words in a box), `width` columns wide: a blank row above each and one below the
+/// last, so every box has one above it and one below it, at every depth and of every kind, the
+/// field's too. `blank_follows`: the words go on under them with a blank row of their own (the
+/// gap under a block, a blank line of a message), which is the one below.
 pub(super) fn spaced<'t>(
-    threads: impl IntoIterator<Item = &'t Thread>,
+    under: impl IntoIterator<Item = Under<'t>>,
     width: usize,
     said: &mut Vec<Said>,
     blank_follows: bool,
 ) -> Vec<BoxRow> {
     let mut rows = Vec::new();
-    for thread in threads {
+    for boxed in under {
         rows.push(BoxRow::plain(Line::default()));
-        rows.extend(lines_of(thread, width, said));
+        rows.extend(match boxed {
+            Under::Thread(thread) => lines_of(thread, width, said),
+            Under::Field(field) => field_of(field, width),
+        });
     }
     if !rows.is_empty() && !blank_follows {
         rows.push(BoxRow::plain(Line::default()));
@@ -102,12 +114,16 @@ fn lines_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> 
 
 /// A thread's box: its head, then each message under who wrote it, the threads on its words
 /// (`spaced`) under the paragraph their passage starts in, as a thread is under the block its
-/// passage starts in; one whose passage is not found there, after the message's words; last,
-/// the field of a reply being typed, a box in the box with a blank row above and below it.
+/// passage starts in; one whose passage is not found there, after the message's words. The
+/// field the person types in, a box in the box with a blank row above and below it: an edit's in
+/// place of the note's words, before the threads on them; a sub-thread's among those under the
+/// paragraph its passage starts in, after those starting where it does, as its box will be,
+/// when that box is wide enough to draw; last, a reply's.
 fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let border = border(thread);
     let text = if thread.resolved { Style::new().add_modifier(Modifier::DIM) } else { Style::new() };
     let inner = inside(width);
+    let field = thread.field.as_ref();
     let mut rows = vec![BoxRow::plain(head(thread, width, border))];
     for (index, message) in thread.messages.iter().enumerate() {
         if index > 0 {
@@ -119,17 +135,25 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         };
         let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         rows.push(BoxRow::plain(author).in_box(inner, border));
-        let lines = words_of(message, inner, text, said);
-        let under = under_lines(message, &lines);
+        let edited = field.filter(|field| index == 0 && field.place == Place::Words);
+        let lines = if edited.is_some() { Vec::new() } else { words_of(message, inner, text, said) };
+        let passage = field.filter(|_| inner >= MIN_BOX_WIDTH).and_then(|field| match field.place {
+            Place::Passage { message, start } if message == index => Some((field, start)),
+            Place::Passage { .. } | Place::Bottom | Place::Words => None,
+        });
+        let mut under = under_lines(message, &lines, passage);
+        if let (Some(field), Some(after)) = (edited, under.last_mut()) {
+            after.insert(0, Under::Field(field));
+        }
         let mut lines = lines.into_iter().map(Some).chain([None]).zip(under).peekable();
-        while let Some((line, threads)) = lines.next() {
+        while let Some((line, boxes)) = lines.next() {
             rows.extend(line.map(|line| line.in_box(inner, border)));
             let blank = lines.peek().is_some_and(|(next, _)| next.as_ref().is_some_and(BoxRow::is_blank));
-            let boxes = spaced(threads, inner, said, blank);
+            let boxes = spaced(boxes, inner, said, blank);
             rows.extend(boxes.into_iter().map(|row| row.in_box(inner, border)));
         }
     }
-    if let Some(field) = &thread.reply {
+    if let Some(field) = field.filter(|field| field.place == Place::Bottom) {
         let blank = || BoxRow::plain(Line::default()).in_box(inner, border);
         // The blank row under the boxes the last message ends with is the one above the field.
         if !rows.last().is_some_and(|row| row.line == blank().line) {
@@ -142,7 +166,7 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     rows
 }
 
-/// The field a reply is typed in, a box `width` columns wide drawn as the compose box is: its
+/// The field the person types in, a box `width` columns wide drawn as the compose box is: its
 /// title at its head, then a row of its sides for each row of the words, which are drawn over
 /// them.
 fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
@@ -179,10 +203,16 @@ fn words_of(message: &Message, inner: usize, text: Style, said: &mut Vec<Said>) 
     lines
 }
 
-/// The threads on `message`'s words under each of its `lines`: under the last line of the
-/// paragraph their passage starts in, as a thread is under the document's block
-/// (`doc::block_holding`), in their passages' order; last, those whose passage is not found.
-fn under_lines<'t>(message: &'t Message, lines: &[BoxRow]) -> Vec<Vec<&'t Thread>> {
+/// The threads on `message`'s words under each of its `lines`, and the field a comment on a
+/// passage of them is typed in (`field`, with the byte the passage starts at): under the last
+/// line of the paragraph their passage starts in, as a thread is under the document's block
+/// (`doc::block_holding`), in their passages' order, the field after the threads starting where
+/// it does; last, those whose passage is not found.
+fn under_lines<'t>(
+    message: &'t Message,
+    lines: &[BoxRow],
+    field: Option<(&'t Field, usize)>,
+) -> Vec<Vec<Under<'t>>> {
     let paragraphs = plain_blocks(&message.body);
     let paragraph_of = |byte: usize| block_holding(&paragraphs, byte);
     let of_line: Vec<Option<usize>> = lines
@@ -190,13 +220,16 @@ fn under_lines<'t>(message: &'t Message, lines: &[BoxRow]) -> Vec<Vec<&'t Thread
         .map(|line| line.words.iter().flatten().map(|spot| spot.byte).min().and_then(paragraph_of))
         .collect();
     let mut under = vec![Vec::new(); lines.len() + 1];
-    let mut threads: Vec<&Thread> = message.threads.iter().collect();
-    threads.sort_by_key(|sub| sub.range.as_ref().map(|range| range.start));
-    for sub in threads {
-        let paragraph = sub.range.as_ref().and_then(|range| paragraph_of(range.start));
+    let threads =
+        message.threads.iter().map(|sub| (sub.range.as_ref().map(|range| range.start), Under::Thread(sub)));
+    let field = field.map(|(field, start)| (Some(start), Under::Field(field)));
+    let mut boxes: Vec<(Option<usize>, Under<'t>)> = threads.chain(field).collect();
+    boxes.sort_by_key(|(start, _)| *start);
+    for (start, boxed) in boxes {
+        let paragraph = start.and_then(paragraph_of);
         let line = paragraph.and_then(|paragraph| of_line.iter().rposition(|of| *of == Some(paragraph)));
         if let Some(at) = under.get_mut(line.unwrap_or(lines.len())) {
-            at.push(sub);
+            at.push(boxed);
         }
     }
     under
@@ -310,7 +343,7 @@ mod tests {
             by_hand: None,
             marks: Vec::new(),
             messages,
-            reply: None,
+            field: None,
         }
     }
 

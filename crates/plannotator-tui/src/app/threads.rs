@@ -22,8 +22,9 @@
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
 //! included; one way folds a thread or opens it (`fold`), from `right` (or `confirm`) on its
-//! folded line, `left` on its head, a click on either, and `toggle-thread`. The person's reply
-//! is typed at the bottom of the box it answers, whatever its depth (`field`).
+//! folded line, `left` on its head, a click on either, and `toggle-thread`. What the person types
+//! about a box is typed in it, whatever its depth (`field`): a reply at its bottom, a sub-thread
+//! under the paragraph its passage starts in, the edit of a draft in place of its words.
 
 mod field;
 mod fold;
@@ -40,9 +41,9 @@ use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 
-use super::{App, Mode};
+use super::App;
 use field::Field;
-use rows::{BoxRow, spaced};
+use rows::{BoxRow, Under, spaced};
 
 pub(super) use head::{RESOLVED, resolved_style};
 pub(super) use journal::state_marks;
@@ -67,9 +68,8 @@ pub(super) struct Thread {
     /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
     marks: Vec<String>,
     messages: Vec<Message>,
-    /// The field the person's reply to it is typed in, at the bottom of its box, while it is
-    /// (`field`).
-    reply: Option<Field>,
+    /// The field the person types in its box, while they do, and where in it (`field`).
+    field: Option<Field>,
 }
 
 /// The note, or one reply under it.
@@ -158,7 +158,8 @@ impl Flow {
         for group in threads.chunk_by(|(one, _), (other, _)| one == other) {
             let Some((block, _)) = group.first() else { continue };
             // The gap under the block is the blank row below the last box.
-            let lines = spaced(group.iter().map(|(_, thread)| thread), width, &mut said, true);
+            let boxes = group.iter().map(|(_, thread)| Under::Thread(thread));
+            let lines = spaced(boxes, width, &mut said, true);
             rows.push((*block, lines));
         }
         let under = rows.iter().map(|(block, lines)| (*block, lines.len())).collect();
@@ -167,23 +168,20 @@ impl Flow {
 }
 
 impl App {
-    /// Match the flow to the open document's comments and width, and the field of a reply being
-    /// typed, and keep its rows free under their blocks; none without the review loop. When
+    /// Match the flow to the open document's comments and width, and the field the person types
+    /// in a box, and keep its rows free under their blocks; none without the review loop. When
     /// nothing changed this compares the threads and wraps nothing.
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
         let kept = self.kept_at_cursor();
-        let replying = match &self.mode {
-            Mode::Reply(id) => Some((id.as_str(), self.compose_title("reply"))),
-            _ => None,
-        };
+        let typing = self.typing().map(|(target, verb)| (target, self.compose_title(verb)));
         let compose = &self.compose;
         let open = &mut self.open;
         for (_, thread) in &mut threads {
             thread.by_hand(&open.flow.by_hand);
-            if let Some((id, title)) = &replying {
-                let field = |words| Field { title: title.clone(), rows: compose.rows(words) };
-                thread.replying(id, open.layout.width, &field);
+            if let Some((target, title)) = &typing {
+                let field = |place, words| Field { place, title: title.clone(), rows: compose.rows(words) };
+                thread.typing(target, open.layout.width, &field);
             }
         }
         if threads != open.flow.threads || open.layout.width != open.flow.width {
@@ -195,8 +193,9 @@ impl App {
             // longer covers what it did. The selection waiting for an action is a source
             // range, which has not moved: it only follows its first row. A passage of a box's
             // words follows its words, or goes with them, and so does the cursor in them, or on
-            // a thread's fold line (`boxes_moved`).
-            self.selection = None;
+            // a thread's fold line, its words drawn selected again where they were (`boxes_moved`):
+            // a field opening or growing under them leaves them selected.
+            let selected = self.selection.take().is_some();
             if let Some(pending) = self.pending.as_mut()
                 && let Some(range) = pending.range()
             {
@@ -205,7 +204,7 @@ impl App {
                 pending.at.0 = row.unwrap_or(pending.at.0);
             }
             self.scroll_by(0);
-            self.boxes_moved(kept);
+            self.boxes_moved(kept, selected);
         }
     }
 

@@ -117,7 +117,7 @@ impl Thread {
             by_hand: None,
             marks,
             messages: std::iter::once(comment).chain(replies).collect(),
-            reply: None,
+            field: None,
         }
     }
 }

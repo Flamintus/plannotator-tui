@@ -94,7 +94,7 @@ impl App {
             self.scroll_by(0);
         }
         self.sync_threads();
-        self.keep_reply_in_view();
+        self.keep_field_in_view();
 
         self.draw_header(frame, header);
         if show_tree {
@@ -109,12 +109,9 @@ impl App {
         }
         self.draw_footer(frame, footer);
         match &self.mode {
-            Mode::Compose => self.draw_compose(frame, &self.compose_title("comment")),
-            Mode::Edit(_) => self.draw_compose(frame, &self.compose_title("edit")),
-            Mode::Reply(_) => match self.reply_field() {
-                Some(field) => self.draw_reply(frame, field),
-                None => self.draw_compose(frame, &self.compose_title("reply")),
-            },
+            Mode::Compose => self.draw_typed(frame, "comment"),
+            Mode::Edit(_) => self.draw_typed(frame, "edit"),
+            Mode::Reply(_) => self.draw_typed(frame, "reply"),
             Mode::AttachImage(_) => {
                 self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ");
             }
@@ -295,6 +292,15 @@ impl App {
         format!(" {verb} \u{b7} enter saves \u{b7} {newline} \u{b7} esc cancels ")
     }
 
+    /// The compose box, `verb` in its title: in the box the person types about, when there is
+    /// one (`threads::field`), else floating.
+    fn draw_typed(&self, frame: &mut Frame, verb: &str) {
+        match self.typed_field() {
+            Some(field) => self.draw_field(frame, field),
+            None => self.draw_compose(frame, &self.compose_title(verb)),
+        }
+    }
+
     fn draw_compose(&self, frame: &mut Frame, title: &str) {
         let wrap_width = usize::from(COMPOSE_WIDTH.saturating_sub(3));
         let content_rows = self.compose.rows(wrap_width);
@@ -324,10 +330,10 @@ impl App {
         self.compose_words(frame, words, wrap_width);
     }
 
-    /// The person's reply over the rows of its field, in the box it answers (`threads::field`),
-    /// `field` as `reply_field` gives it: the rows of it in view, the words wrapped to the
-    /// field's.
-    fn draw_reply(&self, frame: &mut Frame, (first, rows, left): (usize, usize, usize)) {
+    /// What the person types over the rows of its field, in the box it is about
+    /// (`threads::field`), `field` as `typed_field` gives it: the rows of it in view, the words
+    /// wrapped to the field's.
+    fn draw_field(&self, frame: &mut Frame, (first, rows, left): (usize, usize, usize)) {
         let doc = self.geometry.doc;
         let view = self.scroll..self.scroll + usize::from(doc.height);
         let shown = first.max(view.start)..(first + rows).min(view.end);

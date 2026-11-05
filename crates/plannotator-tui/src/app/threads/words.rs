@@ -56,8 +56,8 @@ pub(in crate::app) struct Passage {
     /// The message, the words selected as it has them, and where they start in its words.
     pub(in crate::app) on: journal::Passage,
     /// The byte of the message's words they start at: where the passage is found again when
-    /// the boxes move.
-    start: usize,
+    /// the boxes move, and where the field a sub-thread on it is typed in goes (`field`).
+    pub(super) start: usize,
 }
 
 impl App {
@@ -236,12 +236,13 @@ impl App {
     }
 
     /// After the boxes moved, while their words take a selection: a passage waiting for its
-    /// action follows its words, the cursor with it, or goes when they are no longer drawn (its
-    /// thread folded, or gone); a cursor that stood in a box's words (`kept`, before they
-    /// moved) follows them too, or, on a thread's fold line, follows it as the thread folds or
-    /// opens; when they are no longer drawn, it goes back to the selected block, so the thread
-    /// keys never act on a box it is no longer in.
-    pub(super) fn boxes_moved(&mut self, kept: Option<Kept>) {
+    /// action follows its words, the cursor with it, and so does its selection when it was drawn
+    /// (`selected`), or goes when they are no longer drawn (its thread folded, or gone); a cursor
+    /// that stood in a box's words (`kept`, before they moved) follows them too, or, on a
+    /// thread's fold line, follows it as the thread folds or opens; when they are no longer
+    /// drawn, it goes back to the selected block, so the thread keys never act on a box it is no
+    /// longer in.
+    pub(super) fn boxes_moved(&mut self, kept: Option<Kept>, selected: bool) {
         if !self.box_words_selectable() {
             return;
         }
@@ -266,10 +267,14 @@ impl App {
             return;
         };
         let found = self.find_words(&passage.on.parent, passage.start);
+        // Its last character, where the words selected end.
+        let last = passage.start + passage.on.quote.char_indices().last().map_or(0, |(at, _)| at);
+        let ends = self.find_words(&passage.on.parent, last).filter(|_| selected);
         match (found, self.pending.as_mut()) {
             (Some(at), Some(pending)) => {
                 pending.at = at;
                 self.cursor = at;
+                self.selection = ends.map(|end| Selection::finished(at, end));
             }
             _ => self.pending = None,
         }
