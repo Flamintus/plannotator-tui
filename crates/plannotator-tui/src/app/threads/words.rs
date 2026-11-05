@@ -87,6 +87,13 @@ impl App {
         drawn.words.iter().any(Option::is_some).then_some(drawn.words.as_slice())
     }
 
+    /// Whether the words at document row `row` are a draft's: they take no sub-thread until it
+    /// is sent, which a passage selected in them is told (`box_passage`).
+    pub(in crate::app) fn words_of_draft(&self, row: usize) -> bool {
+        let first = self.box_words(row).and_then(|words| words.iter().flatten().next().copied());
+        first.and_then(|spot| self.open.flow.said.get(spot.message)).is_some_and(|said| said.draft)
+    }
+
     /// The block a box's words, or a thread's fold line, at document row `row` are under: the
     /// block whose thread they are.
     pub(in crate::app) fn box_block(&self, row: usize) -> Option<usize> {

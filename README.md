@@ -453,6 +453,15 @@ the agent answers with too:
   the block, or, none folded there, folds that box or the block's threads. These keys answer
   only while the loop runs, and are provisional, to be confirmed in use; like every key they can
   be rebound under `[keys]`.
+- The footer names only what can be done on the selection, the line the cursor is on (a block,
+  a line of a box's words, a draft's or not, a head, a folded line), the bubble in the rail or
+  the tree's row, first, then, past a wider `·`, the keys that do not change with it (`E`, `A`
+  in a gated review, `Tab`, `S`, `q`, `ctrl+p`): `l unfold` or `h fold` on a fold line, `e edit`
+  and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` on a sent thread,
+  `z fold` or `z unfold` as it would act, no `c comment` or `v select` where there are no words
+  to take one, no edit, removal or image on a sent note, which the journal would refuse. A
+  selection waiting for its action keeps the toolbar's help, and without the loop the footer
+  is as it was.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

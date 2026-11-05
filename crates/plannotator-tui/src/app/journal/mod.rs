@@ -2,10 +2,11 @@
 //! comments Plannotator's review journal keeps, by host and session (here), or the files of a
 //! file's or a folder's review, by its real path (`paths`); the round sent and pasted into the
 //! agent's pane as the journal composed it (`send`); the journal followed for the agent's
-//! replies (`watch`); and replies, resolution and sub-threads on the current note's thread
-//! (`act`).
+//! replies (`watch`); replies, resolution and sub-threads on the current note's thread
+//! (`act`); and the footer's keys, as the selection lets them act (`help`).
 
 mod act;
+mod help;
 mod left;
 mod menu;
 mod own;

@@ -10,9 +10,15 @@ use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, Threa
 
 use super::super::draw::short_id;
 use super::super::threads::state_marks;
-use super::super::{App, Focus, Mode};
+use super::super::{App, Mode};
 use crate::journal::{Review, tree};
 use crate::keys::Action;
+
+/// Whether thread `node` takes a reply and a resolution: once its comment is sent. A draft's are
+/// refused, here for a reply (`begin_reply`), by the journal for a resolution: it is sent first.
+pub(super) fn sent(node: &ThreadNode) -> bool {
+    !node.draft
+}
 
 impl App {
     /// The thread actions, on the current note: the rail's, or the selected block's. Without
@@ -51,7 +57,7 @@ impl App {
 
     fn begin_reply(&mut self) {
         let Some((_, node)) = self.current_thread() else { return };
-        if node.draft {
+        if !sent(&node) {
             self.status = Some(format!(
                 "a draft takes no reply: {} sends it now, {} with the round",
                 self.keys.hint(Action::SendNow),
@@ -103,6 +109,12 @@ impl App {
         Some((review.clone(), tree::find(&view.threads, id)?.clone()))
     }
 
+    /// Thread `id` as the review's view has it, at any depth.
+    pub(super) fn node(&self, id: &str) -> Option<&ThreadNode> {
+        let (_, view) = self.open.store.journal_view()?;
+        tree::find(&view.threads, id)
+    }
+
     /// The draft whose box the cursor stands on, at any depth: a line of its words, its head or
     /// its folded line (its box `Not sent`), where `edit` and `confirm` edit it, as from its
     /// bubble. The innermost box: a draft sub-thread's in a sent thread, not the thread's.
@@ -111,8 +123,7 @@ impl App {
             return None;
         }
         let id = self.thread_at_cursor()?;
-        let (_, view) = self.open.store.journal_view()?;
-        tree::find(&view.threads, &id).is_some_and(|node| node.draft).then_some(id)
+        self.node(&id).is_some_and(|node| !sent(node)).then_some(id)
     }
 
     fn resolve_current(&mut self) {
@@ -152,29 +163,5 @@ impl App {
         let Some((_, view)) = self.open.store.journal_view() else { return String::new() };
         let Some(node) = tree::find(&view.threads, id) else { return String::new() };
         state_marks(node).iter().flat_map(|mark| [" \u{b7} ", mark.as_str()]).collect()
-    }
-
-    /// The thread keys the footer adds over a document of the journal, with nothing selected;
-    /// first, on a thread's fold line (any box's folded line or head), the arrow that unfolds
-    /// or folds it.
-    pub(in crate::app) fn journal_help(&self) -> Vec<Option<String>> {
-        if !self.open.store.is_journal() || self.pending.is_some() || self.focus == Focus::Tree {
-            return Vec::new();
-        }
-        let fold = self.selected_fold().and_then(|(_, folded)| {
-            let (action, label) = if folded { (Action::Right, "unfold") } else { (Action::Left, "fold") };
-            self.keys.labelled(action, label)
-        });
-        // Sending at once is offered only where the current note has a draft to send.
-        let draft = self.open.store.journal_view().zip(self.current_note()).is_some_and(|((_, view), id)| {
-            tree::find(&view.threads, &id).is_some_and(|node| !tree::now_drafts(node).is_empty())
-        });
-        vec![
-            fold,
-            draft.then(|| self.keys.labelled(Action::SendNow, "send now")).flatten(),
-            self.keys.labelled(Action::Reply, "reply"),
-            self.keys.labelled(Action::Resolve, "resolve"),
-            self.keys.labelled(Action::ToggleThread, "fold"),
-        ]
     }
 }

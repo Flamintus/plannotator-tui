@@ -539,7 +539,6 @@ impl App {
             parts.push("rail hidden: widen to ≥80 cols".into());
         }
         let help = self.footer_help();
-        let help = if help.is_empty() { String::new() } else { format!("{} ", help.join(" · ")) };
         // The status must stay readable at any width, so the key help yields columns to it
         // (and is clipped) rather than the other way round.
         let status_width = self.status.as_ref().map_or(0, |s| s.width() + 1) as u16;
@@ -553,20 +552,33 @@ impl App {
         frame.render_widget(Paragraph::new(Line::from(Span::raw(help).dim()).right_aligned()), right_area);
     }
 
-    /// The key help for the focused pane, in the user's keys.
-    fn footer_help(&self) -> Vec<String> {
+    /// The key help, in the user's keys, a space after it: under the review loop what the
+    /// selection lets the keys do, then, past a wider `·`, the keys that do not change with it
+    /// (`journal::help`); else the focused pane's, as it always was.
+    fn footer_help(&self) -> String {
+        let groups = self.loop_help().unwrap_or_else(|| [self.pane_help(), Vec::new()]);
+        let groups: Vec<String> =
+            groups.iter().filter(|group| !group.is_empty()).map(|group| group.join(" \u{b7} ")).collect();
+        if groups.is_empty() { String::new() } else { format!("{} ", groups.join("  \u{b7}  ")) }
+    }
+
+    /// `down` and `up`'s first keys run together, as the hints show them: `j/k`; none when
+    /// both are unbound.
+    pub(super) fn up_down_hint(&self) -> Option<String> {
+        let keys: Vec<String> = [Action::Down, Action::Up]
+            .map(|action| self.keys.hint(action))
+            .into_iter()
+            .filter(|k| !k.is_empty())
+            .collect();
+        (!keys.is_empty()).then(|| keys.join("/"))
+    }
+
+    /// The key help for the focused pane, without the review loop's journal.
+    fn pane_help(&self) -> Vec<String> {
         // Each hint names its action's first key; an unbound action drops out of the line.
         let key = |action, label| self.keys.labelled(action, label);
         let bare = |hint: String| (!hint.is_empty()).then_some(hint);
-        let up_down = bare(
-            [Action::Down, Action::Up]
-                .map(|action| self.keys.hint(action))
-                .iter()
-                .filter(|k| !k.is_empty())
-                .cloned()
-                .collect::<Vec<_>>()
-                .join("/"),
-        );
+        let up_down = self.up_down_hint();
         let tab = bare(self.keys.hint(Action::CycleFocus));
         // `send-and-close` is bound only in a reply review, so only a reply review names it.
         let send_and_close =
@@ -632,7 +644,7 @@ impl App {
         // last.
         let find =
             if self.tree.is_some() && self.pending.is_none() { key(Action::QuickOpen, "find") } else { None };
-        help.into_iter().chain([find]).chain(self.journal_help()).flatten().collect()
+        help.into_iter().chain([find]).flatten().collect()
     }
 }
 

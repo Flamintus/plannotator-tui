@@ -72,9 +72,10 @@ impl Flow {
 }
 
 impl App {
-    /// `toggle-thread`: on the box the cursor is in, else on the selected block's threads, the
-    /// folded threads seen there drawn open, or, none folded, those threads folded.
-    pub(in crate::app) fn toggle_threads(&mut self) {
+    /// What `toggle-thread` does here, on the box the cursor is in, else on the selected block's
+    /// threads: the folded threads seen there it draws open, or, none folded, those threads it
+    /// folds (`true`). `None` with no thread here.
+    fn toggled(&self) -> Option<(Vec<String>, bool)> {
         let inside = self.thread_at_cursor();
         let flow = &self.open.flow;
         let here: Vec<&Thread> = match &inside {
@@ -87,17 +88,31 @@ impl App {
                 .collect(),
         };
         if here.is_empty() {
-            self.status = Some("no thread on this block".to_owned());
-            return;
+            return None;
         }
         let mut folded = Vec::new();
         for thread in &here {
             thread.visible_folded(&mut folded);
         }
-        let (ids, fold) = if folded.is_empty() {
+        Some(if folded.is_empty() {
             (here.iter().map(|thread| thread.id.clone()).collect(), true)
         } else {
             (folded, false)
+        })
+    }
+
+    /// Whether `toggle-thread` folds here (`true`) or draws folded threads open, as the footer
+    /// names it; `None` with no thread here, where it does nothing.
+    pub(in crate::app) fn toggle_folds(&self) -> Option<bool> {
+        self.toggled().map(|(_, fold)| fold)
+    }
+
+    /// `toggle-thread`: on the box the cursor is in, else on the selected block's threads, the
+    /// folded threads seen there drawn open, or, none folded, those threads folded.
+    pub(in crate::app) fn toggle_threads(&mut self) {
+        let Some((ids, fold)) = self.toggled() else {
+            self.status = Some("no thread on this block".to_owned());
+            return;
         };
         let count = ids.len();
         for id in &ids {
