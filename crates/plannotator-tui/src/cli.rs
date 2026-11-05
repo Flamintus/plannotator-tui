@@ -544,6 +544,7 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, mut app: App) -> Result<O
         }
         dirty |= app.poll_file_search();
         dirty |= app.poll_disk();
+        dirty |= app.poll_inbox();
         if dirty {
             let started = Instant::now();
             terminal.draw(|frame| app.draw(frame))?;

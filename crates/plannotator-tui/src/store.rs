@@ -19,13 +19,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::doc::Document;
 
+mod inbox;
 mod review;
+use inbox::Kept;
 use review::timestamp;
 
 #[derive(Debug, Clone)]
 pub(crate) struct Store {
-    /// `None` for transient documents: nothing is ever written.
-    path: Option<PathBuf>,
+    backing: Backing,
     /// The document this store's record belongs to (absolute), for the record's `path` field.
     document: Option<PathBuf>,
     annotations: Vec<Annotation>,
@@ -33,6 +34,17 @@ pub(crate) struct Store {
     resolved: Vec<Resolution>,
     deliveries: Vec<Delivered>,
     archived: Vec<Annotation>,
+}
+
+/// Where a store's record lives.
+#[derive(Debug, Clone)]
+enum Backing {
+    /// `annotations.json` under the data directory.
+    File(PathBuf),
+    /// Nowhere: a transient document's notes live in memory only.
+    Transient,
+    /// The Inbox, written to one action at a time (`store/inbox.rs`).
+    Inbox(Box<Kept>),
 }
 
 #[derive(Default, Serialize, Deserialize)]
@@ -125,7 +137,7 @@ impl Store {
         };
         let needs_path = record.path.is_none();
         let mut store = Self {
-            path: Some(location.record.clone()),
+            backing: Backing::File(location.record.clone()),
             document: location.document.clone(),
             annotations: record.annotations,
             resolved: Vec::new(),
@@ -145,7 +157,7 @@ impl Store {
     /// A store that never touches disk, for transient documents.
     pub(crate) fn transient() -> Self {
         Self {
-            path: None,
+            backing: Backing::Transient,
             document: None,
             annotations: Vec::new(),
             resolved: Vec::new(),
@@ -157,7 +169,7 @@ impl Store {
     /// True when nothing about this store ever reaches disk.
     #[cfg(test)]
     pub(crate) fn is_transient(&self) -> bool {
-        self.path.is_none()
+        !matches!(self.backing, Backing::File(_))
     }
 
     /// Every document with active or archived annotations recorded for `project`, from records carrying their
@@ -187,8 +199,11 @@ impl Store {
             .map_or(0, |r| r.annotations.len())
     }
 
-    fn save(&self) -> Result<()> {
-        let Some(path) = &self.path else { return Ok(()) };
+    fn save(&mut self) -> Result<()> {
+        let Backing::File(path) = &self.backing else {
+            self.save_to_inbox();
+            return Ok(());
+        };
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
         }
@@ -390,7 +405,7 @@ mod tests {
         let doc = Document::parse("hello world\n".to_owned());
         let mut seed = Store {
             document: None,
-            path: Some(sidecar.clone()),
+            backing: Backing::File(sidecar.clone()),
             annotations: Vec::new(),
             resolved: Vec::new(),
             deliveries: Vec::new(),

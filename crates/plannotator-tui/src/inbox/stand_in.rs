@@ -1,5 +1,6 @@
-//! A stand-in for the Inbox, for the app's tests: threads, attached files, live sessions
-//! and deposits held in memory. A route it does not hold, or one a test lists in
+//! A stand-in for the Inbox, for the app's tests: threads, attached files, live sessions,
+//! deposits and comments held in memory, the comments listed by a view of the Inbox's
+//! shape. A route it does not hold, or one a test lists in
 //! `missing`, answers as an Inbox without that route would.
 
 #![allow(clippy::expect_used, reason = "test fixtures assert by panicking")]
@@ -7,9 +8,9 @@
 use std::cell::RefCell;
 
 use plannotator_tui_inbox::{
-    AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, Health, IdempotencyKey,
-    Inbox, NewComment, NewReply, NewSubThread, ProjectSessions, ReviewTarget, SendMode, Target, Thread,
-    ThreadRow, ThreadView, Watch,
+    Anchor as On, AttachmentText, AttachmentVersion, CommentRecord, CommentSend, Deposit, Error, FileVersion,
+    Health, IdempotencyKey, Inbox, NewComment, NewReply, NewSubThread, Place, ProjectSessions, ReviewTarget,
+    SendMode, State as ThreadState, Target, Thread, ThreadNode, ThreadRow, ThreadView, Watch,
 };
 
 #[derive(Debug, Default)]
@@ -27,6 +28,64 @@ pub(crate) struct State {
     pub(crate) deposits: Vec<(ReviewTarget, Deposit)>,
     /// Routes answered as missing.
     pub(crate) missing: Vec<&'static str>,
+    pub(crate) comments: Vec<Comment>,
+    /// Every write, in order: `comment <id>`, `remove <id>`.
+    pub(crate) writes: Vec<String>,
+}
+
+/// A comment as the stand-in keeps it.
+#[derive(Debug, Clone)]
+pub(crate) struct Comment {
+    pub(crate) id: String,
+    pub(crate) on: On,
+    pub(crate) quote: String,
+    pub(crate) text: String,
+    pub(crate) draft: bool,
+}
+
+impl Comment {
+    /// A comment the window made on message `message_id`'s `quote`, sent unless `draft`.
+    pub(crate) fn on_message(id: &str, message_id: &str, quote: &str, text: &str, draft: bool) -> Self {
+        let on = On::Message { message_id: message_id.into() };
+        Self { id: id.into(), on, quote: quote.into(), text: text.into(), draft }
+    }
+
+    fn node(&self) -> ThreadNode {
+        ThreadNode {
+            id: self.id.clone(),
+            reply_id: if self.draft { String::new() } else { "snd_1".into() },
+            round: 1,
+            state: ThreadState::Open,
+            place: Place { on: self.on.clone(), quote: self.quote.clone(), unanchored: false, parent: None },
+            text: self.text.clone(),
+            draft: self.draft,
+            folded: false,
+            status: None,
+            live: false,
+            replies: Vec::new(),
+            sub_threads: Vec::new(),
+            other: serde_json::Map::new(),
+        }
+    }
+}
+
+/// The record a comment route answers.
+fn record(id: &str) -> CommentRecord {
+    serde_json::from_value(serde_json::json!({
+        "id": id, "thread_id": "thr", "message_id": "", "attachment_id": "", "path": "", "version": "current",
+        "annotation": {}, "created_at": "", "updated_at": "", "removed_at": null, "sent_reply_id": null,
+    }))
+    .expect("a record")
+}
+
+fn refused(route: &str, code: &str) -> Error {
+    Error::Refused {
+        route: route.to_owned(),
+        status: 409,
+        code: code.to_owned(),
+        message: code.replace('_', " "),
+        field: None,
+    }
 }
 
 impl StandIn {
@@ -39,6 +98,37 @@ impl StandIn {
         let inbox = Self::default();
         inbox.state.borrow_mut().sessions = sessions.expect("sessions");
         inbox
+    }
+
+    /// A new comment on `on`, or an edit of the draft of the same id.
+    fn write(&self, on: On, comment: &NewComment) -> Result<CommentRecord, Error> {
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("comment {}", comment.id));
+        match state.comments.iter_mut().find(|kept| kept.id == comment.id) {
+            Some(kept) if !kept.draft => return Err(refused("annotations", "annotation_closed")),
+            Some(kept) => kept.text.clone_from(&comment.text),
+            None => state.comments.push(Comment {
+                id: comment.id.clone(),
+                on,
+                quote: comment.quote.clone(),
+                text: comment.text.clone(),
+                draft: true,
+            }),
+        }
+        Ok(record(&comment.id))
+    }
+
+    /// The path of attached file `attachment_id`, as its message lists it.
+    fn path_of(&self, attachment_id: &str) -> String {
+        let state = self.state.borrow();
+        let files = state
+            .threads
+            .iter()
+            .flat_map(|thread| &thread.messages)
+            .filter_map(|m| m.other.get("attachments"));
+        let found =
+            files.filter_map(serde_json::Value::as_array).flatten().find(|file| file["id"] == attachment_id);
+        found.and_then(|file| file["path"].as_str()).unwrap_or_default().to_owned()
     }
 
     fn missing(&self, route: &'static str) -> Result<(), Error> {
@@ -105,7 +195,9 @@ impl Inbox for StandIn {
     }
 
     fn thread_view(&self, _thread_id: &str) -> Result<ThreadView, Error> {
-        missing("threads/:id/comments")
+        self.missing("threads/:id/comments")?;
+        let threads = self.state.borrow().comments.iter().map(Comment::node).collect();
+        Ok(ThreadView { v: 1, round: 1, threads, other: serde_json::Map::new() })
     }
 
     fn attachment_text(
@@ -153,12 +245,19 @@ impl Inbox for StandIn {
         Ok(landed)
     }
 
-    fn comment_on_message(&self, _message_id: &str, _comment: &NewComment) -> Result<CommentRecord, Error> {
-        missing("messages/:id/annotations")
+    fn comment_on_message(&self, message_id: &str, comment: &NewComment) -> Result<CommentRecord, Error> {
+        self.write(On::Message { message_id: message_id.into() }, comment)
     }
 
-    fn comment_on_attachment(&self, _: &str, _: &str, _: &NewComment) -> Result<CommentRecord, Error> {
-        missing("annotations")
+    fn comment_on_attachment(
+        &self,
+        attachment_id: &str,
+        version: &str,
+        comment: &NewComment,
+    ) -> Result<CommentRecord, Error> {
+        let path = self.path_of(attachment_id);
+        let version = if version == "current" { FileVersion::Current } else { FileVersion::Sent };
+        self.write(On::File { path, version, lines: None, at: None }, comment)
     }
 
     fn reply(&self, _comment_id: &str, _reply: &NewReply) -> Result<CommentRecord, Error> {
@@ -173,8 +272,17 @@ impl Inbox for StandIn {
         missing("annotations/:id/resolve")
     }
 
-    fn remove(&self, _comment_id: &str) -> Result<CommentRecord, Error> {
-        missing("annotations/:id/remove")
+    fn remove(&self, comment_id: &str) -> Result<CommentRecord, Error> {
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("remove {comment_id}"));
+        let Some(index) = state.comments.iter().position(|comment| comment.id == comment_id) else {
+            return Err(refused("annotations/:id/remove", "annotation_not_found"));
+        };
+        if state.comments.get(index).is_some_and(|comment| !comment.draft) {
+            return Err(refused("annotations/:id/remove", "annotation_closed"));
+        }
+        state.comments.remove(index);
+        Ok(record(comment_id))
     }
 
     fn send(

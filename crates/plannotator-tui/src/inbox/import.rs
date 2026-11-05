@@ -53,6 +53,10 @@ impl Depositor {
         Ok(Self { inbox, host, session: session_id.to_owned(), project_path })
     }
 
+    pub(crate) fn inbox(&self) -> &Shared {
+        &self.inbox
+    }
+
     /// Deposit the agent's message `host_message_id`: its review thread and message in the
     /// Inbox, the same ones again for the same words.
     pub(crate) fn deposit(&self, host_message_id: &str, text: &str) -> Result<Deposit> {

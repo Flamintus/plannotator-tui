@@ -40,5 +40,5 @@ pub(crate) fn run(args: &[String]) -> Result<()> {
         return Ok(());
     };
     let found = super::source::thread_documents(inbox.as_ref(), &thread, sent)?;
-    cli::run_ui(|width| App::open_inbox_thread(found, width, cli::delivery(true)))
+    cli::run_ui(|width| App::open_inbox_thread(found, inbox, width, cli::delivery(true)))
 }

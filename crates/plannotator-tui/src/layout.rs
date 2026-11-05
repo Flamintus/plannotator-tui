@@ -196,7 +196,13 @@ impl DocLayout {
     /// whitespace in the source, one space is emitted (the DOM renders a soft break as a
     /// space). Code and tables keep their newlines.
     pub(crate) fn rendered_in_range(&self, source: &str, range: &Range<usize>) -> String {
-        let mut out = String::new();
+        self.rendered_chars(source, range).into_iter().map(|(ch, _)| ch).collect()
+    }
+
+    /// `rendered_in_range`'s characters, each with the source offset it shows; a break
+    /// recovered from the source carries the offset of the character after it.
+    pub(crate) fn rendered_chars(&self, source: &str, range: &Range<usize>) -> Vec<(char, usize)> {
+        let mut out: Vec<(char, usize)> = Vec::new();
         for block in &self.blocks {
             let break_char = if block.kind.preserves_columns() { '\n' } else { ' ' };
             let mut last_offset: Option<usize> = None;
@@ -208,11 +214,11 @@ impl DocLayout {
                 if let Some(prev) = last_offset
                     && let Some(skipped) = source.get(prev..offset)
                     && skipped.chars().any(char::is_whitespace)
-                    && !out.ends_with(char::is_whitespace)
+                    && !out.last().is_some_and(|(last, _)| last.is_whitespace())
                 {
-                    out.push(break_char);
+                    out.push((break_char, offset));
                 }
-                out.push(ch);
+                out.push((ch, offset));
                 last_offset = Some(offset + ch.len_utf8());
             }
         }

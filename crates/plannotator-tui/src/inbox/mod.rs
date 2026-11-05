@@ -7,10 +7,12 @@
 //!
 //! - `command`: `plannotator-tui inbox`, the threads or one thread to review.
 //! - `import`: `last`'s reviewed reply, deposited in its session's review thread.
+//! - `passage`: a comment's quote found in a document's words as drawn.
 //! - `source`: a thread's agent messages and attached text files, as documents.
 
 pub(crate) mod command;
 pub(crate) mod import;
+pub(crate) mod passage;
 pub(crate) mod source;
 #[cfg(test)]
 pub(crate) mod stand_in;
@@ -64,6 +66,12 @@ pub(crate) enum Target {
 }
 
 impl Target {
+    pub(crate) fn thread_id(&self) -> &str {
+        match self {
+            Self::Message { thread_id, .. } | Self::Attachment { thread_id, .. } => thread_id,
+        }
+    }
+
     /// The document of these words: transient, since the Inbox keeps what is said about it.
     pub(crate) fn source(&self, name: String, text: String) -> DocumentSource {
         DocumentSource::new(text, name, true, self.provenance())

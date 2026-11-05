@@ -18,7 +18,8 @@ impl App {
         match depositor {
             Ok(None) => {}
             Ok(Some(depositor)) => {
-                self.inbox = Some(InboxReview { documents: Vec::new(), depositor: Some(depositor) });
+                let inbox = depositor.inbox().clone();
+                self.inbox = Some(InboxReview::new(inbox, Vec::new(), Some(depositor)));
                 if self.mode != Mode::Pick {
                     self.deposit_open();
                 }
@@ -29,10 +30,9 @@ impl App {
 
     /// Deposit the open reply, unless it is in the Inbox already or has notes of its own,
     /// which only the agent's pane can still take.
-    pub(in crate::app) fn deposit_open(&mut self) {
-        let Some(depositor) = self.inbox.as_ref().and_then(|review| review.depositor.as_ref()) else {
-            return;
-        };
+    pub(super) fn deposit_open(&mut self) {
+        let Some(review) = &self.inbox else { return };
+        let Some(depositor) = &review.depositor else { return };
         if self.open.store.len() > 0 {
             return;
         }
@@ -44,14 +44,17 @@ impl App {
         let deposited = depositor.deposit(message_id, &text).and_then(|deposit| {
             let target = Target::Message { thread_id: deposit.thread_id, message_id: deposit.message_id };
             let name = format!("{} \u{b7} Inbox", self.open.source.name);
-            Ok((self.open_document(&target, name, text)?, deposit.created))
+            Ok((self.open_document(&review.inbox, &target, name, text)?, deposit.created))
         });
         match deposited {
             Ok((open, created)) => {
                 self.open = open;
                 self.derive_send_state();
-                let state = if created { "is now" } else { "was already" };
-                self.status = Some(format!("this reply {state} in the Inbox"));
+                self.status = Some(if created {
+                    "this reply is in the Inbox now: its comments are kept there".to_owned()
+                } else {
+                    "this reply was in the Inbox already: its comments are back".to_owned()
+                });
             }
             Err(err) => self.inbox_fallback(&err),
         }
@@ -59,10 +62,6 @@ impl App {
 
     /// Say why the Inbox is out of this review, after whatever the footer already says.
     fn inbox_fallback(&mut self, err: &anyhow::Error) {
-        let note = format!("Inbox: {err:#} \u{b7} feedback goes to the agent as before");
-        self.status = Some(match self.status.take() {
-            Some(status) => format!("{status} \u{b7} {note}"),
-            None => note,
-        });
+        self.add_status(&format!("Inbox: {err:#} \u{b7} feedback goes to the agent as before"));
     }
 }

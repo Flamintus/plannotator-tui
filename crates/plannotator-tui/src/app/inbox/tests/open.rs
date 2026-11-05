@@ -3,46 +3,13 @@
 use std::rc::Rc;
 
 use plannotator_tui_schema::Provenance;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent};
-use serde_json::json;
+use ratatui::crossterm::event::KeyCode;
 
-use super::super::{App, Mode};
+use super::super::super::{App, Mode};
+use super::{last_app, press, thread_app};
 use crate::delivery::Discard;
 use crate::inbox::import::Depositor;
-use crate::inbox::source::thread_documents;
-use crate::inbox::stand_in::{StandIn, attached, thread};
-
-/// An Inbox thread: two agent messages, the first with a Markdown file and a picture
-/// attached, and the person's message between them.
-fn thread_app() -> (App, Rc<StandIn>) {
-    let inbox = Rc::new(StandIn::default());
-    {
-        let mut state = inbox.state.borrow_mut();
-        state.threads.push(thread(
-            "thr_1",
-            "The plan",
-            &[
-                (
-                    "msg_a1",
-                    true,
-                    "First answer.",
-                    json!([attached("att_1", "plan.md", "markdown"), attached("att_2", "shot.png", "image")]),
-                ),
-                ("msg_p1", false, "Go on.", json!([])),
-                ("msg_a2", true, "Second answer.", json!([])),
-            ],
-        ));
-        let words = serde_json::from_value(json!({ "version": "current", "text": "# Plan\n\nShip it.\n" }));
-        state.files.push(("att_1".into(), words.expect("words")));
-    }
-    let found = thread_documents(inbox.as_ref(), "thr_1", false).expect("documents");
-    let app = App::open_inbox_thread(found, 80, Box::new(Discard)).expect("app");
-    (app, inbox)
-}
-
-fn press(app: &mut App, code: KeyCode) {
-    app.handle_event(&Event::Key(KeyEvent::from(code))).expect("key");
-}
+use crate::inbox::stand_in::StandIn;
 
 #[test]
 fn an_inbox_thread_offers_its_agent_messages_then_their_text_files_newest_first() {
@@ -74,31 +41,6 @@ fn a_picked_file_opens_with_its_words_and_names_its_attachment() {
         }
     );
     assert!(app.open.source.transient, "the Inbox keeps what is said about it, not a local record");
-}
-
-/// `last` on two replies, newest first, of the Inbox's live session `ses_a`.
-fn last_app(newest: bool) -> (App, Rc<StandIn>) {
-    let inbox = Rc::new(StandIn::with_session());
-    let reply = |id: &str, text: &str| plannotator_tui_hosts::Message {
-        id: id.into(),
-        role: plannotator_tui_hosts::Role::Assistant,
-        text: text.into(),
-        at: None,
-    };
-    let replies = vec![reply("m2", "Second reply.\n"), reply("m1", "First reply.\n")];
-    let mut app = App::open_message(
-        "claude",
-        "/tmp/transcript.jsonl",
-        Some("ses_a"),
-        replies,
-        80,
-        Box::new(Discard),
-        newest,
-    )
-    .expect("app");
-    let depositor = Depositor::find(inbox.clone(), "ses_a").expect("the session is live");
-    app.review_in_inbox(Ok(Some(depositor)));
-    (app, inbox)
 }
 
 fn deposited(inbox: &StandIn) -> Vec<String> {
