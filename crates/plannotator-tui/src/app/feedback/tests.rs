@@ -175,7 +175,6 @@ fn folder_feedback_ends_every_file_block_with_a_blank_line() {
     std::fs::write(&other, "beta\n").expect("second file");
     let (doc, mut store) = app.load_review_file(&other).expect("second store");
     store.add(&doc, 0..4, "beta".into(), Kind::Comment, "note B".into()).expect("B");
-    let id = store.placed()[0].annotation.id.clone();
     app.refresh_review_counts();
 
     let single = app.feedback();
@@ -184,7 +183,7 @@ fn folder_feedback_ends_every_file_block_with_a_blank_line() {
     assert_eq!(
         folder,
         format!(
-            "{single}\n# Annotations on b.md\n\n## Annotation 1 (line 1) (id {id})\nComment on: \"beta\"\n> note B\n\n\n"
+            "{single}\n# Annotations on b.md\n\n## Annotation 1 (line 1)\nComment on: \"beta\"\n> note B\n\n\n"
         )
     );
     assert!(folder.ends_with("> note B\n\n\n"), "{folder:?}");

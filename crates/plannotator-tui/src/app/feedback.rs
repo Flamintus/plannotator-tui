@@ -57,6 +57,8 @@ pub(super) struct Feedback {
     pub(super) counts: HashMap<PathBuf, ReviewCounts>,
     /// Set for a terminal review: no line labels, and quotes rejoin these breaks.
     pub(super) terminal_breaks: Option<Vec<usize>>,
+    /// Each heading names its note's id: the review loop is on.
+    pub(super) ids: bool,
 }
 
 impl Feedback {
@@ -92,7 +94,7 @@ impl Feedback {
         if !self.text.is_empty() {
             self.text.push('\n');
         }
-        self.text.push_str(&export::feedback(name, &entries));
+        self.text.push_str(&export::feedback(name, &entries, self.ids));
         let ids = entries.iter().map(|e| e.annotation.id.clone()).collect();
         self.count += entries.len();
         self.images += entries.iter().map(|e| e.annotation.plannotator_tui.images.len()).sum::<usize>();
@@ -252,7 +254,11 @@ impl App {
             Provenance::File { path } => Some(path.clone()),
             _ => None,
         };
-        let mut feedback = Feedback { terminal_breaks: self.terminal_breaks.clone(), ..Feedback::default() };
+        let mut feedback = Feedback {
+            terminal_breaks: self.terminal_breaks.clone(),
+            ids: self.ids_in_feedback,
+            ..Feedback::default()
+        };
         feedback.add(path, None, &self.open.source.name, &self.open.doc, self.open.store.clone(), scope);
         feedback
     }
@@ -264,7 +270,7 @@ impl App {
             }
             return Ok(self.file_feedback(scope));
         };
-        let mut feedback = Feedback::default();
+        let mut feedback = Feedback { ids: self.ids_in_feedback, ..Feedback::default() };
         for path in self.review_files() {
             if !path.is_file() {
                 let (_, store) = self.load_review_file(&path)?;

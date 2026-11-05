@@ -39,7 +39,7 @@ impl App {
             .filter(|(_, open)| !open.store.is_journal())
             .filter(|(index, open)| *index == self.pick_open || !open.store.all_delivered())
             .collect();
-        let mut feedback = Feedback::default();
+        let mut feedback = Feedback { ids: self.ids_in_feedback, ..Feedback::default() };
         let named = annotated.len() > 1;
         for (index, open) in annotated {
             let name = if named { self.reply_name(index, open) } else { open.source.name.clone() };

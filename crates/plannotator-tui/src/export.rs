@@ -1,10 +1,11 @@
 //! Feedback export: annotations as numbered Markdown a coding agent reads without a schema.
 //!
-//! `# Annotations on <name>`, then one `## Annotation N (line X) (id <id>)` per annotation in
-//! document order: what kind of note it is, the quoted text, the body as a blockquote, and one
+//! `# Annotations on <name>`, then one `## Annotation N (line X)` per annotation in document
+//! order: what kind of note it is, the quoted text, the body as a blockquote, and one
 //! `Image: <absolute path>` line per attached image. Deleted text is fenced so quoted
-//! markdown cannot escape. The number is the note's place in this export; the id is its own,
-//! the same from one send to the next, so an agent can name the note it answers.
+//! markdown cannot escape. The number is the note's place in this export. With the review
+//! loop on (`crate::journal`), each heading also ends with the note's own id,
+//! `(id <id>)`, the same from one send to the next, so an agent can name the note it answers.
 
 use std::fmt::Write as _;
 use std::ops::Range;
@@ -21,7 +22,8 @@ pub(crate) struct Entry<'a> {
     pub(crate) lines: Option<(usize, usize)>,
 }
 
-pub(crate) fn feedback(name: &str, entries: &[Entry<'_>]) -> String {
+/// The feedback on `name`; `ids`: each heading names its note's id.
+pub(crate) fn feedback(name: &str, entries: &[Entry<'_>], ids: bool) -> String {
     if entries.is_empty() {
         return "No annotations.".to_owned();
     }
@@ -33,7 +35,8 @@ pub(crate) fn feedback(name: &str, entries: &[Entry<'_>]) -> String {
             Some((a, b)) => format!(" (lines {a}\u{2013}{b})"),
             None => String::new(),
         };
-        let _ = writeln!(out, "## Annotation {}{line_label}{}", i + 1, id_label(&entry.annotation.id));
+        let id = if ids { id_label(&entry.annotation.id) } else { String::new() };
+        let _ = writeln!(out, "## Annotation {}{line_label}{id}", i + 1);
         let body = entry.annotation.body.trim();
         match entry.annotation.anchor.kind() {
             Kind::Delete => {
@@ -143,7 +146,7 @@ mod tests {
             Entry { annotation: &comment, lines: Some(line_span(source, &r1)), quote: source[r1].to_owned() },
             Entry { annotation: &delete, lines: Some(line_span(source, &r2)), quote: source[r2].to_owned() },
         ];
-        let out = feedback("plan.md", &entries);
+        let out = feedback("plan.md", &entries, true);
         assert_eq!(
             out,
             "# Annotations on plan.md\n\n\
@@ -158,8 +161,8 @@ mod tests {
         let (comment, range) = annotation(source, "ls", Kind::Comment, "why");
         let entries = [Entry { annotation: &comment, lines: None, quote: source[range].to_owned() }];
         assert_eq!(
-            feedback("terminal · w1:p1", &entries),
-            "# Annotations on terminal · w1:p1\n\n## Annotation 1 (id a)\nComment on: \"ls\"\n> why\n\n"
+            feedback("terminal · w1:p1", &entries, false),
+            "# Annotations on terminal · w1:p1\n\n## Annotation 1\nComment on: \"ls\"\n> why\n\n"
         );
     }
 
@@ -170,8 +173,8 @@ mod tests {
         comment.plannotator_tui.images = vec!["/shots/before.png".into(), "/shots/after shot.png".into()];
         let entries = [Entry { annotation: &comment, lines: Some((1, 1)), quote: source[range].to_owned() }];
         assert_eq!(
-            feedback("plan.md", &entries),
-            "# Annotations on plan.md\n\n## Annotation 1 (line 1) (id a)\nComment on: \"header\"\n> match this\n\
+            feedback("plan.md", &entries, false),
+            "# Annotations on plan.md\n\n## Annotation 1 (line 1)\nComment on: \"header\"\n> match this\n\
              Image: /shots/before.png\nImage: /shots/after shot.png\n\n"
         );
     }
@@ -187,7 +190,7 @@ mod tests {
                 lines: Some((1, 1)),
                 quote: source[range.clone()].to_owned(),
             }];
-            let out = feedback("plan.md", &entries);
+            let out = feedback("plan.md", &entries, true);
             assert!(out.contains("## Annotation 1 (line 1)\nComment on:"), "{id:?}: {out}");
         }
     }
