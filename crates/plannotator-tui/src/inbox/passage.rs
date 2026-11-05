@@ -53,6 +53,25 @@ pub(crate) fn find(chars: &[(char, usize)], source: &str, quote: &str, nth: usiz
     Some(start..last + width)
 }
 
+/// The source range of the occurrence of `quote` nearest to where the Inbox says its passage
+/// starts, `offset` UTF-16 units into the words with whitespace runs read as one (a
+/// sub-thread's `quote_offset`): the Inbox counts in its own words, so the nearest one wins
+/// rather than an exact match.
+pub(crate) fn find_near(
+    chars: &[(char, usize)],
+    source: &str,
+    quote: &str,
+    offset: u64,
+) -> Option<Range<usize>> {
+    let (flat, _) = normalized(chars);
+    let wanted = flat_quote(quote);
+    let units = |from: usize| flat.iter().take(from).map(|ch| ch.len_utf16() as u64).sum::<u64>();
+    let starts = starts(&flat, &wanted);
+    let nth = (0..starts.len())
+        .min_by_key(|&nth| starts.get(nth).map_or(u64::MAX, |&from| units(from).abs_diff(offset)))?;
+    find(chars, source, quote, nth)
+}
+
 /// How many occurrences of `quote` in `chars` start before source offset `before`: which
 /// occurrence a selection starting there is.
 pub(crate) fn occurrence(chars: &[(char, usize)], quote: &str, before: usize) -> usize {
@@ -67,7 +86,7 @@ pub(crate) fn occurrence(chars: &[(char, usize)], quote: &str, before: usize) ->
 #[cfg(test)]
 #[allow(clippy::expect_used, reason = "tests assert by panicking")]
 mod tests {
-    use super::{find, occurrence};
+    use super::{find, find_near, occurrence};
 
     /// Rendered characters as a layout pairs them: here, the source with `**` markup left out.
     fn drawn(source: &str) -> Vec<(char, usize)> {
@@ -91,5 +110,14 @@ mod tests {
         assert_eq!(second, 9..16);
         assert_eq!(occurrence(&chars, "one two", second.start), 1, "a selection there is the second");
         assert_eq!(occurrence(&chars, "one two", 0), 0);
+    }
+
+    #[test]
+    fn a_sub_threads_passage_is_the_occurrence_nearest_where_the_inbox_says_it_starts() {
+        let source = "the panel, then the panel";
+        let chars = drawn(source);
+        assert_eq!(find_near(&chars, source, "panel", 0), Some(4..9));
+        assert_eq!(find_near(&chars, source, "panel", 19), Some(20..25));
+        assert_eq!(find_near(&chars, source, "slider", 4), None);
     }
 }

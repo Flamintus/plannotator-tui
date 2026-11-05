@@ -185,9 +185,15 @@ impl App {
             open.flow = Flow::new(threads, open.layout.width, unfolded);
         }
         if open.layout.reserve_under(&open.flow.under) {
-            // Rows below a changed box moved, as on a reflow: a selection no longer covers
-            // what it did.
-            self.clear_selection();
+            // Rows below a changed box moved, as on a reflow: a selection drawn by rows no
+            // longer covers what it did. The selection waiting for an action is a source
+            // range, which has not moved: it only follows its first row.
+            self.selection = None;
+            if let Some(pending) = self.pending.as_mut() {
+                let block = open.doc.block_containing(pending.range.start);
+                let row = block.and_then(|block| open.layout.first_row_in_range(block, &pending.range));
+                pending.at.0 = row.unwrap_or(pending.at.0);
+            }
             self.scroll_by(0);
         }
     }

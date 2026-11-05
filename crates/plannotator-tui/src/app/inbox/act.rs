@@ -69,7 +69,10 @@ impl App {
             self.status = Some(format!("reply to {} cancelled: empty", short_id(id)));
             return;
         }
-        let Some((inbox, node)) = self.current_thread_of(id) else { return };
+        let Some((inbox, node)) = self.current_thread_of(id) else {
+            self.status = Some(format!("reply not saved: {} is no longer in the Inbox", short_id(id)));
+            return;
+        };
         let reply = NewReply { id: crate::store::local_id(), text: body };
         self.status = Some(match inbox.reply(id, &reply) {
             Ok(_) if node.live => "reply sent: the thread is live".to_owned(),
@@ -191,9 +194,12 @@ impl App {
         }
     }
 
-    /// What a note's bubble title adds over an Inbox document: its draft, or what became
-    /// of its send.
+    /// What a note's bubble title adds over an Inbox document: not saved, its draft, or what
+    /// became of its send.
     pub(in crate::app) fn inbox_tag(&self, id: &str) -> String {
+        if self.open.store.inbox_unsaved(id) {
+            return " \u{b7} not saved".to_owned();
+        }
         let Some((_, _, view)) = self.open.store.inbox_thread() else { return String::new() };
         let Some(node) = tree::find(&view.threads, id).filter(|node| node.state != ThreadState::Resolved)
         else {

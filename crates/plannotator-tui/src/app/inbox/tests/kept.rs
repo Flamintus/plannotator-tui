@@ -132,3 +132,20 @@ fn an_inbox_that_cannot_list_comments_leaves_the_notes_here_and_says_so() {
     assert!(writes(&inbox).is_empty(), "nothing reaches an Inbox that cannot list it");
     assert!(!app.poll_inbox());
 }
+
+#[test]
+fn a_note_the_inbox_did_not_take_stays_here_marked_until_a_write_takes_it() {
+    let inbox = thread_inbox();
+    let mut app = message_app(&inbox);
+    inbox.state.borrow_mut().missing.push("messages/:id/annotations");
+    app.add_quote_annotation("answer", Kind::Comment, "Which one?".into()).expect("comment");
+    app.poll_inbox();
+    assert_eq!(placed_words(&app), ["answer"], "its words are not lost");
+    let id = app.open.store.placed()[0].annotation.id.clone();
+    assert_eq!(app.inbox_tag(&id), " \u{b7} not saved");
+    inbox.state.borrow_mut().missing.clear();
+    assert!(app.open.store.edit_body(&id, "Which answer?".into()).expect("edit"));
+    app.poll_inbox();
+    assert_eq!(inbox.state.borrow().comments[0].text, "Which answer?");
+    assert_eq!(app.inbox_tag(&id), " \u{b7} draft");
+}

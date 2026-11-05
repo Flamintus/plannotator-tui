@@ -42,6 +42,9 @@ pub(crate) struct State {
     pub(crate) sends: Vec<(SendMode, Vec<String>, String)>,
     /// How many sends to come lose their connection.
     pub(crate) failing_sends: usize,
+    /// A view to answer as it is, in place of the one the comments make: one computed by
+    /// Plannotator's own code (the client crate's contract fixture).
+    pub(crate) view: Option<ThreadView>,
     /// Every sub-thread's passage, as asked for.
     pub(crate) passages: Vec<Passage>,
     /// The threads each watch was asked to follow, and the stream of the last one.
@@ -171,6 +174,9 @@ impl Inbox for StandIn {
     fn thread_view(&self, _thread_id: &str) -> Result<ThreadView, Error> {
         self.missing("threads/:id/comments")?;
         let state = self.state.borrow();
+        if let Some(view) = &state.view {
+            return Ok(view.clone());
+        }
         Ok(ThreadView {
             v: 1,
             round: state.finished + 1,
@@ -225,6 +231,7 @@ impl Inbox for StandIn {
     }
 
     fn comment_on_message(&self, message_id: &str, comment: &NewComment) -> Result<CommentRecord, Error> {
+        self.missing("messages/:id/annotations")?;
         self.write(On::Message { message_id: message_id.into() }, comment)
     }
 

@@ -201,7 +201,9 @@ impl App {
         if self.is_file_review() {
             self.review_counts().pending
         } else {
-            self.replies().iter().map(|(_, open)| open.store.placed().len()).sum()
+            // Notes the Inbox keeps go through it, not with this feedback.
+            let replies = self.replies().into_iter().filter(|(_, open)| !open.store.is_inbox());
+            replies.map(|(_, open)| open.store.placed().len()).sum()
         }
     }
 
@@ -256,7 +258,11 @@ impl App {
     /// Send, then quit unless something is still unsent. A refused send keeps the app open
     /// so the footer can say why; an empty review or a clipboard copy has nothing to wait for.
     pub(super) fn send_and_quit(&mut self) -> Result<()> {
-        self.send_feedback()?;
+        if self.open.store.is_inbox() {
+            self.send_inbox_all();
+        } else {
+            self.send_feedback()?;
+        }
         self.quit = !self.has_unsent();
         Ok(())
     }
@@ -276,7 +282,7 @@ impl App {
                 .replies()
                 .into_iter()
                 .map(|(_, open)| &open.store)
-                .filter(|store| store.len() > 0)
+                .filter(|store| store.len() > 0 && !store.is_inbox())
                 .collect();
             !annotated.is_empty() && annotated.iter().all(|store| store.all_delivered())
         };

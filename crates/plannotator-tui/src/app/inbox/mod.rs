@@ -175,7 +175,10 @@ impl App {
     /// or when its stream told of a change, and say what it refused. Returns whether the
     /// screen needs a redraw.
     pub(crate) fn poll_inbox(&mut self) -> bool {
-        if self.inbox.is_none() {
+        // Nothing moves under the person while they type: what came is read once they stop.
+        let typing =
+            matches!(self.mode, Mode::Compose | Mode::Edit(_) | Mode::Reply(_) | Mode::AttachImage(_));
+        if self.inbox.is_none() || typing {
             return false;
         }
         let told = self.read_stream();

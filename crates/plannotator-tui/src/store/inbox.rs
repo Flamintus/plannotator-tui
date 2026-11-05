@@ -42,6 +42,9 @@ pub(crate) struct Kept {
     stale: bool,
     /// What the Inbox refused since the footer last said.
     refused: Vec<String>,
+    /// Notes whose last write the Inbox did not take, as the person left them: kept here,
+    /// words and all, until a write takes them or the person removes them.
+    unsaved: Vec<Annotation>,
 }
 
 #[derive(Debug, Clone)]
@@ -93,6 +96,7 @@ impl Store {
             chars: Vec::new(),
             stale: false,
             refused: Vec::new(),
+            unsaved: Vec::new(),
         };
         let mut store = Self::transient();
         store.backing = Backing::Inbox(Box::new(kept));
@@ -113,6 +117,18 @@ impl Store {
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
             .collect();
         self.annotations = nodes.iter().map(|node| words::note(node, kept.anchor(node, doc))).collect();
+        // A note the Inbox did not take stays as the person left it; one it now lists as
+        // left is saved.
+        let listed = &kept.listed;
+        kept.unsaved.retain(|unsaved| {
+            !listed.iter().any(|listed| listed.id == unsaved.id && listed.text == Kept::text(unsaved))
+        });
+        for unsaved in &kept.unsaved {
+            match self.annotations.iter_mut().find(|note| note.id == unsaved.id) {
+                Some(note) => unsaved.clone_into(note),
+                None => self.annotations.push(unsaved.clone()),
+            }
+        }
         kept.view = Some(view);
         self.resolve_all(doc);
         Ok(())
@@ -126,6 +142,11 @@ impl Store {
     pub(crate) fn inbox_thread(&self) -> Option<(&Shared, &str, &ThreadView)> {
         let Backing::Inbox(kept) = &self.backing else { return None };
         Some((&kept.inbox, kept.target.thread_id(), kept.view.as_ref()?))
+    }
+
+    /// Whether note `id` is kept here only, the Inbox having not taken its last write.
+    pub(crate) fn inbox_unsaved(&self, id: &str) -> bool {
+        matches!(&self.backing, Backing::Inbox(kept) if kept.unsaved.iter().any(|note| note.id == id))
     }
 
     /// What an Inbox-backed store's document is.
@@ -167,23 +188,37 @@ impl Store {
         for annotation in &self.annotations {
             let text = Kept::text(annotation);
             let listed = kept.listed.iter().find(|listed| listed.id == annotation.id);
-            let written = if annotation.plannotator_tui.images.is_empty() {
-                match listed.map(|listed| (listed.text == text, listed.draft)) {
-                    Some((true, _)) => continue,
-                    None | Some((false, true)) => kept.comment(annotation),
-                    Some((false, false)) => {
-                        Err(anyhow::anyhow!("{} is sent: reply under it rather than edit it", annotation.id))
-                    }
+            let written = match listed.map(|listed| (listed.text == text, listed.draft)) {
+                Some((true, _)) => None,
+                None | Some((false, true)) => Some(kept.comment(annotation)),
+                Some((false, false)) => {
+                    kept.refused
+                        .push(format!("{} is sent: reply under it rather than edit it", annotation.id));
+                    // Read the view again: the Inbox's words come back.
+                    kept.stale = true;
+                    None
                 }
-            } else {
-                Err(anyhow::anyhow!("the Inbox takes no images: {} keeps its words only", annotation.id))
             };
-            kept.stale = true;
+            if !annotation.plannotator_tui.images.is_empty() {
+                kept.refused
+                    .push(format!("the Inbox takes no images: {} keeps its words only", annotation.id));
+            }
+            kept.stale |= written.is_some() || !annotation.plannotator_tui.images.is_empty();
             match written {
-                Ok(()) => kept.wrote(annotation, text),
-                Err(err) => kept.refused.push(format!("{err:#}")),
+                Some(Ok(())) => {
+                    kept.unsaved.retain(|unsaved| unsaved.id != annotation.id);
+                    kept.wrote(annotation, text);
+                }
+                // Kept here, its words with it, until a write takes it or the person removes it.
+                Some(Err(err)) => {
+                    kept.refused.push(format!("{err:#}"));
+                    kept.unsaved.retain(|unsaved| unsaved.id != annotation.id);
+                    kept.unsaved.push(annotation.clone());
+                }
+                None => {}
             }
         }
+        kept.unsaved.retain(|unsaved| self.annotations.iter().any(|a| a.id == unsaved.id));
         let gone: Vec<Listed> = kept
             .listed
             .iter()

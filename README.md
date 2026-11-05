@@ -368,7 +368,8 @@ routes for comment threads, sends and the review-target deposit (Plannotator's c
 E7). Against an Inbox without them, `last` goes on as it does with the setting off, the
 footer saying why (notes in memory, feedback to the agent's pane), and `plannotator-tui
 inbox` stops with the Inbox's reason; a thread it can read but whose comments it cannot
-list keeps its notes in memory, and says so.
+list keeps its notes in memory, says so, and copies its feedback rather than paste it into
+an agent's pane.
 
 ```sh
 plannotator-tui inbox                  # the Inbox's threads: id, section, subject
@@ -388,8 +389,11 @@ On an Inbox document:
 
 - A comment is written to the Inbox the moment you make it, as a draft, one write per
   action: editing or removing a draft writes that draft only. A sent comment is not edited
-  or removed; reply under it, or resolve it. The Inbox takes no images. `a` and `d` leave a
-  comment that says looks good or delete this.
+  or removed; reply under it, or resolve it. The Inbox takes no images: a note keeps its
+  words only. `a` and `d` leave a comment that says looks good or delete this. A note the
+  Inbox does not take (too long, a connection lost) stays here, `· not saved` in its title,
+  and goes with the next write that succeeds. Nothing the Inbox says moves the document
+  while you type: it is read once you stop.
 - `E` (or the Send button) sends the selected note's drafts, its replies and sub-threads
   included, or every draft waiting in the thread when the selected note has none, now: the
   round stays open. `F` finishes the round. The Inbox composes what the agent reads and

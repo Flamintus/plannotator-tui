@@ -104,3 +104,13 @@ fn quitting_with_drafts_waiting_asks_to_send_them_to_the_inbox() {
     let screen = draw(&mut app, 100, 12);
     assert!(screen.contains("send feedback to the Inbox before quitting?"), "{screen}");
 }
+
+#[test]
+fn sending_before_quitting_sends_every_draft_whatever_is_selected() {
+    let (mut app, inbox, _, [first, second]) = two_drafts();
+    app.select_block(1);
+    press(&mut app, KeyCode::Char('q'));
+    press(&mut app, KeyCode::Char('y'));
+    assert_eq!(sends(&inbox), [(SendMode::Now, vec![first, second])]);
+    assert!(app.quit, "nothing is left waiting");
+}

@@ -10,6 +10,7 @@ use anyhow::Result;
 use crate::app::App;
 use crate::cli;
 use crate::config::{Config, config_path};
+use crate::delivery::Clipboard;
 
 const USAGE: &str = "usage: plannotator-tui inbox [<thread-id> [--sent]]";
 
@@ -40,5 +41,7 @@ pub(crate) fn run(args: &[String]) -> Result<()> {
         return Ok(());
     };
     let found = super::source::thread_documents(inbox.as_ref(), &thread, sent)?;
-    cli::run_ui(|width| App::open_inbox_thread(found, inbox, width, cli::delivery(true)))
+    // The thread's session is the Inbox's to reach: a document whose notes it cannot keep
+    // copies its feedback, never pasting it into whatever agent pane Herdr has in focus.
+    cli::run_ui(|width| App::open_inbox_thread(found, inbox, width, Box::new(Clipboard)))
 }

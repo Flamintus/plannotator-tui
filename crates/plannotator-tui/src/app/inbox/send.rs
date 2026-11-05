@@ -23,11 +23,24 @@ impl App {
     /// Send through the Inbox: `now` the selected note's drafts, else every draft waiting;
     /// `round` finishes the round with whatever is left.
     pub(in crate::app) fn send_inbox(&mut self, mode: SendMode) {
+        self.send_inbox_of(mode, false);
+    }
+
+    /// `now` every draft waiting, whatever is selected: what sending before quitting means.
+    pub(in crate::app) fn send_inbox_all(&mut self) {
+        self.send_inbox_of(SendMode::Now, true);
+    }
+
+    fn send_inbox_of(&mut self, mode: SendMode, every: bool) {
+        // A write in the same burst of keys has not been read back yet: its draft counts.
+        if self.open.store.inbox_stale() {
+            self.refresh_inbox();
+        }
         let Some((inbox, thread_id, view)) = self.open.store.inbox_thread() else { return };
         let (inbox, thread_id, round) = (inbox.clone(), thread_id.to_owned(), view.round);
         let ids = match mode {
             SendMode::Now => {
-                let selected = self.current_note().and_then(|id| find(&view.threads, &id));
+                let selected = self.current_note().filter(|_| !every).and_then(|id| find(&view.threads, &id));
                 let mut ids = Vec::new();
                 if let Some(node) = selected {
                     drafts(node, &mut ids);

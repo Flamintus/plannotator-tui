@@ -19,7 +19,18 @@ use crate::inbox::{Target, passage, tree};
 impl Kept {
     /// Write `annotation` as a new comment, or as an edit of its draft.
     pub(super) fn comment(&self, annotation: &Annotation) -> Result<()> {
-        let comment = NewComment::new(&annotation.id, annotation.anchor.rendered(), Self::text(annotation));
+        let mut comment =
+            NewComment::new(&annotation.id, annotation.anchor.rendered(), Self::text(annotation));
+        // Which occurrence of its words it is on, for a reader that places it again later: the
+        // Inbox keeps the field; its view does not hand it back yet (E7).
+        if let Some(start) =
+            annotation.anchor.plannotator_tui.as_ref().and_then(|e| e.source.as_ref()).map(|r| r.start)
+        {
+            let occurrence = passage::occurrence(&self.chars, &comment.quote, start);
+            comment
+                .extra
+                .insert("plannotator_tui".to_owned(), serde_json::json!({ "occurrence": occurrence }));
+        }
         match &self.target {
             Target::Message { message_id, .. } => self.inbox.comment_on_message(message_id, &comment),
             Target::Attachment { attachment_id, version, .. } => {
@@ -99,9 +110,13 @@ impl Kept {
             return anchor.clone();
         }
         let quote = node.place.quote.clone();
-        let within = node.place.parent.as_ref().and_then(|parent| self.message(&parent.id));
-        let chars = within.map_or_else(|| self.chars.clone(), |range| self.chars_in(&range));
-        match passage::find(&chars, &doc.source, &quote, 0) {
+        let found = match &node.place.parent {
+            Some(parent) => self.message(&parent.id).and_then(|range| {
+                passage::find_near(&self.chars_in(&range), &doc.source, &quote, parent.quote_offset)
+            }),
+            None => passage::find(&self.chars, &doc.source, &quote, 0),
+        };
+        match found {
             Some(range) => {
                 let block = doc.block_containing(range.start);
                 let range = SourceRange {

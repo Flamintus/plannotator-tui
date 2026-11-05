@@ -181,3 +181,34 @@ fn without_the_inbox_the_thread_keys_say_why() {
     assert!(status.contains("go through the Inbox"), "{status}");
     std::fs::remove_dir_all(root).expect("cleanup");
 }
+
+#[test]
+fn a_reply_that_comes_while_a_comment_is_typed_waits_and_the_comment_is_kept() {
+    let (mut app, inbox) = commented(false);
+    app.select_block(2);
+    press(&mut app, KeyCode::Char('c'));
+    app.handle_event(&Input::Paste("Why Friday?".into())).expect("typed");
+    agent_replies(&inbox, "rep_1", "Nobody yet: a pager rotation.");
+    assert!(!app.poll_inbox(), "nothing is read while the person types");
+    draw(&mut app, 80, 30);
+    press(&mut app, KeyCode::Enter);
+    let texts: Vec<String> = inbox.state.borrow().comments.iter().map(|c| c.text.clone()).collect();
+    assert!(texts.contains(&"Why Friday?".to_owned()), "{texts:?}");
+    assert!(app.poll_inbox(), "what came is read once the comment is saved");
+    assert!(draw(&mut app, 80, 30).contains("Nobody yet: a pager rotation."));
+}
+
+#[test]
+fn a_selection_waiting_for_its_action_survives_a_box_growing_above_it() {
+    let (mut app, inbox) = commented(false);
+    app.select_quote_for_snapshot("on Friday").expect("selected");
+    agent_replies(&inbox, "rep_1", "Nobody yet: a pager rotation.");
+    assert!(app.poll_inbox());
+    draw(&mut app, 80, 30);
+    press(&mut app, KeyCode::Char('c'));
+    app.handle_event(&Input::Paste("Why Friday?".into())).expect("typed");
+    press(&mut app, KeyCode::Enter);
+    let state = inbox.state.borrow();
+    let made = state.comments.iter().find(|c| c.text == "Why Friday?").expect("the comment");
+    assert_eq!(made.quote, "on Friday");
+}
