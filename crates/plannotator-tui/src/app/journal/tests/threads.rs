@@ -38,6 +38,24 @@ pub(super) fn row_with<'a>(screen: &'a str, needle: &str) -> &'a str {
 }
 
 #[test]
+fn an_answered_comment_is_a_box_right_under_the_block_its_passage_is_in() {
+    let (mut app, journal) = commented();
+    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Nobody yet.");
+    app.poll_journal();
+    // Under 80 columns the rail is gone: what is left is the document's own column.
+    let screen = draw(&mut app, 70, 30);
+    let rows: Vec<&str> = screen.lines().collect();
+    let row = |needle: &str| rows.iter().position(|row| row.contains(needle)).expect(needle);
+    assert_eq!(row("\u{256d}"), row("The on-call engineer") + 1, "{screen}");
+    assert!(row("\u{2502} You") < row("Who watches at night?"), "{screen}");
+    assert!(row("\u{2502} Claude Code") < row("Nobody yet."), "{screen}");
+    assert_eq!(row("We ship on Friday."), row("\u{2570}") + 2, "{screen}");
+    let screen = draw(&mut app, 110, 30);
+    assert_eq!(screen.matches("Nobody yet.").count(), 1, "not repeated in the bubble: {screen}");
+    assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
+}
+
+#[test]
 fn the_agents_reply_comes_into_the_box_marked_new_once_its_journal_moves() {
     let (mut app, journal) = commented();
     assert!(!app.poll_journal(), "nothing moved");
@@ -220,4 +238,5 @@ fn a_folded_threads_bubble_counts_its_replies_rather_than_repeat_them() {
     assert!(screen.contains("\u{2576} \u{2713} Resolved \u{b7}"), "folded: {screen}");
     assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
     assert!(!screen.contains("Nobody yet"), "nor in the bubble: {screen}");
+    assert!(screen.contains("\u{b7} \u{2713} Resolved \u{2500}"), "the bubble's title says so: {screen}");
 }

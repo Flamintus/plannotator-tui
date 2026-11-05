@@ -361,12 +361,9 @@ impl App {
             let y = anchored_y.max(next_y);
             let kind = placed.kind();
             let inner_width = usize::from(rail.width.saturating_sub(4));
-            // The replies are under the passage: in its open box, or, while the review loop
-            // keeps the document's comments, in a folded line `toggle-thread` opens.
-            let id = &placed.annotation.id;
-            let in_flow = self.open.flow.shows_replies(id)
-                || (self.open.store.is_journal() && self.open.flow.holds(id));
-            let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_flow);
+            // Under the review loop the replies are under the passage, in a box or a folded line.
+            let in_loop = self.open.store.is_journal();
+            let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_loop);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
                 break;
@@ -395,7 +392,7 @@ impl App {
                 format!(" {} {}{images}{sent}", glyph(kind), short_id(&placed.annotation.id)),
                 title_style,
             )];
-            if placed.annotation.state == State::Resolved {
+            if in_loop && placed.annotation.state == State::Resolved {
                 title.push(Span::styled(" \u{b7} ", title_style));
                 title.push(Span::styled(threads::RESOLVED, threads::resolved_style()));
             }

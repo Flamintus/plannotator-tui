@@ -68,20 +68,6 @@ are accepted. The feedback lists each one as `Image: /absolute/path.png` under i
 agent opens it from your disk; nothing is copied or uploaded. `D` removes the last image added.
 Adding or removing an image makes a sent note pending again.
 
-A note's bubble also shows what its record says about it beyond your text: each reply under
-it, with who wrote it, and `· ✓ Resolved` in its title once it is resolved, its words dimmed.
-Another client of the same record writes those; plannotator-tui reads them when the file opens
-and on `r`, and writes none itself. It saves the record as it last read it, so reload before a
-change of your own when someone may have answered since; removing a note removes its replies
-too.
-
-A note with replies, or resolved, is also drawn as a thread: a box right under the block its
-passage is in (under a whole list or table when the passage is inside one), with the passage
-at its head and the note and each reply, by author, inside. Its bubble then counts the
-replies instead of repeating them. A resolved thread folds to one line (`✓ Resolved · 💬 "…" ·
-2 messages`), and its bubble lists the replies again. The `✓ Resolved` mark takes the
-`looks-good` colour (`[colors]`) wherever it is drawn.
-
 Copies go to the clipboard as OSC 52, which is the terminal you are looking at, so on Herdr 0.9.0
 they reach your own machine even when the app runs on a remote server; Herdr Annotate's global
 `copy-context` and `copy-archive` actions do not, because they run outside a pane.
@@ -406,6 +392,12 @@ the agent answers with too:
   what became of its send (`Queued`, `Delivered`, `Read`, `Working`, `Replied`), `Live`, and
   `Unanchored` once its words are no longer found, and a bubble counts the replies under the
   passage (`↳ 1 reply under the passage`), its thread open or folded.
+- A comment answered, or resolved, is a box right under the block its passage is in (under a
+  whole list or table when the passage is inside one): the passage at its head, then the
+  comment and each reply by author. A resolved thread folds to one line (`✓ Resolved · 💬 "…"
+  · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
+  `looks-good` colour (`[colors]`). Without the loop, the replies and the resolved state a
+  record may carry change nothing on screen.
 - A passage of a comment or a reply selected in its box, with the mouse or with `i` and `v` as
   in the document, takes a sub-thread: `c` (or the toolbar's comment) writes it, a draft the
   next `E` sends, drawn as a box in the box under that message. A draft's words take none until
