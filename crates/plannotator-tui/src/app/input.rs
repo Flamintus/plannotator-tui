@@ -560,6 +560,14 @@ impl App {
                 self.last_click = Some((now, mouse.column, mouse.row));
                 let Some(pos) = self.doc_position(mouse.column, mouse.row, false) else { return Ok(()) };
                 self.focus = Focus::Document;
+                // A click below the document's last row lands on that row (`doc_position`
+                // clamps); when that row is a box's, the click is on nothing: it moves no cursor
+                // and opens or folds nothing.
+                let on_row =
+                    self.scroll + usize::from(mouse.row.saturating_sub(self.geometry.doc.y)) == pos.0;
+                if !on_row && self.box_block(pos.0).is_some() {
+                    return Ok(());
+                }
                 // A thread's fold line, its folded line or the head of its box, has no words:
                 // a click there opens or folds the thread, the cursor on the line.
                 if self.fold_clicked(pos.0) {
