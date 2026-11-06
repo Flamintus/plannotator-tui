@@ -299,7 +299,7 @@ impl App {
         let Some(Selected::Passage(passage)) = self.pending.as_ref().map(|pending| &pending.on) else {
             let in_box = kept.is_some() || self.open.layout.row(self.cursor.0).is_none();
             let found = kept.and_then(|kept| match kept {
-                Kept::Words(id, byte) => self.find_words(&id, byte),
+                Kept::Words(id, byte) => self.find_words(&id, byte).or_else(|| self.fold_holding(&id)),
                 Kept::Fold(id) => self.find_fold(&id),
             });
             match found {

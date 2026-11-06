@@ -40,6 +40,22 @@ impl Thread {
             .unwrap_or_default()
     }
 
+    /// The ids of the threads from this one down to the one message `message` is in, both
+    /// included, outermost first; empty when the message is not under it.
+    fn path_to_message(&self, message: &str) -> Vec<String> {
+        if self.messages.iter().any(|said| said.id == message) {
+            return vec![self.id.clone()];
+        }
+        self.sub_threads()
+            .map(|sub| sub.path_to_message(message))
+            .find(|path| !path.is_empty())
+            .map(|mut path| {
+                path.insert(0, self.id.clone());
+                path
+            })
+            .unwrap_or_default()
+    }
+
     /// The ids of every thread under it, at any depth.
     fn ids_under(&self, out: &mut Vec<String>) {
         for sub in self.sub_threads() {
@@ -144,6 +160,20 @@ impl App {
             _ => return,
         };
         self.open.flow.fold_by_hand(&id, fold);
+    }
+
+    /// Where the cursor goes when the words of message `message` are no longer drawn because a
+    /// box folded over them (its own once resolved, or one it is in): the fold line of the
+    /// innermost box holding it that is drawn.
+    pub(super) fn fold_holding(&self, message: &str) -> Option<(usize, usize)> {
+        let path = self
+            .open
+            .flow
+            .threads
+            .iter()
+            .map(|(_, thread)| thread.path_to_message(message))
+            .find(|path| !path.is_empty())?;
+        path.iter().rev().find_map(|id| self.find_fold(id))
     }
 
     /// A click on the fold line at document row `row`: the cursor stands on it, as `down` and
