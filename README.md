@@ -414,8 +414,8 @@ the agent answers with too:
   `Sent` orange, `Replied` violet), or `Resolved` (green), and then neither Live nor its send:
   `╭ ▾ 💬 "…" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`. No id is shown. On a narrow head
   the round gives way first and the state last, the passage keeping 16 columns. A message names
-  its author alone, the person's reply with the state it is still in, `Draft` until sent, then
-  `Sent` until answered, then nothing, an agent's reply `New` (turquoise). A bubble's title
+  its author, each of yours, the comment included, with the state it is still in, `Draft`
+  until sent, then `Sent` until answered, then nothing, an agent's reply `New` (turquoise). A bubble's title
   says what the head of its box says but the round, `New` first on its right while a reply in
   the box is unseen (`╭ 💬 "…" · ⚡ Live ──── New · Sent ╮`); its passage is cut to the rail's
   width first, keeping 6 columns, then `Orphaned`, `New` and `⚡ Live` give way, the state

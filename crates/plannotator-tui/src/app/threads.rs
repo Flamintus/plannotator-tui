@@ -92,7 +92,8 @@ struct Message {
     /// The note's or the reply's id: what a sub-thread on its words is under.
     id: String,
     author: String,
-    /// What the line naming the author adds: its round or a draft, what became of a send, new.
+    /// What the line naming the author adds: a message of the person's, the state it is still
+    /// in (`Draft`, `Sent`); an agent's reply, `New`.
     tag: Option<String>,
     body: String,
     /// The person's draft, not sent yet: its words take no sub-thread.

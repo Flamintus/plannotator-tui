@@ -4,7 +4,9 @@
 //! words are no longer found boxed at the end of the words it was on, marked so, in the words
 //! the Inbox's boxes use (`Orphaned`, `⚡ Live`, `Round 2`, `Draft`, `Sent`, `Replied`, `New`). One
 //! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
-//! and its marks with it, a draft's box `Draft` at any depth. The view decides what folds.
+//! and its marks with it, a draft's box `Draft` at any depth, each message of the person's,
+//! its comment included, saying beside "You" the state it is still in (`persons_tag`). The view
+//! decides what folds.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -54,16 +56,25 @@ fn marks(node: &ThreadNode, anchored: bool) -> Vec<Mark> {
     .collect()
 }
 
-/// What a reply says beside its author, its states that are not final only: the person's
-/// `Draft` until it is sent, then `Sent` until the agent answers, then nothing; an agent's `New`
-/// until the person sees it. Never its round, which the box's head says.
+/// What a message of the person's says beside "You", its comment or a reply, at any depth: its
+/// states that are not final only, `Draft` until it is sent (a message is written a draft), then
+/// `Sent` until the agent answers (`Queued`, `Read` and `Working` say so too), then nothing.
+/// Never its round, which the box's head says.
+fn persons_tag(draft: bool, status: Option<Status>) -> Option<&'static str> {
+    if draft {
+        return Some(DRAFT);
+    }
+    match status? {
+        Status::Replied | Status::Unknown => None,
+        Status::Pending | Status::Delivered | Status::Read | Status::Working => Some(SENT),
+    }
+}
+
+/// What a reply says beside its author: the person's, what each of their messages says
+/// (`persons_tag`); an agent's `New` until the person sees it.
 fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
     let after = match reply.author {
-        Author::Person if reply.draft => Some(DRAFT),
-        Author::Person => match reply.status {
-            Some(Status::Replied | Status::Unknown) | None => None,
-            Some(_) => Some(SENT),
-        },
+        Author::Person => persons_tag(reply.draft, reply.status),
         Author::Agent { .. } => (!seen.contains(&reply.id)).then_some(NEW),
     };
     after.map(str::to_owned)
@@ -97,8 +108,8 @@ impl Thread {
         let comment = Message {
             id: node.id.clone(),
             author: "You".to_owned(),
-            // Its round, or Draft, is in the box's head already: the author stands alone.
-            tag: None,
+            // The first message is the last too while nothing answers it: it says its state.
+            tag: persons_tag(node.draft, node.status).map(str::to_owned),
             body: node.text.clone(),
             draft: node.draft,
             threads: threads(&node.sub_threads, &node.text),

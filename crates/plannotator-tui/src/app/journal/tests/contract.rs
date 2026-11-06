@@ -38,7 +38,8 @@ fn the_view_plannotator_computes_is_drawn_as_it_says() {
     );
     assert!(row("\"turns the new checkout off\"").contains("Replied"), "{screen}");
     assert!(screen.contains("The on-call engineer, from the runbook."), "the agent's reply: {screen}");
-    assert!(screen.contains("You \u{b7} Not sent"), "the person's reply waits: {screen}");
+    let weekends = rows.iter().position(|row| row.contains("And on weekends?")).expect("the person's reply");
+    assert!(rows[weekends - 1].contains("You \u{b7} Draft"), "the person's reply waits: {screen}");
     assert!(
         row("Which runbook?").starts_with("  \u{2502} \u{2502} "),
         "a sub-thread on the agent's reply: {screen}"

@@ -65,7 +65,7 @@ fn the_agents_reply_comes_into_the_box_marked_new_once_its_journal_moves() {
     assert!(app.poll_journal(), "the journal was written by another process");
     let screen = draw(&mut app, 80, 30);
     assert!(row_with(&screen, "turns the new checkout off").contains("Replied"), "{screen}");
-    assert!(row_with(&screen, "Claude Code").contains("Claude Code \u{b7} Round 1 \u{b7} New"), "{screen}");
+    assert!(row_with(&screen, "Claude Code").contains("Claude Code \u{b7} New"), "{screen}");
     assert!(screen.contains("Nobody yet: a pager rotation."), "{screen}");
     reply_with(&mut app, "OK for the rotation.");
     let screen = draw(&mut app, 80, 30);
@@ -83,12 +83,12 @@ fn the_persons_reply_is_a_draft_that_e_sends() {
         (Some("c1"), "And on weekends?", true)
     );
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "You \u{b7} Not sent").starts_with("  \u{2502}"), "{screen}");
+    assert!(row_with(&screen, "You \u{b7} Draft").starts_with("  \u{2502}"), "{screen}");
     press(&mut app, KeyCode::Char('E'));
     let sent = journal.state.borrow().sends.last().map(|(_, ids, _)| ids.clone()).expect("a send");
     assert_eq!(sent, [reply.id]);
     let screen = draw(&mut app, 80, 30);
-    assert!(screen.contains("You \u{b7} Round 1 \u{b7} Delivered"), "{screen}");
+    assert_eq!(screen.matches("You \u{b7} Sent").count(), 2, "the comment and the reply wait: {screen}");
 }
 
 #[test]
