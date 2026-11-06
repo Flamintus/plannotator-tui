@@ -84,18 +84,16 @@ fn the_keyboard_reaches_the_words_in_a_box_and_selects_in_them() {
 }
 
 #[test]
-fn comment_in_a_boxs_words_asks_for_a_passage_first() {
-    let (mut app, journal) = answered("Use the admin panel.");
+fn comment_on_a_paragraph_of_a_box_takes_a_sub_thread_on_the_paragraph_whole() {
+    let (mut app, journal) = answered("Use the admin panel.\n\nThe panel is new.");
     app.select_block(1);
-    for code in "ijjc".chars().map(KeyCode::Char) {
+    // From the block onto the box's head, the comment's paragraph, then the reply's first one.
+    for code in "jjjc".chars().map(KeyCode::Char) {
         press(&mut app, code);
     }
-    assert_eq!(app.mode, Mode::Browse, "no comment on the block above");
-    assert_eq!(
-        app.status.as_deref(),
-        Some("v selects a passage of this message, then c starts a sub-thread on it")
-    );
-    assert_eq!(sub_threads(&journal), []);
+    assert_eq!(app.mode, Mode::Compose, "as on a block");
+    sub_thread_with(&mut app, "Which admin?");
+    assert_eq!(sub_threads(&journal), [(Some("rep_1".into()), "Use the admin panel.".into(), Some(0))]);
 }
 
 #[test]

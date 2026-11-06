@@ -25,6 +25,7 @@ mod send;
 #[cfg(test)]
 mod tests;
 mod threads;
+mod unit;
 mod viewport;
 
 use std::collections::HashMap;
@@ -584,10 +585,15 @@ impl App {
     }
 
     fn ensure_selected_visible(&mut self) {
-        let height = usize::from(self.geometry.doc.height.max(1));
         let Some(block) = self.open.layout.blocks.get(self.selected) else { return };
         let first = block.first_row;
-        let last = first + block.rows.len().saturating_sub(1);
+        self.ensure_rows_visible(first, first + block.rows.len().saturating_sub(1));
+    }
+
+    /// Scroll so document rows `first` to `last`, a unit of selection's (`unit`), are in view,
+    /// with the row above or below them when there is room, `first` first when they do not fit.
+    fn ensure_rows_visible(&mut self, first: usize, last: usize) {
+        let height = usize::from(self.geometry.doc.height.max(1));
         if first < self.scroll {
             self.scroll = first.saturating_sub(1);
         } else if last >= self.scroll + height {

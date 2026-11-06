@@ -16,6 +16,7 @@ use super::super::draw::{marked, priority};
 use super::super::selection::Selection;
 use super::super::{App, Focus, Mode, Selected};
 use super::rows::BoxRow;
+use crate::doc::{block_holding, plain_blocks};
 use crate::journal::{self, passage};
 use crate::theme::palette;
 
@@ -30,6 +31,15 @@ pub(super) struct Said {
     /// The bytes of its words each sub-thread on them is on, with the sub-thread's kind: marked
     /// as the document's passages are.
     pub(super) passages: Vec<(Range<usize>, Kind)>,
+}
+
+impl Said {
+    /// The bytes of the paragraph of its words byte `byte` is in, as a sub-thread's box is under
+    /// it (`doc::plain_blocks`): a unit of selection (`unit`). None on a blank line.
+    fn paragraph(&self, byte: usize) -> Option<Range<usize>> {
+        let paragraphs = plain_blocks(&self.words);
+        block_holding(&paragraphs, byte).and_then(|index| paragraphs.get(index).cloned())
+    }
 }
 
 /// Where the cursor stood in the boxes, found again once they move.
@@ -62,7 +72,7 @@ pub(in crate::app) struct Passage {
 impl App {
     /// Whether the boxes' words take a selection: the review loop keeps the open document's
     /// comments. Otherwise the cursor and the selection step over the boxes, as they always did.
-    pub(super) fn box_words_selectable(&self) -> bool {
+    pub(in crate::app) fn box_words_selectable(&self) -> bool {
         self.review_loop_runs() && self.open.store.is_journal()
     }
 
@@ -121,7 +131,12 @@ impl App {
 
     /// The nearest row from `row` on, going down (or up), of the document's text, or of the
     /// boxes where `boxes` holds.
-    pub(super) fn row_from(&self, row: usize, down: bool, boxes: impl Fn(usize) -> bool) -> Option<usize> {
+    pub(in crate::app) fn row_from(
+        &self,
+        row: usize,
+        down: bool,
+        boxes: impl Fn(usize) -> bool,
+    ) -> Option<usize> {
         let shows = |row: &usize| self.open.layout.row(*row).is_some() || boxes(*row);
         if down { (row..self.open.layout.total_rows).find(shows) } else { (0..=row).rev().find(shows) }
     }
@@ -173,21 +188,46 @@ impl App {
         if spots.iter().any(|spot| spot.message != message) {
             return Some(Err("a sub-thread is on one message's words: select within one".to_owned()));
         }
+        let words = &self.open.flow.said.get(message)?.words;
+        let first = spots.iter().map(|spot| spot.byte).min()?;
+        let last = spots.iter().map(|spot| spot.byte).max()?;
+        let end = last + words.get(last..).and_then(|rest| rest.chars().next()).map_or(1, char::len_utf8);
+        self.passage_in(message, first..end)
+    }
+
+    /// The message and the bytes of the paragraph of its words that document row `row` shows,
+    /// while the boxes' words take a selection: a stop of `down` and `up` (`lines`).
+    pub(super) fn paragraph_at(&self, row: usize) -> Option<(usize, Range<usize>)> {
+        let spot = self.box_words(row)?.iter().flatten().next().copied()?;
+        let paragraph = self.open.flow.said.get(spot.message)?.paragraph(spot.byte)?;
+        Some((spot.message, paragraph))
+    }
+
+    /// The passage a paragraph is, the one whose words document row `row` shows, whole, with
+    /// where its first word is drawn: what `comment` takes a sub-thread on with nothing selected
+    /// (`unit`). None on a draft's words, which take none.
+    pub(in crate::app) fn paragraph_passage(&self, row: usize) -> Option<(Passage, (usize, usize))> {
+        let (message, paragraph) = self.paragraph_at(row)?;
+        let passage = self.passage_in(message, paragraph)?.ok()?;
+        let at = self.find_words(&passage.on.parent, passage.start)?;
+        Some((passage, at))
+    }
+
+    /// The passage of the words of message `message`, by its place in the flow's `said`, at
+    /// `bytes`, its blanks at either end left out: `None` when it is all blank, `Err` with why on
+    /// a draft's words, which take no sub-thread.
+    fn passage_in(&self, message: usize, bytes: Range<usize>) -> Option<Result<Passage, String>> {
         let said = self.open.flow.said.get(message)?;
         if said.draft {
             // The footer's right names what a draft takes (`journal::help`).
             return Some(Err("a draft takes no sub-thread".to_owned()));
         }
-        let first = spots.iter().map(|spot| spot.byte).min()?;
-        let last = spots.iter().map(|spot| spot.byte).max()?;
-        let end =
-            last + said.words.get(last..).and_then(|rest| rest.chars().next()).map_or(1, char::len_utf8);
-        let selected = said.words.get(first..end)?;
+        let selected = said.words.get(bytes.clone())?;
         let quote = selected.trim();
         if quote.is_empty() {
             return None;
         }
-        let start = first + (selected.len() - selected.trim_start().len());
+        let start = bytes.start + (selected.len() - selected.trim_start().len());
         let chars: Vec<(char, usize)> = said.words.char_indices().map(|(at, ch)| (ch, at)).collect();
         let nth = passage::occurrence(&chars, quote, start);
         let on = journal::Passage {

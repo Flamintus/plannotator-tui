@@ -26,8 +26,8 @@
 //! lit as the rows are drawn, over the columns each row keeps as its border, so moving from
 //! one box to another rebuilds nothing. Each row knows, per column, the message's
 //! words it shows, so a passage of them can be selected as the document's words are (`words`),
-//! and `down` and `up` stop on their lines as on the blocks (`lines`), and on a thread's fold
-//! line: its folded line, or the head of its box.
+//! and `down` and `up` stop on their paragraphs as on the blocks, the same unit of selection
+//! (`lines`, `unit`), and on a thread's fold line: its folded line, or the head of its box.
 //!
 //! The threads come from the review's view (`journal`), sub-threads, sends and what is new
 //! included; one way folds a thread or opens it (`fold`), from `right` (or `confirm`) on its
@@ -235,11 +235,12 @@ impl App {
 
     /// The flow's rows that are in view, on the rows the layout keeps free for them, the
     /// borders of the boxes lit (`lit_notes`) in their colour, with the passages of the
-    /// sub-threads, the selection and the cursor over their words, and the line `down` and `up`
-    /// selected.
+    /// sub-threads, the selection and the cursor over their words, and the stop `down` and `up`
+    /// selected drawn as a block is (`unit`).
     pub(super) fn draw_threads(&self, buf: &mut Buffer, gutter: Rect, doc: Rect) {
         let view = self.scroll..self.scroll + usize::from(doc.height);
         let lit = self.lit_boxes();
+        let selected = self.unit_rows(&self.selected_unit());
         for (block, rows) in &self.open.flow.rows {
             let Some(rendered) = self.open.layout.blocks.get(*block) else { continue };
             let top = rendered.first_row + rendered.rows.len();
@@ -248,7 +249,7 @@ impl App {
                 let y = doc.y + (row - self.scroll) as u16;
                 buf.set_line(doc.x, y, &drawn.line, doc.width);
                 light(buf, Rect { y, height: 1, ..doc }, &drawn.border, &lit);
-                self.mark_line(buf, (gutter, doc), (row, y));
+                self.mark_selected(buf, (gutter, doc), (row, y), &selected);
                 self.mark_passages(buf, doc, y, &drawn.words);
                 self.mark_words(buf, doc, (row, y), &drawn.words);
             }

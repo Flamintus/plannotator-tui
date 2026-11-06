@@ -433,10 +433,13 @@ the agent answers with too:
   and its bubble, not the sub-threads in them; once the cursor is in one of them, that box
   alone. Without the loop, the replies and the resolved state a record may carry
   change nothing on screen.
-- `j`/`k` stop on each line of the boxes' words on the way from a block to the next, a
-  sub-thread's at any depth, drawn as a selected block, and on each box's head (`▾`) or
-  folded line (`▸`); sides, authors and blank rows are stepped over as the gaps between blocks
-  are.
+- `j`/`k` stop on each paragraph of the boxes' words (lines a blank line parts) on the way
+  from a block to the next, a sub-thread's at any depth, as they stop on the blocks: the
+  paragraph is drawn as the selected block is, on every line of it, and the document's keys act
+  on it as on a block (`c` or `Enter` opens a sub-thread on the paragraph whole, typed under
+  it; `i` and `v` start the cursor and a selection on its first word). They stop on each box's
+  head (`▾`) or folded line (`▸`) too; sides, authors and blank rows are stepped over as the
+  gaps between blocks are. One code makes the unit of selection, block or paragraph.
 - Any box folds and opens by hand, at any depth, of any kind, resolved, sent or a draft: `h` on
   its head folds it to one line, `▸` first, that says what its head says and what it holds
   (`▸ 💬 "…" · ⚡ Live · 2 messages · 1 sub-thread · 1 image ──── New · Round 1 · Replied ─╴`:
@@ -455,8 +458,8 @@ the agent answers with too:
   in, as a thread is under its block, a blank row above and below it as every box has (one
   whose passage is no longer found comes after the message's words). It is the one way to a
   sub-thread. The passage stays marked in the message's words, at any depth,
-  as a note's of the same kind is in the document. With nothing selected, `c` on a line takes a
-  comment on the line's words, as on a block. A draft's words take none until it is sent:
+  as a note's of the same kind is in the document. With nothing selected, `c` on a paragraph
+  takes a sub-thread on the paragraph whole, as on a block. A draft's words take none until it is sent:
   on any line of a draft's box (`Draft`), at any depth, its words, its head or its folded
   line, `e` or `Enter` edits it right there, in place of its words, as `e` on its bubble does
   (`l` or a click still draws its folded line open).
@@ -480,8 +483,8 @@ the agent answers with too:
   words that hold it. These keys answer
   only while the loop runs, and are provisional, to be confirmed in use; like every key they can
   be rebound under `[keys]`.
-- The footer names only what can be done on the selection, the line the cursor is on (a block,
-  a line of a box's words, a draft's or not, a head, a folded line), the bubble in the rail or
+- The footer names only what can be done on the selection, the unit selected (a block,
+  a paragraph of a box's words, a draft's or not, a head, a folded line), the bubble in the rail or
   the tree's row, first, then, past a `|`, the keys that do not change with it (`E`, `A`
   in a gated review, `Tab`, `S`, `q`, `ctrl+p`), each key in red and what it does in grey:
   `f fold` or `f unfold` as it would act, one key per effect (the arrows of a fold line do as

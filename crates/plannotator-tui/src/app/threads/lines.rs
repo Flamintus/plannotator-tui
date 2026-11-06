@@ -1,41 +1,46 @@
-//! The lines of the boxes' words as stops of `down` and `up`, as the blocks are: on the way
-//! from a block to the next, each line of a comment, a reply or a sub-thread, at any depth, is
-//! selected in turn and drawn as the selected block is, and so is a thread's fold line (its
-//! folded line, or the head of its box, `fold`); the box's other rows (its sides, the authors,
-//! the blank rows) are stepped over as the gaps between blocks are. On a line of words
-//! `comment` takes a sub-thread on them, as a block takes a comment, `visual` selects from its
-//! first word, and the thread keys act on its box; on a fold line the arrows, or a click, fold
-//! or unfold its thread, and the thread keys act on it. On any of them in a draft's box, `edit`
-//! and `confirm` edit the draft there (`draft_box`). Only while the boxes' words take a
-//! selection: otherwise `down` and `up` go from block to block, as they always did.
+//! The boxes' units of selection (`unit`): on the way from a block to the next, each paragraph
+//! of a comment, a reply or a sub-thread, at any depth, as `doc::plain_blocks` parts a message's
+//! words, the one a sub-thread's box goes under, is a stop of `down` and `up`, selected and drawn
+//! as a block is, and so is a thread's fold line (its folded line, or the head of its box,
+//! `fold`); the box's other rows (its sides, the authors, the blank rows) are stepped over as the
+//! gaps between blocks are. On a paragraph the document's keys act as on a block: `comment`
+//! takes a sub-thread on the paragraph whole, `move-cursor` and `visual` start on its first word,
+//! and the thread keys act on its box; on a fold line the arrows, or a click, fold or unfold its
+//! thread, and the thread keys act on it. On any of them in a draft's box, `edit` and `confirm`
+//! edit the draft there (`draft_box`). Only while the boxes' words take a selection: otherwise
+//! `down` and `up` go from block to block, as they always did.
 
-use anyhow::Result;
-use plannotator_tui_schema::Kind;
-use ratatui::buffer::Buffer;
-use ratatui::layout::Rect;
-use ratatui::style::Style;
-use ratatui::text::Span;
+use std::ops::Range;
 
-use super::super::selection::{Pending, Selection};
-use super::super::{App, Focus, Selected};
-use crate::theme::palette;
+use super::super::{App, Focus};
 
 impl App {
-    /// Whether the cursor stands on a stop of the boxes under the selected block, a line of a
-    /// box's words or a thread's fold line: the stop `down` and `up` reached, or the line the
+    /// Whether the cursor stands on a stop of the boxes under the selected block, a paragraph of
+    /// a box's words or a thread's fold line: the stop `down` and `up` reached, or the words the
     /// cursor was left on.
     pub(in crate::app) fn on_box_line(&self) -> bool {
         self.open.layout.row(self.cursor.0).is_none() && self.box_block(self.cursor.0) == Some(self.selected)
     }
 
-    /// Whether `down` and `up` stop at document row `row` in the boxes: a line of a box's
-    /// words, or a thread's fold line.
-    pub(super) fn box_stop(&self, row: usize) -> bool {
-        self.box_words(row).is_some() || self.fold_line(row).is_some()
+    /// Whether document row `row` is a row of a stop of the boxes: a paragraph's, or a fold line.
+    pub(in crate::app) fn box_stop(&self, row: usize) -> bool {
+        self.fold_line(row).is_some() || self.paragraph_at(row).is_some()
     }
 
-    /// Whether a line of a box's words is selected as a block is, with no cursor drawn: the
-    /// block above it is not drawn selected then.
+    /// The stop of the boxes at document row `row`, as the rows it is drawn on: a thread's fold
+    /// line, or the paragraph of a message's words the row shows, whole.
+    pub(in crate::app) fn box_unit(&self, row: usize) -> Option<Range<usize>> {
+        if self.fold_line(row).is_some() {
+            return Some(row..row + 1);
+        }
+        let here = self.paragraph_at(row)?;
+        let same = |row: &usize| self.paragraph_at(*row).as_ref() == Some(&here);
+        let first = (0..row).rev().take_while(same).last().unwrap_or(row);
+        let last = (row + 1..self.open.layout.total_rows).take_while(same).last().unwrap_or(row);
+        Some(first..last + 1)
+    }
+
+    /// Whether a stop of the boxes is selected as a block is, with no cursor drawn.
     pub(in crate::app) fn box_line_selected(&self) -> bool {
         self.focus == Focus::Document
             && !self.roam
@@ -44,81 +49,27 @@ impl App {
             && self.on_box_line()
     }
 
-    /// `down` (or `up`) with no cursor drawn: the next block that way, unless a stop of the
-    /// boxes comes first; from a stop, the next one, or the block past the boxes.
-    pub(in crate::app) fn step(&mut self, down: bool) {
-        let next_block = if down { self.selected + 1 } else { self.selected.saturating_sub(1) };
-        let on_line = self.on_box_line();
-        let from = if on_line {
-            Some(self.cursor.0)
-        } else {
-            let block = self.open.layout.blocks.get(self.selected);
-            block.map(|block| {
-                if down { block.first_row + block.rows.len().saturating_sub(1) } else { block.first_row }
-            })
-        };
-        let next = from.filter(|_| self.box_words_selectable()).and_then(|from| {
-            let row = if down { Some(from + 1) } else { from.checked_sub(1) };
-            row.and_then(|row| self.row_from(row, down, |row| self.box_stop(row)))
-        });
-        match next {
-            Some(row) if self.open.layout.row(row).is_none() => self.stand_on_line(row),
-            _ if !on_line => self.select_block(next_block),
-            Some(row) => {
-                if let Some(block) = self.open.layout.block_at_row(row) {
-                    self.select_block(block);
-                }
-            }
-            // The last line of the boxes under the last block: nothing further down.
-            None => {}
-        }
-    }
-
-    /// Select the stop of the boxes at document row `row`, the cursor on its first word if it
-    /// has words: where `down` and `up` leave it, and a click on a fold line.
-    pub(super) fn stand_on_line(&mut self, row: usize) {
+    /// Select the stop of the boxes drawn on document rows `rows`, the cursor on its first word
+    /// if it has words, all of it in view: where `down` and `up` leave it, and a click on a fold
+    /// line.
+    pub(in crate::app) fn stand_on(&mut self, rows: Range<usize>) {
         self.clear_selection();
         self.roam = false;
-        self.cursor = (row, self.row_start(row));
-        if let Some(block) = self.box_block(row) {
+        self.cursor = (rows.start, self.row_start(rows.start));
+        if let Some(block) = self.box_block(rows.start) {
             self.selected = block;
         }
-        self.ensure_cursor_visible();
+        self.ensure_rows_visible(rows.start, rows.end.saturating_sub(1).max(rows.start));
     }
 
-    /// `comment` with the cursor on a line of a box's words and nothing selected: a sub-thread
-    /// on the line's words, as a block takes a comment. The keys offer it only on words that
-    /// take one, a sent message's (`journal::help`).
-    pub(in crate::app) fn sub_thread_on_line(&mut self) -> Result<()> {
-        let row = self.cursor.0;
-        let Some(words) = self.box_words(row) else { return Ok(()) };
-        let first = words.iter().position(Option::is_some).unwrap_or(0);
-        let last = words.iter().rposition(Option::is_some).unwrap_or(first);
-        let line = Selection::finished((row, first), (row, last));
-        if let Some(Ok(passage)) = self.box_passage(&line) {
-            self.selection = Some(line);
-            self.status = None;
-            self.pending = Some(Pending { on: Selected::Passage(passage), at: (row, first) });
-            self.act(Kind::Comment)?;
-        }
-        Ok(())
-    }
-
-    /// The selected stop of the boxes, document row `row` on screen row `y`, drawn as the
-    /// selected block is: its background between the innermost box's sides (a fold line's,
-    /// between the sides of the boxes it is in), the gutter's mark.
-    pub(super) fn mark_line(&self, buf: &mut Buffer, (gutter, doc): (Rect, Rect), (row, y): (usize, u16)) {
-        if !self.box_line_selected() || row != self.cursor.0 {
-            return;
-        }
-        let Some((_, drawn)) = self.box_row(row) else { return };
+    /// The columns of the box row at document row `row`, `width` columns wide, that a stop
+    /// selected is drawn over: between the innermost box's sides, a fold line's between the
+    /// sides of the boxes it is in.
+    pub(in crate::app) fn box_columns(&self, row: usize, width: usize) -> Range<usize> {
+        let Some((_, drawn)) = self.box_row(row) else { return 0..0 };
         let words = &drawn.words;
         let start = words.iter().position(Option::is_some).unwrap_or(words.len());
-        let width = usize::from(doc.width);
         // The sides take as many columns on the right as on the left.
-        let end = width.saturating_sub(start).max(start);
-        let line = Rect { x: doc.x + start as u16, y, width: (end - start) as u16, height: 1 };
-        buf.set_style(line, Style::new().bg(palette().block_bg));
-        buf.set_span(gutter.x, y, &Span::styled("\u{258d}", Style::new().fg(palette().accent)), 1);
+        start..width.saturating_sub(start).max(start)
     }
 }

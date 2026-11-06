@@ -114,7 +114,7 @@ impl App {
         tree::find(&view.threads, id)
     }
 
-    /// The draft whose box the cursor stands on, at any depth: a line of its words, its head or
+    /// The draft whose box the cursor stands on, at any depth: a paragraph of its words, its head or
     /// its folded line (its box `Not sent`), where `edit` and `confirm` edit it, as from its
     /// bubble. The innermost box: a draft sub-thread's in a sent thread, not the thread's.
     pub(in crate::app) fn draft_box(&self) -> Option<String> {

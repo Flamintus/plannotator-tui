@@ -291,8 +291,8 @@ impl App {
                 ));
             }
             Some(Action::MoveCursor) => self.start_roaming(),
-            // The next block, or a stop of the boxes on the way under the review loop: a line
-            // of a box's words, or a thread's fold line.
+            // The next unit (`unit`): a block, or a stop of the boxes on the way under the
+            // review loop, a paragraph of a box's words or a thread's fold line.
             Some(Action::Down) => self.step(true),
             Some(Action::Up) => self.step(false),
             // On any line of a draft's box, its words, its head or its folded line, `edit` and
@@ -322,17 +322,9 @@ impl App {
             Some(Action::Bottom) => {
                 self.select_block(self.open.doc.blocks.len().saturating_sub(1));
             }
-            // On a line of a box's words, a sub-thread on the line, as the block takes a comment.
-            Some(Action::Comment | Action::Confirm) if self.on_box_line() => self.sub_thread_on_line()?,
-            Some(Action::Comment | Action::Confirm) => {
-                // No selection: comment on the whole selected block.
-                if let (Some(block), Some(rendered)) =
-                    (self.open.doc.blocks.get(self.selected), self.open.layout.blocks.get(self.selected))
-                {
-                    self.pending = Some(Pending::source(block.range.clone(), (rendered.first_row, 0)));
-                    self.act(Kind::Comment)?;
-                }
-            }
+            // No selection: comment on the whole selected unit, the block, or a paragraph of a
+            // box's words, a sub-thread on it.
+            Some(Action::Comment | Action::Confirm) => self.comment_unit()?,
             // In a box, under the review loop, `clear-block` removes that box's draft, as
             // `remove` on its bubble; the footer names it only on a draft's box.
             Some(Action::ClearBlock) if self.thread_at_cursor().is_some() => {

@@ -4,9 +4,9 @@
 //! never differ: such a key the footer does not name does nothing, says nothing, opens nothing;
 //! the others (moves, `clear-all`…) act as they always did. Past a `|`, the footer
 //! names the keys that do not change with the selection (send the round, approve, Tab, send
-//! and close, quit, find). The selection is the line the cursor is on in the document (a block,
-//! a line of a box's words, a draft's or not, a box's head or folded line), the bubble in the
-//! rail, or the tree's row.
+//! and close, quit, find). The selection is the unit selected in the document (`unit`: a block,
+//! a paragraph of a box's words, a draft's or not, a box's head or folded line), the bubble in
+//! the rail, or the tree's row: on a paragraph the keys a block takes, then its box's.
 //!
 //! A comment's keys (its edit, removal and images, a reply, resolving it, sending it at once,
 //! Live, folding) act only on the box the cursor is in, at any depth, or on the bubble in the

@@ -182,25 +182,18 @@ impl App {
 
     fn draw_document(&self, frame: &mut Frame, gutter: Rect, doc: Rect) {
         let placed = self.open.store.placed();
-        let text_selection_active = self.selection.is_some();
         let doc_focused = self.focus == Focus::Document;
-        // A line of a box's words selected instead of the block above it (`box_line_selected`).
-        let selected = (!self.box_line_selected()).then_some(self.selected);
+        // The selected unit's rows: a block's, or none here when it is a stop of the boxes
+        // (`unit`), drawn selected by the same code there.
+        let selected = self.unit_rows(&self.selected_unit());
         let buf = frame.buffer_mut();
 
         for y in 0..doc.height {
             let row_index = self.scroll + usize::from(y);
-            let Some(block) = self.open.layout.block_at_row(row_index) else { continue };
             let Some(row) = self.open.layout.row(row_index) else { continue };
             let screen_y = doc.y + y;
             buf.set_line(doc.x, screen_y, &row.line, doc.width);
-
-            if Some(block) == selected && !text_selection_active && self.pending.is_none() && doc_focused {
-                buf.set_style(
-                    Rect { x: doc.x, y: screen_y, width: doc.width, height: 1 },
-                    Style::new().bg(palette().block_bg),
-                );
-            }
+            let on_selected = self.mark_selected(buf, (gutter, doc), (row_index, screen_y), &selected);
 
             let mut row_has_annotation = false;
             for (col, cell) in row.cells.iter().enumerate().take(usize::from(doc.width)) {
@@ -233,12 +226,14 @@ impl App {
                 buf.set_style(Rect { x, y: screen_y, width: 1, height: 1 }, palette().cursor);
             }
 
-            let marker = match (Some(block) == selected, row_has_annotation) {
-                (true, _) => Span::styled("▍", Style::new().fg(palette().accent)),
-                (false, true) => Span::styled("▍", Style::new().fg(palette().comment)),
-                (false, false) => Span::raw(" "),
-            };
-            buf.set_span(gutter.x, screen_y, &marker, 1);
+            if !on_selected {
+                let marker = if row_has_annotation {
+                    Span::styled("▍", Style::new().fg(palette().comment))
+                } else {
+                    Span::raw(" ")
+                };
+                buf.set_span(gutter.x, screen_y, &marker, 1);
+            }
         }
     }
 

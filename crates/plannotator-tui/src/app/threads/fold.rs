@@ -121,7 +121,7 @@ impl App {
     pub(in crate::app) fn fold_clicked(&mut self, row: usize) -> bool {
         let Some((id, folded)) = self.fold_line(row) else { return false };
         let id = id.to_owned();
-        self.stand_on_line(row);
+        self.stand_on(row..row + 1);
         self.open.flow.fold_by_hand(&id, !folded);
         true
     }
