@@ -29,7 +29,7 @@ impl App {
             return;
         }
         match action {
-            Action::ToggleThread => self.toggle_threads(),
+            Action::ToggleThread => self.fold_key(Action::ToggleThread),
             Action::Reply => self.begin_reply(),
             Action::Resolve => self.resolve_current(),
             Action::SendNow => self.send_current(),

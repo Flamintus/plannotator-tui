@@ -15,9 +15,10 @@
 //! draft whose box the cursor is in (`draft_box`), a thread sent or not (`act::sent`), a note
 //! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
 //! (`tree::now_drafts`), the fold line selected (`selected_fold`), what `toggle-thread` does
-//! here (`toggle_folds`), a draft's words (`words_of_draft`). The labels say what the key does
-//! there: `V reopen` on a resolved thread, `z unfold` where it draws folded threads open; two
-//! keys that do the same there are named once, together (`h/z fold`). A
+//! here (`fold_keys`), a draft's words (`words_of_draft`). The labels say what the key does
+//! there: `V reopen` on a resolved thread, `z unfold` on a folded box. One effect is one offer:
+//! the keys that fold the box here (`fold_keys`, `toggle-thread` and the arrow of its fold line)
+//! are named together, once (`h/z fold`). A
 //! selection waiting for its action keeps the toolbar's help, the keys still deciding as the
 //! selection lets them.
 
@@ -33,6 +34,8 @@ use crate::keys::Action;
 enum Offer {
     /// `action`, named by what it does on the selection.
     Key(Action, &'static str),
+    /// Several keys that do the same on the selection, named together by what they do.
+    Keys(Vec<Action>, &'static str),
     /// The keys that move, named together (`j/k`, the cursor's directions).
     Moves(Option<String>),
     /// `action`, acting as a key the footer names, not named itself: `confirm` as `edit`, as
@@ -70,30 +73,18 @@ impl App {
         if !self.open.store.is_journal() || self.pending.is_some() {
             return None;
         }
-        // Two keys that do the same here are named once, together: `h/z fold`.
-        let mut here: Vec<(String, Option<&str>)> = Vec::new();
-        for offer in self.selection_keys() {
-            match offer {
-                Offer::Key(action, label) => {
-                    let key = self.keys.hint(action);
-                    if key.is_empty() {
-                        continue;
-                    }
-                    match here.iter_mut().find(|(_, named)| *named == Some(label)) {
-                        Some((keys, _)) => {
-                            keys.push('/');
-                            keys.push_str(&key);
-                        }
-                        None => here.push((key, Some(label))),
-                    }
-                }
-                Offer::Moves(Some(hint)) => here.push((hint, None)),
-                Offer::Moves(None) | Offer::Alias(_) => {}
+        let here = self.selection_keys().into_iter().filter_map(|offer| match offer {
+            Offer::Key(action, label) => self.keys.labelled(action, label),
+            Offer::Keys(actions, label) => {
+                let keys: Vec<String> = actions
+                    .iter()
+                    .map(|action| self.keys.hint(*action))
+                    .filter(|key| !key.is_empty())
+                    .collect();
+                (!keys.is_empty()).then(|| format!("{} {label}", keys.join("/")))
             }
-        }
-        let here = here.into_iter().map(|(keys, label)| match label {
-            Some(label) => format!("{keys} {label}"),
-            None => keys,
+            Offer::Moves(hint) => hint,
+            Offer::Alias(_) => None,
         });
         Some([here.collect(), self.steady_help().into_iter().flatten().collect()])
     }
@@ -107,6 +98,7 @@ impl App {
         }
         self.selection_keys().iter().any(|offer| match offer {
             Offer::Key(named, _) | Offer::Alias(named) => *named == action,
+            Offer::Keys(named, _) => named.contains(&action),
             Offer::Moves(_) => false,
         })
     }
@@ -162,8 +154,7 @@ impl App {
         keys
     }
 
-    /// The document's selected line: on a box's fold line the arrow that folds or unfolds it;
-    /// the cursor and a selection where there are words that take one (the document's, a sent
+    /// The document's selected line: the cursor and a selection where there are words that take one (the document's, a sent
     /// message's), while the cursor roams its motions and the way back to the blocks; then, in
     /// a box only, its note's keys: the edit of the draft whose box it is, its removal by
     /// `clear-block` while the journal takes it, its images, its thread's keys; on a line of
@@ -177,11 +168,6 @@ impl App {
         let fold = self.selected_fold().map(|(_, folded)| folded);
         let draft = self.draft_box().is_some();
         let mut keys = Vec::new();
-        match fold {
-            Some(true) => keys.push(Offer::Key(Action::Right, "unfold")),
-            Some(false) => keys.push(Offer::Key(Action::Left, "fold")),
-            None => {}
-        }
         if self.roam {
             let directions = self.keys.directions_hint();
             keys.push(Offer::Moves((!directions.is_empty()).then(|| format!("{directions} move"))));
@@ -243,8 +229,8 @@ impl App {
             keys.push(Offer::Key(Action::Reply, "reply"));
             keys.push(Offer::Key(Action::Resolve, if resolved { "reopen" } else { "resolve" }));
         }
-        if let Some(fold) = self.toggle_folds() {
-            keys.push(Offer::Key(Action::ToggleThread, if fold { "fold" } else { "unfold" }));
+        if let Some((fold_keys, folded)) = self.fold_keys() {
+            keys.push(Offer::Keys(fold_keys, if folded { "unfold" } else { "fold" }));
         }
         keys
     }

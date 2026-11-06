@@ -1,31 +1,21 @@
 //! Folding by hand, one way for every box, whatever its depth, kind and state
-//! (`Flow::fold_by_hand`): the keys, `toggle-thread` and the mouse all go through it. A
-//! thread's fold line, a stop of `down` and `up` (`lines`): `right` or `confirm` on its folded
-//! line (`▸`) draws it open (on a draft's, `confirm` edits it: `draft_box`), `left` on the head
-//! of its box (`▾`) folds it, with the boxes in it back to how they are drawn by default; a
-//! click on either does the same, the cursor standing on it as the arrows leave it. The cursor
-//! stays on the thread's first row, which turns from one to the other (`boxes_moved`).
-//! `toggle-thread`, on the box the cursor is in or on the bubble's thread in the rail: the
-//! folded threads seen in that box drawn open, or, when none is folded there, that box folded.
-//! `left` on a line of a box's words keeps its meaning: the cursor starts there. Folding
-//! resolves nothing and opening reopens nothing.
+//! (`Flow::fold_by_hand`), decided in one place: the box folding acts on here (`fold_here`, the
+//! box the cursor is in or the bubble's thread in the rail) and the keys that fold or unfold it
+//! there (`fold_keys`), which the footer names as one offer and which act through one function
+//! (`fold_key`). `toggle-thread` folds or unfolds that box, wherever in it the cursor is; on its
+//! fold line, a stop of `down` and `up` (`lines`), `left` folds its head (`▾`) and `right` or
+//! `confirm` draws its folded line (`▸`) open (on a draft's, `confirm` edits it: `draft_box`);
+//! a click on either does the same, the cursor standing on it as the arrows leave it. Folded,
+//! the boxes in it go back to how they are drawn by default. The cursor stays on the thread's
+//! first row, which turns from one to the other (`boxes_moved`). `left` on a line of a box's
+//! words keeps its meaning: the cursor starts there. Folding resolves nothing and opening
+//! reopens nothing.
 
 use super::super::{App, Focus};
 use super::{Flow, Thread};
 use crate::keys::Action;
 
 impl Thread {
-    /// The threads drawn folded that can be seen: this one, or those under it once it is open.
-    fn visible_folded(&self, out: &mut Vec<String>) {
-        if self.is_folded() {
-            out.push(self.id.clone());
-            return;
-        }
-        for sub in self.sub_threads() {
-            sub.visible_folded(out);
-        }
-    }
-
     /// This thread, or the one under it at any depth, by id.
     fn find(&self, id: &str) -> Option<&Self> {
         if self.id == id {
@@ -72,40 +62,26 @@ impl Flow {
 }
 
 impl App {
-    /// What `toggle-thread` does here, on the bubble's thread in the rail, else on the box the
-    /// cursor is in: the folded threads seen in it it draws open, or, none folded, that thread
-    /// it folds (`true`). `None` with no thread here: a comment's keys act in its box or on its
-    /// bubble, never from a line of the document.
-    fn toggled(&self) -> Option<(Vec<String>, bool)> {
-        let id = if self.focus == Focus::Rail { self.current_note() } else { self.thread_at_cursor() };
-        let thread = self.open.flow.thread(&id?)?;
-        let mut folded = Vec::new();
-        thread.visible_folded(&mut folded);
-        Some(if folded.is_empty() { (vec![thread.id.clone()], true) } else { (folded, false) })
+    /// The box folding acts on here: the bubble's thread in the rail, else the box the cursor is
+    /// in, at any depth, with whether it is drawn folded. `None` with no box here: a comment's
+    /// keys act in its box or on its bubble, never from a line of the document.
+    fn fold_here(&self) -> Option<(String, bool)> {
+        let id = if self.focus == Focus::Rail { self.current_note() } else { self.thread_at_cursor() }?;
+        let folded = self.open.flow.thread(&id)?.is_folded();
+        Some((id, folded))
     }
 
-    /// Whether `toggle-thread` folds here (`true`) or draws folded threads open, as the footer
-    /// names it; `None` with no thread here, where it does nothing.
-    pub(in crate::app) fn toggle_folds(&self) -> Option<bool> {
-        self.toggled().map(|(_, fold)| fold)
-    }
-
-    /// `toggle-thread`: on the bubble's thread in the rail, else on the box the cursor is in,
-    /// the folded threads seen in it drawn open, or, none folded, that thread folded.
-    pub(in crate::app) fn toggle_threads(&mut self) {
-        let Some((ids, fold)) = self.toggled() else {
-            self.status = Some("no thread on this block".to_owned());
-            return;
-        };
-        let count = ids.len();
-        for id in &ids {
-            self.open.flow.fold_by_hand(id, fold);
+    /// The keys that fold the box here, or draw it open, and whether it is folded: the one offer
+    /// the footer names (`toggle-thread`, and on its selected fold line the arrow that does the
+    /// same: `left` on its head, `right` on its folded line). `None` with no box here.
+    pub(in crate::app) fn fold_keys(&self) -> Option<(Vec<Action>, bool)> {
+        let (_, folded) = self.fold_here()?;
+        let mut keys = Vec::new();
+        if self.focus == Focus::Document && self.selected_fold().is_some() {
+            keys.push(if folded { Action::Right } else { Action::Left });
         }
-        self.status = Some(if fold {
-            format!("{count} thread(s) folded")
-        } else {
-            format!("{count} folded thread(s) drawn open")
-        });
+        keys.push(Action::ToggleThread);
+        Some((keys, folded))
     }
 
     /// The fold line at document row `row`, while the boxes' words take a selection: its
@@ -124,16 +100,18 @@ impl App {
         self.box_line_selected().then(|| self.fold_line(self.cursor.0)).flatten()
     }
 
-    /// `right` or `confirm` on the selected folded line draws its thread open; `left` on the
-    /// selected head of a box folds it. The other way, nothing.
+    /// A key that folds or unfolds the box here (`fold_keys`), the one way the keys do it:
+    /// `toggle-thread` folds it or draws it open; on its selected fold line, `left` folds its
+    /// head, `right` or `confirm` draws its folded line open. The other way, nothing.
     pub(in crate::app) fn fold_key(&mut self, action: Action) {
-        let Some((id, folded)) = self.selected_fold() else { return };
+        let Some((id, folded)) = self.fold_here() else { return };
+        let on_fold_line = self.focus == Focus::Document && self.selected_fold().is_some();
         let fold = match action {
-            Action::Right | Action::Confirm if folded => false,
-            Action::Left if !folded => true,
+            Action::ToggleThread => !folded,
+            Action::Right | Action::Confirm if on_fold_line && folded => false,
+            Action::Left if on_fold_line && !folded => true,
             _ => return,
         };
-        let id = id.to_owned();
         self.open.flow.fold_by_hand(&id, fold);
     }
 
