@@ -232,13 +232,23 @@ impl App {
             Some(Action::Back) => self.focus = Focus::Document,
             _ => {}
         }
-        if let Some(target) = self.open.store.notes().get(self.rail_cursor)
-            && let Some(block) = self.open.doc.block_containing(target.range.start)
-        {
-            self.selected = block;
+        self.follow_bubble();
+        Ok(())
+    }
+
+    /// The document follows the rail's bubble: its note's block is the selected block, in view,
+    /// as it always was; under the review loop its note's box is in view instead, at any depth,
+    /// when the flow draws it (`show_box`), and nothing moves while it is. The keys stay in the
+    /// rail.
+    fn follow_bubble(&mut self) {
+        let notes = self.open.store.notes();
+        let Some(target) = notes.get(self.rail_cursor) else { return };
+        let id = target.annotation.id.clone();
+        let Some(block) = self.open.doc.block_containing(target.range.start) else { return };
+        self.selected = block;
+        if !(self.box_words_selectable() && self.show_box(&id)) {
             self.ensure_selected_visible();
         }
-        Ok(())
     }
 
     fn document_key(&mut self, key: KeyEvent) -> Result<()> {
@@ -531,6 +541,11 @@ impl App {
                 if let Some(index) = self.bubble_hit(mouse.column, mouse.row) {
                     self.rail_cursor = index;
                     self.focus = Focus::Rail;
+                    // Under the review loop a bubble clicked brings its box into view, as `down`
+                    // and `up` in the rail do.
+                    if self.box_words_selectable() {
+                        self.follow_bubble();
+                    }
                     return Ok(());
                 }
                 let now = std::time::Instant::now();

@@ -8,7 +8,8 @@
 //! and the thread keys act on its box; on a fold line the arrows, or a click, fold or unfold its
 //! thread, and the thread keys act on it. On any of them in a draft's box, `edit` and `confirm`
 //! edit the draft there (`draft_box`). Only while the boxes' words take a selection: otherwise
-//! `down` and `up` go from block to block, as they always did.
+//! `down` and `up` go from block to block, as they always did. A box is brought into view as a
+//! unit is, from the rail too (`show_box`).
 
 use std::ops::Range;
 
@@ -60,6 +61,31 @@ impl App {
             self.selected = block;
         }
         self.ensure_rows_visible(rows.start, rows.end.saturating_sub(1).max(rows.start));
+    }
+
+    /// Bring the box of thread `id` into view, at any depth, as a unit of selection is
+    /// (`ensure_rows_visible`): all of it when it fits, else its head first and as much of it as
+    /// fits; nothing moves when that is in view already. Whether the flow draws it: a sub-thread
+    /// in a folded box is not.
+    pub(in crate::app) fn show_box(&mut self, id: &str) -> bool {
+        let Some(rows) = self.box_rows(id) else { return false };
+        let height = usize::from(self.geometry.doc.height.max(1));
+        let last = rows.end.saturating_sub(1).min(rows.start + height.saturating_sub(2));
+        self.ensure_rows_visible(rows.start, last.max(rows.start));
+        true
+    }
+
+    /// The document rows the box of thread `id` is drawn on, at any depth: from its head to its
+    /// bottom edge, the rows of the boxes in it included, or its folded line alone.
+    fn box_rows(&self, id: &str) -> Option<Range<usize>> {
+        let (head, _) = self.find_fold(id)?;
+        let in_box = |row: &usize| {
+            self.box_row(*row).is_some_and(|(_, drawn)| {
+                drawn.thread.as_deref() == Some(id) || drawn.border.iter().any(|(of, _)| of == id)
+            })
+        };
+        let last = (head + 1..self.open.layout.total_rows).take_while(in_box).last().unwrap_or(head);
+        Some(head..last + 1)
     }
 
     /// The columns of the box row at document row `row`, `width` columns wide, that a stop

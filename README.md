@@ -470,8 +470,12 @@ the agent answers with too:
   lit are the boxes lit, in the same colour (its state's): the current note's, the one the keys act on, in the rail or in the box the cursor
   is in at any depth (a sub-thread's alone, not its thread's); on a line of the document, every
   comment of the selected block, not the sub-threads under them, the keys acting on none. The
-  rail scrolls only as far as keeps the first lit in full. Without the loop each
-  bubble sits level with its passage, and every note of the selected block is lit, as before.
+  rail scrolls only as far as keeps the first lit in full. Selecting a bubble, `j`/`k` in the
+  rail or a click on it, scrolls the document to its comment's box, at any depth: all of it
+  when it fits, its head first when it does not, nothing moving while it is in view; the keys
+  stay in the rail. Without the loop each bubble sits level with its passage, every note of
+  the selected block is lit, and `j`/`k` in the rail bring the bubble's block into view, as
+  before.
 - `C` replies under the current note's comment (the box the cursor is in, or the rail's
   bubble, as for the image keys), a draft the next `E` sends, or `s` at once, or sent at once
   under a Live thread; `L` turns Live on or off on it; `V` resolves it or

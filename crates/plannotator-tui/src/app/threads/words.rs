@@ -258,7 +258,7 @@ impl App {
 
     /// Where the fold line of thread `id` is drawn: its document row, and the column the
     /// cursor stands on there.
-    fn find_fold(&self, id: &str) -> Option<(usize, usize)> {
+    pub(super) fn find_fold(&self, id: &str) -> Option<(usize, usize)> {
         let layout = &self.open.layout;
         self.open.flow.rows.iter().find_map(|(block, rows)| {
             let rendered = layout.blocks.get(*block)?;
