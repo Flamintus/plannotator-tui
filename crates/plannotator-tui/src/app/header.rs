@@ -29,11 +29,14 @@ enum Button {
     Approve,
     Send,
     Review,
+    /// Not a button: the review's Live mode, said while it is on, just left of Review.
+    LiveMode,
 }
 
 impl App {
     /// Buttons with their rects relative to the header, right to left: send on the edge,
-    /// the Review menu to its left. A gated review puts Approve on the edge, before send.
+    /// the Review menu to its left, and left of it, while it is on, the review's Live mode.
+    /// A gated review puts Approve on the edge, before send.
     fn header_buttons(&self, width: u16) -> Vec<(Button, String, Rect)> {
         if width == 0 {
             return Vec::new();
@@ -45,6 +48,9 @@ impl App {
         labels.push((Button::Send, self.send_label()));
         if self.is_file_review() {
             labels.push((Button::Review, self.review_label()));
+        }
+        if self.review_loop.is_some() && self.journal_live_mode() {
+            labels.push((Button::LiveMode, format!("{LIVE} mode")));
         }
         let mut right = width;
         let mut y = 0;
@@ -77,19 +83,7 @@ impl App {
     }
 
     pub(super) fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
-        let buttons = self.header_buttons(area.width);
-        // The review's Live mode, on: said at the left of the buttons' first row, in the
-        // lightning's yellow of a Live thread, where it fits.
-        if self.review_loop.is_some() && self.journal_live_mode() && area.height > 0 {
-            let words = format!(" {LIVE} mode ");
-            let first = buttons.iter().filter(|(_, _, rect)| rect.y == 0).map(|(_, _, rect)| rect.x).min();
-            let room = first.unwrap_or(area.width);
-            let width = words.width() as u16;
-            if width < room {
-                frame.buffer_mut().set_span(area.x, area.y, &Span::styled(words, mark_style(LIVE)), width);
-            }
-        }
-        for (button, label, mut rect) in buttons {
+        for (button, label, mut rect) in self.header_buttons(area.width) {
             if rect.y >= area.height {
                 continue;
             }
@@ -108,6 +102,8 @@ impl App {
                     self.geometry.review_button = Some(rect);
                     Style::new().fg(palette().accent).bg(palette().toolbar_bg)
                 }
+                // Said in the lightning's yellow of a Live thread; nothing to click.
+                Button::LiveMode => mark_style(LIVE),
             };
             frame.buffer_mut().set_span(rect.x, rect.y, &Span::styled(label, style), rect.width);
         }
