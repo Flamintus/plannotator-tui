@@ -75,7 +75,12 @@ impl Kept {
         };
         let comment = NewComment { id: annotation.id.clone(), text: text.to_owned(), placement };
         let review = &self.review;
-        review.journal.comment(&review.target, &comment).with_context(|| format!("comment {}", annotation.id))
+        // `now` is a reply's, which no note is.
+        review
+            .journal
+            .comment(&review.target, &comment)
+            .map(drop)
+            .with_context(|| format!("comment {}", annotation.id))
     }
 
     /// The lines a note is on in the file, as the agent reads them, from where it was made.

@@ -9,16 +9,17 @@
 //! rail, or the tree's row.
 //!
 //! A comment's keys (its edit, removal and images, a reply, resolving it, sending it at once,
-//! folding) act only on the box the cursor is in, at any depth, or on the bubble in the rail,
-//! that comment's alone, never from a line of the document, which is not a comment: a reply answers a passage sent,
-//! not the words that hold it. Whether a key may act there is decided by what it acts by: the
-//! draft whose box the cursor is in (`draft_box`), a thread sent or not (`act::sent`), a note
-//! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
-//! (`tree::now_drafts`), the fold line selected (`selected_fold`), what `toggle-thread` does
-//! here (`fold_keys`), a draft's words (`words_of_draft`). The labels say what the key does
-//! there: `V reopen` on a resolved thread, `f unfold` on a folded box. One effect is one offer,
-//! named by one key (`f fold`), the other keys that do it there acting as its aliases (the
-//! arrow of a fold line). The footer draws each key in the key colour and what it does dim
+//! Live, folding) act only on the box the cursor is in, at any depth, or on the bubble in the
+//! rail, that comment's alone, never from a line of the document, which is not a comment: a
+//! reply answers a passage sent, not the words that hold it. Whether a key may act there is
+//! decided by what it acts by: the draft whose box the cursor is in (`draft_box`), a thread
+//! sent or not (`act::sent`) and Live or not (its view's `live`), a note the journal still
+//! takes changes to (`Store::journal_waits`), its draft to send at once (`tree::now_drafts`),
+//! the fold line selected (`selected_fold`), what `toggle-thread` does here (`fold_keys`), a
+//! draft's words (`words_of_draft`). The labels say what the key does there: `V reopen` on a
+//! resolved thread, `L unlive` on a Live one, `f unfold` on a folded box. One effect is one
+//! offer, named by one key (`f fold`), the other keys that do it there acting as its aliases
+//! (the arrow of a fold line). The footer draws each key in the key colour and what it does dim
 //! (`Hint`). A selection waiting for its action keeps the toolbar's help, the keys still
 //! deciding as the selection lets them.
 
@@ -62,6 +63,7 @@ const DECIDED: &[Action] = &[
     Action::Reply,
     Action::Resolve,
     Action::SendNow,
+    Action::ToggleLive,
     Action::ToggleThread,
     Action::MoveCursor,
     Action::Visual,
@@ -222,7 +224,8 @@ impl App {
     }
 
     /// The keys on note `note`'s thread: its draft sent at once, a reply, resolving or opening
-    /// it again once sent; then folding or unfolding the threads here.
+    /// it again and turning Live on or off once sent; then folding or unfolding the threads
+    /// here.
     fn thread_keys(&self, note: Option<&str>) -> Vec<Offer> {
         let thread = note.and_then(|id| self.node(id));
         let mut keys = Vec::new();
@@ -233,6 +236,7 @@ impl App {
             let resolved = thread.state == ThreadState::Resolved;
             keys.push(Offer::Key(Action::Reply, "reply"));
             keys.push(Offer::Key(Action::Resolve, if resolved { "reopen" } else { "resolve" }));
+            keys.push(Offer::Key(Action::ToggleLive, if thread.live { "unlive" } else { "live" }));
         }
         if let Some((fold, aliases, folded)) = self.fold_keys() {
             keys.push(Offer::Key(fold, if folded { "unfold" } else { "fold" }));

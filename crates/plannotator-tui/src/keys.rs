@@ -67,6 +67,9 @@ pub(crate) enum Action {
     ToggleThread,
     /// The current note's draft sent at once, while the review loop runs: the round goes on.
     SendNow,
+    /// Live on or off on the current note's thread, once sent, while the review loop runs: a
+    /// reply saved under a Live thread goes at once, as `send-now` sends it.
+    ToggleLive,
     Yes,
     No,
 }
@@ -75,8 +78,8 @@ use Action::{
     Approve, Archive, AttachImage, Back, Bottom, ClearAll, ClearBlock, Comment, Confirm, CopySelection,
     CycleFocus, Delete, Down, Edit, FinishReview, Interrupt, Left, LineEnd, LineStart, LooksGood, MoveCursor,
     No, OpenInEditor, PageDown, PageUp, PickMessage, QuickOpen, Quit, Reload, Remove, RemoveImage, Reply,
-    ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, SendNow, ToggleHidden, ToggleThread,
-    ToggleTree, Top, UndoFinish, Up, Visual, WordBack, WordForward, Yes,
+    ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, SendNow, ToggleHidden, ToggleLive,
+    ToggleThread, ToggleTree, Top, UndoFinish, Up, Visual, WordBack, WordForward, Yes,
 };
 
 /// Browsing, before the focused pane gets the key.
@@ -99,8 +102,21 @@ pub(crate) const GLOBAL: &[Action] = &[
     PickMessage,
 ];
 pub(crate) const TREE: &[Action] = &[Down, Up, Confirm, Right, ToggleHidden, Back];
-pub(crate) const RAIL: &[Action] =
-    &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, SendNow, Back];
+pub(crate) const RAIL: &[Action] = &[
+    Down,
+    Up,
+    Confirm,
+    Edit,
+    Remove,
+    AttachImage,
+    RemoveImage,
+    Reply,
+    Resolve,
+    ToggleThread,
+    SendNow,
+    ToggleLive,
+    Back,
+];
 /// `attach-image` and `remove-image` act on the selected block's note here, under the review
 /// loop on the note whose box the cursor is in, as the thread keys; `edit`, under the review
 /// loop, on the draft whose box the cursor is in, and `clear-block` there removes that draft,
@@ -128,6 +144,7 @@ pub(crate) const DOCUMENT: &[Action] = &[
     Resolve,
     ToggleThread,
     SendNow,
+    ToggleLive,
 ];
 /// Cursor motions, in visual mode and while moving the cursor (`move-cursor`).
 pub(crate) const MOTION: &[Action] = &[Left, Right, Down, Up, WordForward, WordBack, LineStart, LineEnd];
@@ -306,13 +323,14 @@ const DEFAULTS: &[(Action, &[Key])] = &[
     (Resolve, &[ch('V')]),
     (ToggleThread, &[ch('f')]),
     (SendNow, &[ch('s')]),
+    (ToggleLive, &[ch('L')]),
     (Yes, &[ch('y'), ch('Y')]),
     (No, &[ch('n'), ch('N')]),
 ];
 
 /// Actions added after configs were written: `approve` (live only in a gated review),
 /// `copy` (on a waiting selection) and the thread actions.
-const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow];
+const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow, ToggleLive];
 
 /// The keys bound to each action. A `[keys]` entry replaces that action's keys and leaves the
 /// others at their defaults; an empty list unbinds the action.
@@ -460,6 +478,7 @@ impl Action {
             Self::Resolve => "resolve",
             Self::ToggleThread => "toggle-thread",
             Self::SendNow => "send-now",
+            Self::ToggleLive => "toggle-live",
             Self::Yes => "yes",
             Self::No => "no",
         }

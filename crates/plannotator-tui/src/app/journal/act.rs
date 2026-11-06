@@ -1,10 +1,12 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
-//! open it again, `send-now` sends its draft at once (`send`), `toggle-thread` draws a folded
-//! thread open, or folds an open one, as `right` and `left` do on its fold line, whatever the
-//! box (`threads::fold`). These keys answer only while the review loop runs. A sub-thread has
-//! one way in: a passage selected in a message's words right in its box, noted as the
-//! document's words are (`App::annotate`). On any line of a draft's box, `edit` and `confirm`
-//! edit it there (`draft_box`), as `edit` does on its bubble.
+//! open it again, `send-now` sends its draft at once (`send`), `toggle-live` turns Live on or
+//! off on it once sent, a reply saved under a Live thread going at once by `send-now`'s own
+//! send, `toggle-thread` draws a folded thread open, or folds an open one, as `right` and
+//! `left` do on its fold line, whatever the box (`threads::fold`). These keys answer only
+//! while the review loop runs. A sub-thread has one way in: a passage selected in a message's
+//! words right in its box, noted as the document's words are (`App::annotate`). On any line of
+//! a draft's box, `edit` and `confirm` edit it there (`draft_box`), as `edit` does on its
+//! bubble.
 
 use plannotator_tui_journal::{NewComment, Placement, State as ThreadState, ThreadNode};
 
@@ -14,8 +16,8 @@ use super::super::{App, Mode};
 use crate::journal::{Review, tree};
 use crate::keys::Action;
 
-/// Whether thread `node` takes a reply and a resolution: once its comment is sent. On a draft
-/// the keys offer neither (`help`), and do nothing: it is sent first.
+/// Whether thread `node` takes a reply, a resolution and Live: once its comment is sent. On a
+/// draft the keys offer none (`help`), and do nothing: it is sent first.
 pub(super) fn sent(node: &ThreadNode) -> bool {
     !node.draft
 }
@@ -33,6 +35,7 @@ impl App {
             Action::Reply => self.begin_reply(),
             Action::Resolve => self.resolve_current(),
             Action::SendNow => self.send_current(),
+            Action::ToggleLive => self.toggle_live(),
             _ => {}
         }
     }
@@ -63,8 +66,9 @@ impl App {
         self.mode = Mode::Reply(node.id);
     }
 
-    /// The person's reply `body` under comment `id`, a draft the next send carries; an empty
-    /// one is no reply.
+    /// The person's reply `body` under comment `id`, a draft the next send carries, or, under a
+    /// Live thread (the journal says `now`), sent at once as `send-now` sends it; an empty one
+    /// is no reply.
     pub(in crate::app) fn save_reply(&mut self, id: &str, body: String) {
         if body.is_empty() {
             self.status = Some(format!("reply to {} cancelled: empty", short_id(id)));
@@ -79,11 +83,14 @@ impl App {
             text: body,
             placement: Placement::Under { re: id.to_owned() },
         };
-        self.status = Some(match review.journal.comment(&review.target, &reply) {
-            Ok(()) => format!("reply saved \u{b7} {} sends it", self.keys.hint(Action::Send)),
+        let saved = review.journal.comment(&review.target, &reply);
+        self.saw(&node);
+        self.status = Some(match saved {
+            // The send reads the view again, the reply in it.
+            Ok(saved) if saved.now => return self.send_journal_now(id),
+            Ok(_) => format!("reply saved \u{b7} {} sends it", self.keys.hint(Action::Send)),
             Err(err) => format!("review loop: {err}"),
         });
-        self.saw(&node);
         self.refresh_journal();
     }
 
@@ -125,6 +132,20 @@ impl App {
         self.status = Some(match review.journal.resolve(&review.target, &node.id, resolve) {
             Ok(()) if resolve => format!("{} resolved", short_id(&node.id)),
             Ok(()) => format!("{} open again", short_id(&node.id)),
+            Err(err) => format!("review loop: {err}"),
+        });
+        self.saw(&node);
+        self.refresh_journal();
+    }
+
+    /// Live turned on or off on the current note's thread, a sent one, where the keys offer it
+    /// (`help`): the view read again says it, at its head, on its folded line and in its bubble.
+    fn toggle_live(&mut self) {
+        let Some((review, node)) = self.current_thread() else { return };
+        let on = !node.live;
+        self.status = Some(match review.journal.live(&review.target, &node.id, on) {
+            Ok(()) if on => "live on".to_owned(),
+            Ok(()) => "live off".to_owned(),
             Err(err) => format!("review loop: {err}"),
         });
         self.saw(&node);

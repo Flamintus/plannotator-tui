@@ -44,7 +44,8 @@ pub struct ThreadNode {
     /// What became of it, once a comment send carried it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,
-    /// A `now` send reached it: the person's next replies in it go on their own.
+    /// The person turned it Live (`threads live`), once sent: a reply they save under it goes
+    /// at once (`Commented::now`).
     pub live: bool,
     pub replies: Vec<ReplyNode>,
     /// The sub-threads on its own words.

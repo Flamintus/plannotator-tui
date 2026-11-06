@@ -9,8 +9,8 @@ mod comments;
 use std::cell::RefCell;
 
 use plannotator_tui_journal::{
-    Error, IdempotencyKey, Journal, NewComment, Placement, ReviewTarget, Send, SendMode, SendTo, Sent, Stamp,
-    Status, ThreadView, Viewed,
+    Commented, Error, IdempotencyKey, Journal, NewComment, Placement, ReviewTarget, Send, SendMode, SendTo,
+    Sent, Stamp, Status, ThreadView, Viewed,
 };
 
 pub(crate) use comments::Comment;
@@ -27,7 +27,8 @@ pub(crate) struct StandIn {
 #[derive(Debug, Default)]
 pub(crate) struct State {
     pub(crate) comments: Vec<Comment>,
-    /// Every write, in order: `comment <id>`, `remove <id>`, `resolve <id> <bool>`.
+    /// Every write, in order: `comment <id>`, `remove <id>`, `resolve <id> <bool>`,
+    /// `live <id> <bool>`.
     pub(crate) writes: Vec<String>,
     /// Rounds finished: the round under way is the next one.
     pub(crate) finished: u64,
@@ -41,8 +42,8 @@ pub(crate) struct State {
     pub(crate) closed: bool,
     /// The sends marked delivered, by id.
     pub(crate) delivered: Vec<String>,
-    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `send`, `resend`,
-    /// `delivered`, `close`.
+    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `live`, `send`,
+    /// `resend`, `delivered`, `close`.
     pub(crate) refused: Vec<&'static str>,
     /// The code they are refused with: `locked` unless a test names another.
     pub(crate) refused_as: Option<&'static str>,
@@ -125,8 +126,9 @@ impl Journal for StandIn {
     }
 
     /// A draft written as the journal writes one: the same id again replaces the whole
-    /// draft, its place and kind with it; a sent one is not edited.
-    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<(), Error> {
+    /// draft, its place and kind with it; a sent one is not edited. A reply under a Live
+    /// comment comes back `now`.
+    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<Commented, Error> {
         self.call("comment", target)?;
         let mut state = self.state.borrow_mut();
         state.writes.push(format!("comment {}", comment.id));
@@ -135,6 +137,10 @@ impl Journal for StandIn {
             return Err(refused("comment", "conflict"));
         }
         let sent = |state: &State, id: &str| state.comments.iter().find(|c| c.id == id && !c.draft).cloned();
+        let now = match &comment.placement {
+            Placement::Under { re } => sent(&state, re).is_some_and(|under| under.live),
+            Placement::On { .. } | Placement::Passage { .. } => false,
+        };
         let kept = match &comment.placement {
             Placement::On { on, quote, deletion } => {
                 let mut kept = Comment::draft(&comment.id, on.clone(), quote, &comment.text);
@@ -161,7 +167,7 @@ impl Journal for StandIn {
             None => state.comments.push(kept),
         }
         state.written += 1;
-        Ok(())
+        Ok(Commented { now, other: serde_json::Map::new() })
     }
 
     /// Removes a draft and everything of the person's under it, at any depth.
@@ -207,6 +213,19 @@ impl Journal for StandIn {
             return Err(refused("resolve", "not_found"));
         };
         kept.resolved = resolved;
+        state.written += 1;
+        Ok(())
+    }
+
+    /// Live on or off on a sent comment; a draft is refused, as the CLI refuses it.
+    fn live(&self, target: &ReviewTarget, id: &str, on: bool) -> Result<(), Error> {
+        self.call("live", target)?;
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("live {id} {on}"));
+        let Some(kept) = state.comments.iter_mut().find(|comment| comment.id == id && !comment.draft) else {
+            return Err(refused("live", "not_found"));
+        };
+        kept.live = on;
         state.written += 1;
         Ok(())
     }

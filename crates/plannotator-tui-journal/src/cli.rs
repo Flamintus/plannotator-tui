@@ -3,7 +3,9 @@
 //!
 //! Every call is `plannotator threads <action> -`, the call's JSON object on stdin (a
 //! comment's words can be longer than a command line takes), naming the review by its
-//! target. stdout carries one JSON value; a refusal is `<code>: <message>` on stderr.
+//! target; `live` names its comment and the state on the command line first
+//! (`threads live <id> on|off -`). stdout carries one JSON value; a refusal is
+//! `<code>: <message>` on stderr.
 
 use std::ffi::OsStr;
 use std::io::{Read, Write as _};
@@ -16,7 +18,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value, json};
 
 use crate::error::Error;
-use crate::records::{SendTo, Sent, Viewed};
+use crate::records::{Commented, SendTo, Sent, Viewed};
 use crate::requests::{IdempotencyKey, NewComment, ReviewTarget, SendMode};
 
 /// The thread view's contract this client reads: a `v` above it is refused, never guessed at.
@@ -49,12 +51,16 @@ pub trait Journal {
     /// The review's key and thread view, the person's drafts included: an empty view for a
     /// review with no journal yet.
     fn view(&self, target: &ReviewTarget) -> Result<Viewed, Error>;
-    /// The person's comment, reply or sub-thread, as a draft; the same id again edits it.
-    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<(), Error>;
+    /// The person's comment, reply or sub-thread, as a draft; the same id again edits it. A
+    /// reply under a Live thread comes back `now`: the client sends it at once.
+    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<Commented, Error>;
     /// Remove the person's draft, and everything of theirs under it.
     fn remove(&self, target: &ReviewTarget, id: &str) -> Result<(), Error>;
     /// Resolve a sent comment or sub-thread, or open it again.
     fn resolve(&self, target: &ReviewTarget, id: &str, resolved: bool) -> Result<(), Error>;
+    /// Turn Live on or off on a sent comment or sub-thread, each its own: a reply the person
+    /// saves under a Live thread goes at once. A draft is refused.
+    fn live(&self, target: &ReviewTarget, id: &str, on: bool) -> Result<(), Error>;
     /// Send drafts to the agent's session: `now` the ones named, or `round` every draft left,
     /// ending the round. `to` is the session, which a review of a session's last messages
     /// names itself. `key` is the press's: the same press tried again goes under the same
@@ -134,11 +140,25 @@ impl Cli {
         &self,
         action: &str,
         target: &ReviewTarget,
+        fields: Map<String, Value>,
+    ) -> Result<T, Error> {
+        self.call_with(action, &[], target, fields)
+    }
+
+    /// `call`, with `words` on the command line between the action and the `-` that reads
+    /// the JSON: `threads live <id> on|off -`.
+    fn call_with<T: DeserializeOwned>(
+        &self,
+        action: &str,
+        words: &[&str],
+        target: &ReviewTarget,
         mut fields: Map<String, Value>,
     ) -> Result<T, Error> {
         fields.insert("target".to_owned(), json!(target));
         let input = Value::Object(fields).to_string();
-        let done = self.run(action, &["threads", action, "-"], input.as_bytes())?;
+        let args: Vec<&str> =
+            ["threads", action].into_iter().chain(words.iter().copied()).chain(["-"]).collect();
+        let done = self.run(action, &args, input.as_bytes())?;
         let said = || first_line(&done.stderr);
         match done.status.code() {
             Some(0) => serde_json::from_slice(&done.stdout).map_err(|e| Error::unreadable(action, e)),
@@ -252,8 +272,8 @@ impl Journal for Cli {
         }
     }
 
-    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<(), Error> {
-        self.call::<Value>("comment", target, comment.fields()).map(drop)
+    fn comment(&self, target: &ReviewTarget, comment: &NewComment) -> Result<Commented, Error> {
+        self.call("comment", target, comment.fields())
     }
 
     fn remove(&self, target: &ReviewTarget, id: &str) -> Result<(), Error> {
@@ -263,6 +283,11 @@ impl Journal for Cli {
     fn resolve(&self, target: &ReviewTarget, id: &str, resolved: bool) -> Result<(), Error> {
         let action = if resolved { "resolve" } else { "reopen" };
         self.call::<Value>(action, target, fields(json!({ "id": id }))).map(drop)
+    }
+
+    fn live(&self, target: &ReviewTarget, id: &str, on: bool) -> Result<(), Error> {
+        let state = if on { "on" } else { "off" };
+        self.call_with::<Value>("live", &[id, state], target, Map::new()).map(drop)
     }
 
     fn send(

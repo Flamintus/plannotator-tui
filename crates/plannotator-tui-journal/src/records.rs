@@ -16,6 +16,19 @@ pub struct Viewed {
     pub view: ThreadView,
 }
 
+/// `threads comment`: what the journal says of the comment it wrote, as far as a terminal
+/// reads it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Commented {
+    /// The person's reply is under a Live thread: it goes at once, the client sending it as
+    /// it sends a draft at once (the CLI sends nothing). `false` from a Plannotator that does
+    /// not say.
+    #[serde(default)]
+    pub now: bool,
+    #[serde(flatten)]
+    pub other: Map<String, Value>,
+}
+
 /// `threads send`: the send the journal wrote (or gave back, `replayed`), and the text that
 /// hands it to the agent, composed by Plannotator with how to answer through its CLI.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

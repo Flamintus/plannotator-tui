@@ -1,12 +1,12 @@
 //! Sending through the review journal: `send` (`E`) sends every draft of the review and ends
 //! the round, `send-and-close` (`S`) does the same and closes, and `send-now` (`s`) sends the
 //! current note's draft alone, at once, the round going on, as a box's Send does on
-//! Plannotator's screens. The journal marks the drafts sent and composes what the agent reads,
-//! with how to answer under each id through `plannotator reply`; that text goes to the agent's
-//! pane by the app's own delivery, as any feedback does, and the journal is told it was
-//! delivered. The send is archived as today's feedback is. A send the agent did not get goes
-//! again first, whichever key: this pane's under its press's key, one an earlier pane left
-//! pending by its id.
+//! Plannotator's screens; a reply saved under a Live thread goes the same way, at once. The
+//! journal marks the drafts sent and composes what the agent reads, with how to answer under
+//! each id through `plannotator reply`; that text goes to the agent's pane by the app's own
+//! delivery, as any feedback does, and the journal is told it was delivered. The send is
+//! archived as today's feedback is. A send the agent did not get goes again first, whichever
+//! key: this pane's under its press's key, one an earlier pane left pending by its id.
 
 use std::fmt::Write as _;
 
@@ -79,7 +79,8 @@ impl App {
     }
 
     /// `s`: thread `id`'s draft sent alone, at once, the round going on, and pasted into the
-    /// agent's pane as a round is; a send the agent did not get yet goes again first.
+    /// agent's pane as a round is; a send the agent did not get yet goes again first. A reply
+    /// saved under a Live thread is sent so too (`save_reply`).
     pub(in crate::app) fn send_journal_now(&mut self, id: &str) {
         self.press_send(&Ask::Now(id.to_owned()));
     }

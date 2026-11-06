@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Not sent`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, once sent · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Not sent`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -304,6 +304,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `reply` `resolve` | `C` `V` | in the review loop, the thread of the box the cursor is in or of the bubble: reply under it, resolve it or open it again (keys provisional) |
 | `toggle-thread` | `f` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded |
 | `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
+| `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble, once sent: a reply saved under it goes at once, as `send-now` sends it |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -381,10 +382,17 @@ the agent answers with too:
   screens: on its bubble in the rail, or with the cursor in its box, a sub-thread's at any
   depth, never from its block; on a sent comment, the replies of yours waiting under it. The
   round goes on: the journal sends it in `now` mode, the text it composes is pasted into the
-  agent's pane as a round's is, the thread is `Live` from then on, and the footer says
+  agent's pane as a round's is, and the footer says
   `Sent now · Round 2 still open · 1 comment(s) → claude in w1:p2`. A paste the agent did not
   get goes again first, with `s` or `E`, as for a round. The footer offers `s send now` where
   there is a draft to send.
+- `L` turns Live on or off on a sent comment, on its bubble in the rail or with the cursor in
+  its box, a sub-thread's at any depth, which has its own, apart from its thread's; never on a
+  draft or from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
+  head of the box, its folded line and its bubble say `Live` while it is on, and the footer
+  says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of
+  `s` itself: pasted into the agent's pane, then marked delivered. Under any other thread it
+  waits, `Not sent`, for `s` or `E`. Sending at once does not turn a thread Live.
 - A folder's tree counts the review's comments on each file. The Review menu acts on the
   review's threads, a finished note being a resolved thread: `F` resolves the sent threads
   still open (drafts stay), `U` opens again what it resolved, `H` lists the resolved threads
@@ -425,7 +433,7 @@ the agent answers with too:
   and its rule in the box's border colour; `l` or `Enter` (a draft's: `l`) there draws it
   open. A click on the folded line or on the head does the same, the cursor on the line. The
   cursor stays on the line, which turns from one to the other, and the thread keys (`s`, `C`,
-  `V`) act on its note.
+  `V`, `L`) act on its note.
   Folding resolves nothing and opening reopens nothing: `V` does that. `h` on a line of the
   words keeps its meaning (the cursor starts there).
 - A passage of a comment or a reply selected in its box, with the mouse or with `v` (`i` first
@@ -451,11 +459,12 @@ the agent answers with too:
   rail scrolls only as far as keeps the first lit in full. Without the loop each
   bubble sits level with its passage, and every note of the selected block is lit, as before.
 - `C` replies under the current note's comment (the box the cursor is in, or the rail's
-  bubble, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves it or
+  bubble, as for the image keys), a draft the next `E` sends, or `s` at once, or sent at once
+  under a Live thread; `L` turns Live on or off on it; `V` resolves it or
   opens it again. `f` folds the box the cursor is in, or the bubble's thread, or draws it open
   when folded; on its fold line the arrows do the same. `x` in a draft's box removes it, as
   on its bubble; on a line of the document it still clears the block. A comment's keys (`e`,
-  `x`, `I`, `D`, `s`, `C`, `V`, `f`) act only in its box, at any depth, or on its bubble, that
+  `x`, `I`, `D`, `s`, `C`, `V`, `L`, `f`) act only in its box, at any depth, or on its bubble, that
   comment's alone, never from a line of the document: a reply answers a passage sent, not the
   words that hold it. These keys answer
   only while the loop runs, and are provisional, to be confirmed in use; like every key they can
@@ -466,7 +475,8 @@ the agent answers with too:
   in a gated review, `Tab`, `S`, `q`, `ctrl+p`), each key in red and what it does in grey:
   `f fold` or `f unfold` as it would act, one key per effect (the arrows of a fold line do as
   `f`, unnamed), `e edit`
-  and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` on a sent thread,
+  and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` and `L live` or
+  `L unlive` on a sent thread,
   no `c comment` or `v select` where there are no words
   to take one, no edit, removal or image on a sent note, which the journal would refuse, no
   comment's key on a line of the document. Of the keys the selection decides (a comment's,
