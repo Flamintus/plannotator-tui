@@ -22,7 +22,7 @@ fn with_the_loop_off_last_is_what_it_always_was() {
     assert_eq!(app.status, None, "nothing said");
     app.add_quote_annotation("We ship", Kind::Comment, "Why Friday?".into()).expect("note");
     app.select_block(2);
-    for key in ['C', 'V', 'O', 'z'] {
+    for key in ['C', 'V', 'f', 's', 'L'] {
         press(&mut app, KeyCode::Char(key));
     }
     assert_eq!((app.mode == Mode::Browse, app.status.as_deref()), (true, None), "the thread keys are inert");
