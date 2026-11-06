@@ -96,12 +96,12 @@ fn a_note_the_journal_did_not_take_stays_here_marked_until_a_write_takes_it() {
     app.poll_journal();
     assert_eq!(placed_words(&app), ["We ship"], "its words are not lost");
     let id = app.open.store.placed()[0].annotation.id.clone();
-    assert_eq!(app.journal_tag(&id), " \u{b7} Not saved");
+    assert!(app.open.store.journal_unsaved(&id), "its bubble says Not saved");
     journal.state.borrow_mut().refused.clear();
     assert!(app.open.store.edit_body(&id, "Why not Monday?".into()).expect("edit"));
     app.poll_journal();
     assert_eq!(journal.state.borrow().comments[0].text, "Why not Monday?");
-    assert_eq!(app.journal_tag(&id), " \u{b7} Not sent");
+    assert!(!app.open.store.journal_unsaved(&id), "taken: its bubble says Draft");
 }
 
 #[test]

@@ -1,30 +1,34 @@
 //! What a note's bubble in the rail says: the note, as it always did. Over a document whose
 //! comments the review loop keeps, the replies are under the passage, in the note's thread
-//! (`threads`): the bubble counts them rather than repeat them, and it is dimmed once the note
-//! is resolved. Without the loop a record's replies and resolved state change nothing here.
+//! (`threads`): the bubble counts what its box holds rather than repeat it, as the box's folded
+//! line does, and it is dimmed once the note is resolved. Without the loop a record's replies
+//! and resolved state change nothing here.
 
 use plannotator_tui_schema::{Annotation, State};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 
+use super::threads::GREY;
 use crate::wrap::wrap_line;
 
 /// The bubble's text wrapped to `width` columns; `label` stands in for an empty body.
-/// `in_loop`: the review loop keeps the note, its replies are counted and its resolution dims it.
-pub(super) fn lines(annotation: &Annotation, label: &str, width: usize, in_loop: bool) -> Vec<Line<'static>> {
+/// `held`: under the review loop, what the note's box holds (`threads::held`), said under its
+/// words in grey; its resolution dims it all.
+pub(super) fn lines(
+    annotation: &Annotation,
+    label: &str,
+    width: usize,
+    held: Option<&[String]>,
+) -> Vec<Line<'static>> {
     let (body, style) = if annotation.body.is_empty() {
         (label, Style::new().dim().italic())
     } else {
         (annotation.body.as_str(), Style::new())
     };
     let mut lines = wrapped(body, width, style);
-    if !in_loop {
-        return lines;
-    }
-    let replies = annotation.replies.len();
-    if replies > 0 {
-        let count = if replies == 1 { "1 reply".to_owned() } else { format!("{replies} replies") };
-        lines.extend(wrapped(&format!("\u{21b3} {count} under the passage"), width, Style::new().dim()));
+    let Some(held) = held else { return lines };
+    if !held.is_empty() {
+        lines.extend(wrapped(&held.join(" \u{b7} "), width, GREY));
     }
     if annotation.state == State::Resolved {
         lines = lines.into_iter().map(|line| line.patch_style(Modifier::DIM)).collect();

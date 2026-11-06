@@ -43,6 +43,6 @@ fn the_view_plannotator_computes_is_drawn_as_it_says() {
         row("Which runbook?").starts_with("  \u{2502} \u{2502} "),
         "a sub-thread on the agent's reply: {screen}"
     );
-    assert!(row("We ship on Friday.\"").contains("\u{2713}"), "folded, as the view says: {screen}");
+    assert!(row("We ship on Friday.\"").contains("Resolved"), "folded, as the view says: {screen}");
     assert!(!screen.contains("Shorter."), "a comment on the other reply is not on this one: {screen}");
 }

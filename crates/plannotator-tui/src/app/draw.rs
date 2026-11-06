@@ -2,7 +2,7 @@
 //! floating toolbar and compose box. Pure over `App` except for recording geometry for
 //! hit-testing.
 
-use plannotator_tui_schema::{Kind, State};
+use plannotator_tui_schema::Kind;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
@@ -10,7 +10,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, BorderType, Borders, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use super::{App, Focus, GUTTER, Geometry, Mode, Selected, TOOLBAR, bubble, glyph, label, threads};
+use super::{App, Focus, GUTTER, Geometry, Mode, Selected, TOOLBAR, bubble, glyph, label};
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
@@ -32,11 +32,10 @@ pub(super) fn accent(kind: Kind) -> Color {
     }
 }
 
-/// The border of a note lit (under the review loop, `threads::lit_notes`): its bubble's in the
-/// rail, and under the review loop its box's in the flow (`threads`): green once its thread is
-/// resolved, else its kind's colour.
-pub(super) fn lit(kind: Kind, resolved: bool) -> Style {
-    Style::new().fg(if resolved { palette().looks_good } else { accent(kind) })
+/// The border of a note's bubble lit without the review loop: its kind's colour. Under the
+/// loop a bubble lit, and its box, take its state's (`App::lit_bubble`).
+pub(super) fn lit(kind: Kind) -> Style {
+    Style::new().fg(accent(kind))
 }
 
 /// Painting precedence when annotations overlap a cell.
@@ -384,9 +383,10 @@ impl App {
     /// order, a sub-thread's after its thread's note, as the column of Plannotator's screens
     /// lists its comments, and the ones lit are the boxes lit (`lit_notes`): the current note's,
     /// which the keys act on, in the rail or in a box at any depth, every comment of the
-    /// selected block on a line of the document, not the sub-threads under them; without it
-    /// each sits level with its passage, as it always did, and every note of the selected block
-    /// is lit.
+    /// selected block on a line of the document, not the sub-threads under them, each in its
+    /// state's colour; its title says what the head of its box says, and under its words, what
+    /// its box holds (`threads::bubble_title`, `threads::held`). Without it each sits level with
+    /// its passage, as it always did, and every note of the selected block is lit.
     fn draw_rail(&mut self, frame: &mut Frame, rail: Rect) {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;
@@ -399,7 +399,15 @@ impl App {
         // its note is on its thread's block.
         let lit_notes = if in_loop { self.lit_notes() } else { Vec::new() };
         let first_lit = notes.iter().position(|p| lit_notes.contains(&p.annotation.id));
-        let first = if in_loop { first_stacked(&notes, first_lit, inner_width, rail.height) } else { 0 };
+        let held = |placed: &crate::store::Placed<'_>| in_loop.then(|| self.held(placed));
+        let lines_of = |placed: &crate::store::Placed<'_>| {
+            bubble::lines(placed.annotation, label(placed.kind()), inner_width, held(placed).as_deref())
+        };
+        let first = if in_loop {
+            first_stacked(&notes, first_lit, rail.height, |placed| lines_of(placed).len() + 2)
+        } else {
+            0
+        };
         let mut bubbles = Vec::new();
         for (index, placed) in notes.iter().enumerate().skip(first) {
             let Some(block) = self.open.doc.block_containing(placed.range.start) else { continue };
@@ -419,7 +427,7 @@ impl App {
                 anchored_y.max(next_y)
             };
             let kind = placed.kind();
-            let lines = bubble::lines(placed.annotation, label(kind), inner_width, in_loop);
+            let lines = lines_of(placed);
             let height = (lines.len() as u16 + 2).min(rail.bottom().saturating_sub(y));
             if height < 3 {
                 break;
@@ -431,51 +439,50 @@ impl App {
             } else {
                 block == self.selected
             };
-            let resolved = in_loop && placed.annotation.state == State::Resolved;
-            // Lit as the box of the same note is (`threads`); a resolved thread is only seen
-            // as such under the review loop.
-            let border = if highlighted { lit(kind, resolved) } else { Style::new().fg(Color::DarkGray) };
+            // Lit as the box of the same note is (`threads`): under the review loop, in its
+            // state's colour.
+            let border = match (highlighted, in_loop) {
+                (true, true) => self.lit_bubble(&placed.annotation.id),
+                (true, false) => lit(kind),
+                (false, _) => Style::new().fg(Color::DarkGray),
+            };
             let border = if rail_focused && index == self.rail_cursor { border.bold() } else { border };
-            // A comment of the journal's says what became of its send instead (`journal_tag`).
-            let sent = if self.is_file_review()
-                && !self.open.store.is_journal()
-                && !self.open.store.is_pending(placed.annotation)
-            {
-                " · sent"
-            } else {
-                ""
-            };
-            let images = match placed.annotation.plannotator_tui.images.len() {
-                0 => String::new(),
-                1 => " · 1 image".to_owned(),
-                n => format!(" · {n} images"),
-            };
-            let journal = self.journal_tag(&placed.annotation.id);
-            let title_style = Style::new().fg(accent(kind));
-            let mut title = vec![Span::styled(
-                format!(" {} {}{images}{sent}", glyph(kind), short_id(&placed.annotation.id)),
-                title_style,
-            )];
-            if resolved {
-                title.push(Span::styled(" \u{b7} ", title_style));
-                title.push(Span::styled(threads::RESOLVED, threads::resolved_style()));
-            }
-            title.push(Span::styled(format!("{journal} "), title_style));
-            let title = Line::from(title);
-            let bubble = Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded)
-                .border_style(border)
-                .title(title);
+            let bubble =
+                Block::default().borders(Borders::ALL).border_type(BorderType::Rounded).border_style(border);
+            // Under the review loop the bubble's top edge says what the head of its box says.
+            let bubble = if in_loop { bubble } else { bubble.title(self.bubble_title_off_loop(placed)) };
             let rect = Rect { x: rail.x, y, width: rail.width, height };
             let inner = bubble.inner(rect);
             frame.render_widget(bubble, rect);
+            if in_loop {
+                let top = self.bubble_title(placed, usize::from(rect.width), border);
+                frame.buffer_mut().set_line(rect.x, rect.y, &top, rect.width);
+            }
             let text_area = Rect { x: inner.x + 1, width: inner.width.saturating_sub(1), ..inner };
             frame.render_widget(Paragraph::new(lines), text_area);
             bubbles.push((rect, placed.annotation.id.clone()));
             next_y = y + height;
         }
         self.geometry.bubbles = bubbles;
+    }
+
+    /// A note's bubble title without the review loop, as it always was: its kind's glyph, the
+    /// tail of its id, its images, and in a file's review whether it was sent, in its kind's
+    /// colour.
+    fn bubble_title_off_loop(&self, placed: &crate::store::Placed<'_>) -> Line<'static> {
+        let kind = placed.kind();
+        let sent = if self.is_file_review() && !self.open.store.is_pending(placed.annotation) {
+            " \u{b7} sent"
+        } else {
+            ""
+        };
+        let images = match placed.annotation.plannotator_tui.images.len() {
+            0 => String::new(),
+            1 => " \u{b7} 1 image".to_owned(),
+            n => format!(" \u{b7} {n} images"),
+        };
+        let words = format!(" {} {}{images}{sent} ", glyph(kind), short_id(&placed.annotation.id));
+        Line::from(Span::styled(words, Style::new().fg(accent(kind))))
     }
 
     fn draw_footer(&mut self, frame: &mut Frame, mut area: Rect) {
@@ -677,17 +684,15 @@ impl App {
 
 /// The first of the stacked bubbles drawn: the top one, unless the first of those lit
 /// (`first_lit`, by its place in `notes`) would be cut; then the rail scrolls only as far as
-/// shows it whole.
+/// shows it whole. `tall` is a bubble's height, its edges with it.
 fn first_stacked(
     notes: &[crate::store::Placed<'_>],
     first_lit: Option<usize>,
-    width: usize,
     height: u16,
+    tall: impl Fn(&crate::store::Placed<'_>) -> usize,
 ) -> usize {
-    let tall =
-        |p: &crate::store::Placed<'_>| bubble::lines(p.annotation, label(p.kind()), width, true).len() + 2;
     let mut first = first_lit.unwrap_or(0).min(notes.len().saturating_sub(1));
-    let mut used = notes.get(first).map_or(0, tall);
+    let mut used = notes.get(first).map_or(0, &tall);
     while let Some(above) = first.checked_sub(1).and_then(|index| notes.get(index)) {
         used += tall(above);
         if used > usize::from(height) {

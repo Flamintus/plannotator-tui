@@ -124,6 +124,8 @@ pub(crate) struct Palette {
     pub(crate) sent: Color,
     /// A comment the agent answered: `Replied`.
     pub(crate) replied: Color,
+    /// A reply of the agent's the person has not seen yet: `New`.
+    pub(crate) new: Color,
     /// The keyboard cursor cell.
     pub(crate) cursor: Style,
     /// A character selection, a picker row, a review-menu row.
@@ -147,7 +149,10 @@ pub(crate) static DARK: Palette = Palette {
     live: Color::Yellow,
     draft: Color::LightBlue,
     sent: Color::Indexed(208),
-    replied: Color::Green,
+    // Violet, apart from the green of a resolved thread.
+    replied: Color::Indexed(135),
+    // Turquoise, greener than the cyan of the headings and the focused borders.
+    new: Color::Indexed(43),
     cursor: Style::new().bg(Color::Indexed(240)),
     selection: Style::new().add_modifier(Modifier::REVERSED),
 };
@@ -173,6 +178,7 @@ pub(crate) static LIGHT: Palette = Palette {
     draft: DARK.draft,
     sent: DARK.sent,
     replied: DARK.replied,
+    new: DARK.new,
     // A dark cell with its own light foreground, so the glyph under the cursor stays legible.
     cursor: Style::new().bg(Color::Indexed(238)).fg(Color::White),
     selection: Style::new().bg(Color::Indexed(153)),

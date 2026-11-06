@@ -54,7 +54,7 @@ fn an_answered_comment_is_a_box_right_under_the_block_its_passage_is_in() {
     assert_eq!(row("We ship on Friday."), row("\u{2570}") + 2, "{screen}");
     let screen = draw(&mut app, 110, 30);
     assert_eq!(screen.matches("Nobody yet.").count(), 1, "not repeated in the bubble: {screen}");
-    assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
+    assert!(screen.contains("2 messages"), "{screen}");
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn resolve_folds_the_thread_and_opens_it_again() {
     press(&mut app, KeyCode::Char('V'));
     assert!(journal.state.borrow().comments[0].resolved);
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "\" \u{b7} \u{2713} Resolved").contains("\u{b7} 1 message"), "{screen}");
+    assert!(row_with(&screen, "\" \u{b7} 1 message").contains("Resolved"), "{screen}");
     press(&mut app, KeyCode::Char('V'));
     assert!(!journal.state.borrow().comments[0].resolved);
     assert!(draw(&mut app, 80, 30).contains("Who watches at night?"));
@@ -118,10 +118,7 @@ fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
     press(&mut app, KeyCode::Char('f'));
     let screen = draw(&mut app, 70, 30);
     assert!(screen.contains("Who watches at night?"), "{screen}");
-    assert!(
-        row_with(&screen, "\u{256d}").contains("\u{2713} Resolved"),
-        "drawn open, still resolved: {screen}"
-    );
+    assert!(row_with(&screen, "\u{256d}").contains("Resolved"), "drawn open, still resolved: {screen}");
     press(&mut app, KeyCode::Char('f'));
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded again");
 }
@@ -166,7 +163,7 @@ fn a_comment_whose_words_are_gone_is_boxed_under_the_last_block() {
     let screen = draw(&mut app, 80, 30);
     let rows: Vec<&str> = screen.lines().collect();
     let last = rows.iter().position(|row| row.contains("We ship on Friday.")).expect("last block");
-    let head = rows.iter().position(|row| row.contains("Unanchored")).expect("marked");
+    let head = rows.iter().position(|row| row.contains("Orphaned")).expect("marked");
     assert_eq!(head, last + 2, "a blank row, then the box: {screen}");
 }
 
@@ -231,7 +228,7 @@ fn a_note_not_saved_in_a_thread_survives_a_reply_rewriting_the_thread() {
     let kept: Vec<String> = app.open.store.placed().iter().map(|p| p.annotation.body.clone()).collect();
     assert_eq!(kept, ["Which one?"], "the person's words are not lost");
     let id = app.open.store.placed()[0].annotation.id.clone();
-    assert_eq!(app.journal_tag(&id), " \u{b7} Not saved");
+    assert!(app.open.store.journal_unsaved(&id), "its bubble says Not saved");
 }
 
 #[test]
@@ -241,8 +238,8 @@ fn a_folded_threads_bubble_counts_its_replies_rather_than_repeat_them() {
     journal.state.borrow_mut().comments[0].resolved = true;
     app.poll_journal();
     let screen = draw(&mut app, 110, 30);
-    assert!(screen.contains("\" \u{b7} \u{2713} Resolved \u{b7}"), "folded: {screen}");
-    assert!(screen.contains("\u{21b3} 1 reply under the passage"), "{screen}");
+    assert!(screen.contains("\" \u{b7} 2 messages"), "folded: {screen}");
+    assert!(screen.contains("\u{2502} 2 messages"), "{screen}");
     assert!(!screen.contains("Nobody yet"), "nor in the bubble: {screen}");
-    assert!(screen.contains("\u{b7} \u{2713} Resolved \u{2500}"), "the bubble's title says so: {screen}");
+    assert!(screen.contains(" Resolved \u{256e}"), "the bubble's title says so: {screen}");
 }

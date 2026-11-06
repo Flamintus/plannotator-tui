@@ -15,9 +15,10 @@
 //!
 //! Every box's border is grey at rest, at any depth, of any kind and in any state; the box the
 //! person is in, the innermost, the current note's, whose bubble the rail lights, is drawn in
-//! that bubble's lit colour (`draw::lit`): its kind's, green once resolved. A box holding it
-//! stays grey. On a line of the document, no box entered, every comment on it is lit, not the
-//! sub-threads in them, boxes and bubbles alike (`lit_notes`).
+//! its state's colour, the last word of its head, and so is its bubble (`head::lit_border`). A
+//! box holding it stays grey. On a line of the document, no box entered, every comment on it is
+//! lit, not the sub-threads in them, boxes and bubbles alike (`lit_notes`). A bubble says what
+//! the head of its box says, as its title, and what its box holds, under its words (`bubble`).
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
@@ -49,15 +50,15 @@ use plannotator_tui_schema::Kind;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
+use ratatui::text::Line;
 
-use super::draw::lit;
 use super::{App, Focus, Mode};
 use crate::store::Placed;
 use field::Field;
+use head::{DRAFT, Mark, NOT_SAVED, lit_border, state_of};
 use rows::{BoxRow, Under, spaced};
 
-pub(super) use head::{RESOLVED, resolved_style};
-pub(super) use journal::state_marks;
+pub(super) use head::GREY;
 pub(super) use words::Passage;
 
 /// One thread as drawn: the passage it is on, then its messages.
@@ -75,9 +76,11 @@ pub(super) struct Thread {
     folded: Option<bool>,
     /// Folded (`true`) or drawn open (`false`) by hand, over its default (`Flow::by_hand`).
     by_hand: Option<bool>,
-    /// What the head says after the state: its kind when not a comment, not found, then what
-    /// its bubble says too (`journal::state_marks`): what became of its send, live, the round.
-    marks: Vec<String>,
+    /// What its head says of it, its folded line and its bubble's title alike (`head::Mark`,
+    /// `journal::marks`): not found, Live, its round, its state.
+    marks: Vec<Mark>,
+    /// The images attached to its comment, which its folded line and its bubble count.
+    images: usize,
     messages: Vec<Message>,
     /// The field the person types in its box, while they do, and where in it (`field`).
     field: Option<Field>,
@@ -132,16 +135,27 @@ impl Thread {
     /// Whether a reply in it, at any depth, is new: its folded line says so, as the line of its
     /// author does in the box.
     fn holds_new(&self) -> bool {
-        self.messages.iter().any(|message| message.tag.as_deref() == Some(journal::NEW))
+        self.messages.iter().any(|message| message.tag.as_deref() == Some(head::NEW))
             || self.sub_threads().any(Self::holds_new)
     }
 
-    /// Its messages and the threads under it, at every depth.
-    fn size(&self) -> (usize, usize) {
-        self.sub_threads().fold((self.messages.len(), 0), |(messages, threads), sub| {
-            let (sub_messages, sub_threads) = sub.size();
-            (messages + sub_messages, threads + 1 + sub_threads)
-        })
+    /// What its folded line and its bubble's title say of it (`head::Mark`): its head's marks,
+    /// and `New` while a reply in its box, at any depth, is.
+    fn marks_and_new(&self) -> Vec<Mark> {
+        let mut marks = self.marks.clone();
+        marks.extend(self.holds_new().then_some(Mark::New));
+        marks
+    }
+
+    /// What its box holds, as its folded line and its bubble count it (`head::counts`): its
+    /// own messages, the threads under it at every depth, its comment's images.
+    fn counts(&self) -> Vec<String> {
+        head::counts(self.messages.len(), self.threads_under(), self.images)
+    }
+
+    /// How many threads are under it, at every depth.
+    fn threads_under(&self) -> usize {
+        self.sub_threads().map(|sub| 1 + sub.threads_under()).sum()
     }
 }
 
@@ -263,14 +277,53 @@ impl App {
         store.notes().iter().filter(on_line).map(|placed| placed.annotation.id.clone()).collect()
     }
 
-    /// The boxes lit (`lit_notes`), each with the colour its border takes: its bubble's lit.
+    /// The boxes lit (`lit_notes`), each with the colour its border takes: its state's.
     fn lit_boxes(&self) -> Vec<(String, Style)> {
         let lit_box = |id: String| {
             let thread = self.open.flow.thread(&id)?;
-            let style = lit(thread.kind, thread.resolved);
+            let style = lit_border(state_of(&thread.marks));
             Some((id, style))
         };
         self.lit_notes().into_iter().filter_map(lit_box).collect()
+    }
+
+    /// What the bubble of note `id` says of it, as its folded line does (`Thread::marks_and_new`);
+    /// a note the flow does not draw yet, which waits for a send (`Store::journal_waits`), is a
+    /// draft; and its state is `Not saved` while the journal has not taken its last write.
+    fn bubble_marks(&self, id: &str) -> Vec<Mark> {
+        let waits = || self.open.store.journal_waits(id).unwrap_or(false);
+        let unseen = || waits().then_some(Mark::State(DRAFT)).into_iter().collect();
+        let mut marks = self.open.flow.thread(id).map_or_else(unseen, Thread::marks_and_new);
+        if self.open.store.journal_unsaved(id) {
+            marks.retain(|mark| !matches!(mark, Mark::State(_)));
+            marks.push(Mark::State(NOT_SAVED));
+        }
+        marks
+    }
+
+    /// The colour the bubble of note `id` takes lit: its state's, as its box's.
+    pub(super) fn lit_bubble(&self, id: &str) -> Style {
+        lit_border(state_of(&self.bubble_marks(id)))
+    }
+
+    /// The top edge of note `placed`'s bubble, `width` columns, corners and all, drawn in
+    /// `border`: what the head of its box says (`head::title`).
+    pub(super) fn bubble_title(&self, placed: &Placed<'_>, width: usize, border: Style) -> Line<'static> {
+        let id = &placed.annotation.id;
+        let marks = self.bubble_marks(id);
+        match self.open.flow.thread(id) {
+            Some(thread) => head::title(thread.kind, &thread.quote, &marks, width, border),
+            None => head::title(placed.kind(), placed.annotation.anchor.rendered(), &marks, width, border),
+        }
+    }
+
+    /// What the box of note `placed` holds, as its bubble counts it under its words
+    /// (`head::counts`); a note the flow does not draw yet is one message, with its images.
+    pub(super) fn held(&self, placed: &Placed<'_>) -> Vec<String> {
+        match self.open.flow.thread(&placed.annotation.id) {
+            Some(thread) => thread.counts(),
+            None => head::counts(1, 0, placed.annotation.plannotator_tui.images.len()),
+        }
     }
 }
 

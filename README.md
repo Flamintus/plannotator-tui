@@ -220,7 +220,7 @@ its light or dark value. A colour is a name (`yellow`, `light-cyan`), a 256-colo
 accent = "cyan"          # focused borders and gutter, the open file, menu and picker frames
 heading = "cyan"         # every heading level
 comment = "yellow"       # comment titles, the compose box, annotated rows in the gutter
-looks-good = "green"     # also a resolved thread's ✓ Resolved mark
+looks-good = "green"     # also a resolved thread's Resolved
 delete = "red"           # also the struck-through text
 comment-bg = "58"        # the tint under commented text
 looks-good-bg = "22"     # the tint under looks-good text
@@ -361,8 +361,8 @@ the agent answers with too:
   reply or on that file's lines, one write per action: editing or removing a draft writes that
   draft only. A sent comment is not edited or removed; reply under it, or resolve it. An
   attached image goes as an `Image: <path>` line of the comment's words, as the feedback names
-  it. A note the journal does not take stays here, `· not saved` in its title, until a write
-  takes it. Nothing the journal says moves the document while a comment is typed. The review
+  it. A note the journal does not take stays here, its bubble's title saying `Not saved` for its
+  state (grey), until a write takes it. Nothing the journal says moves the document while a comment is typed. The review
   outlives the pane: `last` on the same session, or the same file or folder, brings back its
   comments, the replies and the round. A file's notes kept outside the loop, in its own record,
   become drafts of its review the first time the file opens in the loop, once; the record keeps
@@ -389,7 +389,7 @@ the agent answers with too:
 - `L` turns Live on or off on a sent comment, on its bubble in the rail or with the cursor in
   its box, a sub-thread's at any depth, which has its own, apart from its thread's; never on a
   draft or from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
-  head of the box, its folded line and its bubble say `⚡ Live`, first of their marks and in
+  head of the box, its folded line and its bubble say `⚡ Live`, after the passage and in
   yellow, while it is on, and the footer
   says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of
   `s` itself: pasted into the agent's pane, then marked delivered. Under any other thread it
@@ -406,22 +406,30 @@ the agent answers with too:
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
-  Inbox: the head of a box, at any depth, says `⚡ Live` first (yellow), its kind when it is no
-  comment (`Looks good`, `Deletion`), `Unanchored` once its words are no longer found, what
-  became of its send (`Queued`, `Sent` in orange, `Read`, `Working`, `Replied` in green), and
-  its round (`Round 2`) or `Draft` for a draft (light blue), as its bubble's title does; a
-  message names its author alone, the person's reply with the state it is still in, `Draft`
-  until sent, then `Sent` until answered, then nothing, an agent's reply `New`; and a bubble counts the replies under the passage (`↳ 1 reply under
-  the passage`), its thread open or folded.
+  Inbox. The head of a box, at any depth, says on its left its kind's glyph (`💬`, `👍`, `✗`),
+  the passage, `Orphaned` once its words are no longer found and `⚡ Live` (yellow) while it is
+  on; on its right its round (`Round 2`, grey), then its state, last: `Draft` (light blue) for
+  a draft, which has no round, what became of its send (`Queued`, `Read` and `Working` grey,
+  `Sent` orange, `Replied` violet), or `Resolved` (green), and then neither Live nor its send:
+  `╭ ▾ 💬 "…" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`. No id is shown. On a narrow head
+  the round gives way first and the state last, the passage keeping 16 columns. A message names
+  its author alone, the person's reply with the state it is still in, `Draft` until sent, then
+  `Sent` until answered, then nothing, an agent's reply `New` (turquoise). A bubble's title
+  says what the head of its box says but the round, `New` first on its right while a reply in
+  the box is unseen (`╭ 💬 "…" · ⚡ Live ──── New · Sent ╮`); its passage is cut to the rail's
+  width first, keeping 6 columns, then `Orphaned`, `New` and `⚡ Live` give way, the state
+  last. Under its words a bubble counts what its box holds, as its folded line does
+  (`2 messages · 1 sub-thread · 1 image`), its thread open or folded.
 - Each comment the journal has, a draft included (`Draft`), is a box right under the block
   its passage is in (under a whole list or table when the passage is inside one): the passage
-  at its head, then the comment and each reply by author. A resolved thread folds to one line (`▸ ✓ Resolved · 💬 "…"
-  · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
-  `looks-good` colour (`[colors]`). Every other box is open, `▾` at its head. Every box's
-  border is grey, its head's and its folded line's with it, at any depth; only the box the keys
-  act on, the innermost, the current note's, takes the colour of its bubble lit in the rail:
-  its kind's (`comment`, `looks-good`, `delete`), `looks-good` once resolved. A box holding it
-  stays grey. On a line of the document, no box entered, every comment on it is lit, its box
+  at its head, then the comment and each reply by author. A resolved thread folds to one line
+  (`▸ 💬 "…" · 2 messages ──── Round 1 · Resolved ─╴`) once nothing under it is open, its
+  bubble dimmed; `Resolved` takes the `looks-good` colour (`[colors]`). Every other box is
+  open, `▾` at its head. Every box's border is grey, its head's and its folded line's with it,
+  at any depth; only the box the keys act on, the innermost, the current note's, takes the
+  colour of its state, and so does its bubble lit in the rail: `Draft` light blue, `Sent`
+  orange, `Replied` violet, `Resolved` green, grey for `Queued`, `Read` and `Working`. A box
+  holding it stays grey. On a line of the document, no box entered, every comment on it is lit, its box
   and its bubble, not the sub-threads in them; once the cursor is in one of them, that box
   alone. Without the loop, the replies and the resolved state a record may carry
   change nothing on screen.
@@ -431,8 +439,10 @@ the agent answers with too:
   are.
 - Any box folds and opens by hand, at any depth, of any kind, resolved, sent or a draft: `h` on
   its head folds it to one line, `▸` first, that says what its head says and what it holds
-  (`▸ 💬 "…" · Replied · Round 1 · New · 2 messages`, `New` while a reply in it is), its `▸`
-  and its rule in the box's border colour; `l` or `Enter` (a draft's: `l`) there draws it
+  (`▸ 💬 "…" · ⚡ Live · 2 messages · 1 sub-thread · 1 image ──── New · Round 1 · Replied ─╴`:
+  the box's own messages, not its sub-threads', then its sub-threads and its comment's images
+  when there are some, `New` while a reply in it is; on a narrow line the marks give way, the
+  counts stay), its `▸` and its rule in the box's border colour; `l` or `Enter` (a draft's: `l`) there draws it
   open. A click on the folded line or on the head does the same, the cursor on the line. The
   cursor stays on the line, which turns from one to the other, and the thread keys (`s`, `C`,
   `V`, `L`) act on its note.
@@ -454,8 +464,7 @@ the agent answers with too:
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
   a comment whose words are no longer found last, as its box is under the last block, each
   drawn and acted on as any note's (edit, remove, image, reply, resolve, send now). The bubbles
-  lit are the boxes lit, in the same colour (its kind's, `looks-good` once its thread is
-  resolved): the current note's, the one the keys act on, in the rail or in the box the cursor
+  lit are the boxes lit, in the same colour (its state's): the current note's, the one the keys act on, in the rail or in the box the cursor
   is in at any depth (a sub-thread's alone, not its thread's); on a line of the document, every
   comment of the selected block, not the sub-threads under them, the keys acting on none. The
   rail scrolls only as far as keeps the first lit in full. Without the loop each

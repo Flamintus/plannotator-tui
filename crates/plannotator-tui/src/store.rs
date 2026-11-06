@@ -374,6 +374,11 @@ impl Store {
         self.annotations.iter().any(|a| a.id == id && !a.plannotator_tui.images.is_empty())
     }
 
+    /// How many images note `id` has attached.
+    pub(crate) fn images(&self, id: &str) -> usize {
+        self.annotations.iter().find(|a| a.id == id).map_or(0, |a| a.plannotator_tui.images.len())
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.annotations.len()
     }

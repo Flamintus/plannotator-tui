@@ -2,7 +2,7 @@
 //! each comment with its replies and the sub-threads on their words, the person's drafts and
 //! what became of each send, the agent's replies not seen yet marked new, and a comment whose
 //! words are no longer found boxed at the end of the words it was on, marked so, in the words
-//! the Inbox's boxes use (`Round 2`, `Draft`, `Sent`, `Replied`, `⚡ Live`, `New`, `Unanchored`). One
+//! the Inbox's boxes use (`Orphaned`, `⚡ Live`, `Round 2`, `Draft`, `Sent`, `Replied`, `New`). One
 //! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
 //! and its marks with it, a draft's box `Draft` at any depth. The view decides what folds.
 
@@ -10,51 +10,48 @@ use std::collections::HashSet;
 use std::ops::Range;
 
 use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, ThreadNode};
-use plannotator_tui_schema::Kind;
 
 use super::super::App;
-use super::head::{DRAFT, LIVE, REPLIED, SENT};
+use super::head::{DRAFT, Mark, NEW, QUEUED, READ, REPLIED, RESOLVED, SENT, WORKING};
 use super::{Message, Thread};
 use crate::journal::{passage, tree};
 use crate::store::kind_of;
 
-/// What the line of a reply's author adds while the person has not seen it, and what the folded
-/// line of a thread holding it says.
-pub(super) const NEW: &str = "New";
-
 /// What became of a send, in the words the Inbox's boxes use for it.
 fn status_word(status: Status) -> Option<&'static str> {
     Some(match status {
-        Status::Pending => "Queued",
+        Status::Pending => QUEUED,
         Status::Delivered => SENT,
-        Status::Read => "Read",
-        Status::Working => "Working",
+        Status::Read => READ,
+        Status::Working => WORKING,
         Status::Replied => REPLIED,
         Status::Unknown => return None,
     })
 }
 
-/// What a comment's state is, as its box's head and its bubble in the rail both say it: while
-/// it is open, Live first (`LIVE`), then what became of its send; then its round, or Draft
-/// for a draft. Live goes first, so a narrow head keeps it longest; the round goes last, so it
-/// is given up first.
-pub(in crate::app) fn state_marks(node: &ThreadNode) -> Vec<String> {
-    let mut marks = Vec::new();
-    if node.state != ThreadState::Resolved {
-        marks.extend(node.live.then(|| LIVE.to_owned()));
-        marks.extend(node.status.and_then(status_word).map(str::to_owned));
-    }
-    marks.push(if node.draft { DRAFT.to_owned() } else { format!("Round {}", node.round) });
-    marks
-}
-
-/// The kind a box's head names, when it is not a comment: its glyph alone may be missed.
-fn kind_word(kind: Kind) -> Option<&'static str> {
-    match kind {
-        Kind::Comment => None,
-        Kind::LooksGood => Some("Looks good"),
-        Kind::Delete => Some("Deletion"),
-    }
+/// What a comment's head says of it, its box's, its folded line's and its bubble's alike
+/// (`head::Mark`, which places them): `Orphaned` once its words are no longer found
+/// (`anchored` false); `⚡ Live` while it is open; its round, but for a draft, which has none;
+/// and its state: `Resolved`, else `Draft`, else what became of its send. A resolved thread says
+/// neither what became of its last send nor Live.
+fn marks(node: &ThreadNode, anchored: bool) -> Vec<Mark> {
+    let resolved = node.state == ThreadState::Resolved;
+    let state = if resolved {
+        Some(RESOLVED)
+    } else if node.draft {
+        Some(DRAFT)
+    } else {
+        node.status.and_then(status_word)
+    };
+    [
+        (!anchored).then_some(Mark::Orphaned),
+        (node.live && !resolved).then_some(Mark::Live),
+        (!node.draft).then_some(Mark::Round(node.round)),
+        state.map(Mark::State),
+    ]
+    .into_iter()
+    .flatten()
+    .collect()
 }
 
 /// What a reply says beside its author, its states that are not final only: the person's
@@ -86,10 +83,16 @@ fn passage_range(words: &str, sub: &ThreadNode) -> Option<Range<usize>> {
 impl Thread {
     /// `node`'s thread, at any depth: `range` is where its passage is in the words it is on
     /// (the document's, or its message's), `None` when they no longer hold it, which its head
-    /// says (`Unanchored`); its sub-threads are built the same way on their messages' words.
-    fn of_node(node: &ThreadNode, seen: &HashSet<String>, range: Option<Range<usize>>) -> Self {
+    /// says (`Orphaned`); `images` counts the images of a note by its id. Its sub-threads are
+    /// built the same way on their messages' words.
+    fn of_node(
+        node: &ThreadNode,
+        seen: &HashSet<String>,
+        range: Option<Range<usize>>,
+        images: &impl Fn(&str) -> usize,
+    ) -> Self {
         let threads = |subs: &[ThreadNode], words: &str| {
-            subs.iter().map(|sub| Self::of_node(sub, seen, passage_range(words, sub))).collect()
+            subs.iter().map(|sub| Self::of_node(sub, seen, passage_range(words, sub), images)).collect()
         };
         let comment = Message {
             id: node.id.clone(),
@@ -108,22 +111,16 @@ impl Thread {
             draft: reply.draft,
             threads: threads(&reply.sub_threads, &reply.text),
         });
-        let kind = kind_of(node);
-        // A resolved thread's last send is history: its head says resolved and its round. Its
-        // kind and Unanchored come after Live, which leads the marks.
-        let mut marks = state_marks(node);
-        let after_live = usize::from(marks.first().is_some_and(|mark| mark == LIVE));
-        let named = kind_word(kind).map(str::to_owned).into_iter();
-        marks.splice(after_live..after_live, named.chain(range.is_none().then(|| "Unanchored".to_owned())));
         Self {
             id: node.id.clone(),
-            kind,
+            kind: kind_of(node),
             quote: node.place.quote.clone(),
+            marks: marks(node, range.is_some()),
             range,
             resolved: node.state == ThreadState::Resolved,
             folded: Some(node.folded),
             by_hand: None,
-            marks,
+            images: images(&node.id),
             messages: std::iter::once(comment).chain(replies).collect(),
             field: None,
         }
@@ -139,6 +136,7 @@ impl App {
         let seen = self.review_loop.as_mut()?.seen(view);
         let open = &self.open;
         let node = |id: &str| tree::find(&view.threads, id);
+        let images = |id: &str| open.store.images(id);
         let mut threads = Vec::new();
         for placed in open.store.placed() {
             let (Some(block), Some(node)) =
@@ -146,12 +144,12 @@ impl App {
             else {
                 continue;
             };
-            threads.push((block, Thread::of_node(node, seen, Some(placed.range.clone()))));
+            threads.push((block, Thread::of_node(node, seen, Some(placed.range.clone()), &images)));
         }
         let last = open.doc.blocks.len().checked_sub(1);
         for orphan in open.store.orphaned() {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
-            threads.push((block, Thread::of_node(node, seen, None)));
+            threads.push((block, Thread::of_node(node, seen, None, &images)));
         }
         Some(threads)
     }

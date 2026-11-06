@@ -1,198 +1,361 @@
 //! What a thread says of itself in one line, the same at every depth, for every kind and in
-//! every state: the head of its box (its kind's glyph, its passage, its state and marks, its
-//! id), `▾` first, or, folded, its folded line, `▸` first, which says what the head says and
-//! what the box holds. Each comes with the columns that are its box's border, grey here, which
-//! the box the person is in has drawn lit over them (`rows::BoxRow::border`).
+//! every state, by one code for the three places that say it: the head of its box, `▾` first;
+//! its folded line, `▸` first, which says what the head says and what the box holds; and its
+//! bubble's title in the rail. Its kind's glyph and its passage, then, each after a dot, the
+//! indicators on the left, a rule, and the indicators on the right, the state last. The words
+//! of the indicators, their colours (`mark_style`), their places and which of them give way
+//! first on a narrow line (`Mark`) are decided here alone, and so are the counts of what a box
+//! holds (`counts`). Each line comes with the columns that are its box's border, grey here,
+//! which the box the person is in has drawn lit over them, in its state's colour (`lit_border`,
+//! `rows::BoxRow::border`).
 
 use std::ops::Range;
 
+use plannotator_tui_schema::Kind;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use unicode_width::UnicodeWidthStr;
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use super::super::draw::short_id;
 use super::super::glyph;
 use super::Thread;
-use super::journal::NEW;
 use super::rows::{fit, one_line};
 use crate::theme::palette;
 
-/// Columns of the passage a folded line keeps before it gives up the note's id.
+/// Columns of the passage a box's head and its folded line keep before the indicators give way.
 const MIN_QUOTE_WIDTH: usize = 16;
 
-/// The mark of a resolved thread: at its box's head, on its folded line, in its bubble's title.
-pub(in crate::app) const RESOLVED: &str = "\u{2713} Resolved";
+/// Columns of the passage a bubble's title keeps before the indicators give way: fewer than a
+/// box's, since the box under the passage shows it whole and the rail is narrow.
+const MIN_TITLE_QUOTE_WIDTH: usize = 6;
 
-/// How the resolved mark is drawn: in the looks-good colour, so it stands apart from the grey
-/// of the rest of the line.
-pub(in crate::app) fn resolved_style() -> Style {
-    Style::new().fg(palette().looks_good).add_modifier(Modifier::BOLD)
-}
+/// A Live thread, while it is open: a reply saved under it goes at once.
+pub(super) const LIVE: &str = "\u{26a1} Live";
 
-/// The mark of a Live thread, first of its marks: at its box's head, on its folded line, in its
-/// bubble's title.
-pub(in crate::app) const LIVE: &str = "\u{26a1} Live";
+// The states of a comment, in the order it goes through them.
+
+/// A comment just written that the journal has not taken yet: it has no box, its bubble says
+/// it.
+pub(super) const NOT_SAVED: &str = "Not saved";
 
 /// A comment not sent yet, at its box's head and beside the person's reply.
-pub(in crate::app) const DRAFT: &str = "Draft";
+pub(super) const DRAFT: &str = "Draft";
+
+/// A send not yet in the agent's session.
+pub(super) const QUEUED: &str = "Queued";
 
 /// A comment sent and waiting for its answer: what the journal calls delivered, at its box's
 /// head; beside the person's reply, any send not answered yet.
-pub(in crate::app) const SENT: &str = "Sent";
+pub(super) const SENT: &str = "Sent";
+
+/// A send the agent read.
+pub(super) const READ: &str = "Read";
+
+/// A send the agent's session works on.
+pub(super) const WORKING: &str = "Working";
 
 /// A comment the agent answered, at its box's head.
-pub(in crate::app) const REPLIED: &str = "Replied";
+pub(super) const REPLIED: &str = "Replied";
 
-/// How a mark is drawn wherever a box or its author line says it: the resolved mark in its
-/// colour, Live in the lightning's yellow, a draft light blue, sent orange, replied green, the
-/// others grey.
-pub(super) fn mark_style(mark: &str) -> Style {
-    let colour = match mark {
-        RESOLVED => return resolved_style(),
-        LIVE => palette().live,
-        DRAFT => palette().draft,
-        SENT => palette().sent,
-        REPLIED => palette().replied,
-        _ => return Style::new().fg(Color::DarkGray),
-    };
-    Style::new().fg(colour).add_modifier(Modifier::BOLD)
-}
+/// A resolved thread: its head says neither what became of its last send nor Live.
+pub(super) const RESOLVED: &str = "Resolved";
 
-/// The border of every box at rest, its head's and its folded line's mark and rule with it, at
-/// every depth, of every kind and in every state: grey, as a bubble's in the rail that is not
-/// lit. The box the person is in, the current note's, is drawn in its bubble's lit colour over
-/// it (`draw::lit`).
+/// A reply of the agent's the person has not seen: beside its author, and on the folded line
+/// of a box holding it at any depth.
+pub(super) const NEW: &str = "New";
+
+/// A thread whose words are no longer found.
+const ORPHANED: &str = "Orphaned";
+
+/// What is drawn grey: the indicators that have no colour of their own (the round,
+/// `Orphaned`, `Not saved`, `Queued`, `Read`, `Working`), the counts, the dots between them.
+pub(in crate::app) const GREY: Style = Style::new().fg(Color::DarkGray);
+
+/// The border of every box at rest, its head's and its folded line's rule with it, at every
+/// depth, of every kind and in every state: grey, as a bubble's in the rail that is not lit.
+/// The box the person is in, the current note's, is drawn in its state's colour over it
+/// (`lit_border`).
 pub(super) const BORDER: Style = Style::new().fg(Color::DarkGray);
 
-/// `╭ ▾ ✗ "passage" ──── Deletion · Replied · Live · Round 2 · 3e05f ╮`: `▾`, where `left` or a
-/// click folds the box, the passage cut to fit, the state, the marks and the tail of the note's
-/// id, which its bubble's title shows too. In a narrow box the marks go first, the last first,
-/// then the state, then the id, before the passage gets too short. With the columns of its
-/// border: all but the marks and the id.
-pub(super) fn head(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<usize>>) {
-    let border = BORDER;
-    let lead = format!("\u{256d} \u{25be} {} ", glyph(thread.kind));
-    let id = short_id(&thread.id);
-    let chips: Vec<&str> = thread
-        .resolved
-        .then_some(RESOLVED)
-        .into_iter()
-        .chain(thread.marks.iter().map(String::as_str))
-        .collect();
-    let mut rights: Vec<Vec<&str>> = (1..=chips.len())
-        .rev()
-        .map(|kept| chips.iter().take(kept).copied().chain([id.as_str()]).collect())
-        .collect();
-    rights.push(vec![id.as_str()]);
-    let passage = one_line(&thread.quote);
-    let wanted = passage.width().min(MIN_QUOTE_WIDTH);
-    let right = rights
-        .iter()
-        .find(|right| width.saturating_sub(lead.width() + chips_width(right) + 4) >= wanted)
-        .map_or(&[][..], Vec::as_slice);
-    let room = width.saturating_sub(lead.width() + chips_width(right) + 4);
-    let quote = format!("\"{}\"", fit(&passage, room));
-    let fill = width.saturating_sub(lead.width() + quote.width() + chips_width(right) + 2);
-    // The border runs up to the marks, and on past them to the corner.
-    let marks = lead.width() + quote.width() + 1 + fill;
-    let corner = marks + chips_width(right);
-    let mut spans = vec![
-        Span::styled(lead, border),
-        Span::styled(quote, border.add_modifier(Modifier::ITALIC)),
-        Span::styled(format!(" {}", "\u{2500}".repeat(fill)), border),
-    ];
-    spans.extend(chips_spans(right));
-    spans.push(Span::styled("\u{256e}", border));
-    (Line::from(spans), vec![0..marks, corner..corner + 1])
+/// An indicator a thread's head says, its folded line and its bubble's title alike.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Mark {
+    /// Its words are no longer found.
+    Orphaned,
+    /// Live, while it is open.
+    Live,
+    /// A reply in its box, at any depth, the person has not seen: on its folded line and in
+    /// its bubble's title.
+    New,
+    /// The round its comment was sent in; a draft has none.
+    Round(u64),
+    /// Its state: `Not saved` (its bubble alone says it), `Draft`, what became of its send,
+    /// `Resolved`.
+    State(&'static str),
 }
 
-/// Columns `chips_spans` takes: the chips with their separators and a space each side; one
-/// space for none.
-fn chips_width(chips: &[&str]) -> usize {
-    if chips.is_empty() { 1 } else { chips.join(" \u{b7} ").width() + 2 }
-}
-
-/// ` ✓ Resolved · Round 2 · 3e05f `: the resolved mark in its colour, the rest grey.
-fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
-    let grey = Style::new().fg(Color::DarkGray);
-    let mut spans = vec![Span::styled(" ", grey)];
-    for (index, chip) in chips.iter().enumerate() {
-        if index > 0 {
-            spans.push(Span::styled(" \u{b7} ", grey));
+impl Mark {
+    fn word(&self) -> String {
+        match self {
+            Self::Orphaned => ORPHANED.to_owned(),
+            Self::Live => LIVE.to_owned(),
+            Self::New => NEW.to_owned(),
+            Self::Round(round) => format!("Round {round}"),
+            Self::State(state) => (*state).to_owned(),
         }
-        spans.push(Span::styled((*chip).to_owned(), mark_style(chip)));
     }
-    if !chips.is_empty() {
-        spans.push(Span::styled(" ", grey));
+
+    /// Where it is said, in this order: on the left, after the passage, `Orphaned` then
+    /// `⚡ Live`; on the right, `New`, the round, then the state, last.
+    fn place(&self) -> u8 {
+        match self {
+            Self::Orphaned => 0,
+            Self::Live => 1,
+            Self::New => 2,
+            Self::Round(_) => 3,
+            Self::State(_) => 4,
+        }
     }
-    spans
+
+    fn on_left(&self) -> bool {
+        self.place() < Self::New.place()
+    }
+
+    /// When it gives way on a line too narrow for every indicator, the lowest first: the
+    /// round first, the state last, so a narrow line still says where its thread is.
+    fn gives_way(&self) -> u8 {
+        match self {
+            Self::Round(_) => 0,
+            Self::Orphaned => 1,
+            Self::New => 2,
+            Self::Live => 3,
+            Self::State(_) => 4,
+        }
+    }
+}
+
+/// The state `marks` say, their last word: the colour of a box and of its bubble lit.
+pub(super) fn state_of(marks: &[Mark]) -> Option<&'static str> {
+    marks.iter().find_map(|mark| match mark {
+        Mark::State(state) => Some(*state),
+        _ => None,
+    })
+}
+
+/// The colour of an indicator that has one.
+fn colour(word: &str) -> Option<Color> {
+    let palette = palette();
+    Some(match word {
+        LIVE => palette.live,
+        DRAFT => palette.draft,
+        SENT => palette.sent,
+        REPLIED => palette.replied,
+        RESOLVED => palette.looks_good,
+        NEW => palette.new,
+        _ => return None,
+    })
+}
+
+/// How an indicator is drawn wherever a box, its folded line, its bubble's title or an author
+/// line says it: Live in the lightning's yellow, a draft light blue, sent orange, replied
+/// violet, new turquoise, each bold; resolved green, not bold; the others grey.
+pub(super) fn mark_style(word: &str) -> Style {
+    match colour(word) {
+        Some(colour) if word == RESOLVED => Style::new().fg(colour),
+        Some(colour) => Style::new().fg(colour).add_modifier(Modifier::BOLD),
+        None => GREY,
+    }
+}
+
+/// The border of the box the person is in, the innermost, and of its bubble lit in the rail:
+/// its state's colour (`state_of`), grey for a state drawn grey (`Not saved`, `Queued`, `Read`,
+/// `Working`) and for none.
+pub(super) fn lit_border(state: Option<&str>) -> Style {
+    Style::new().fg(state.and_then(colour).unwrap_or(Color::DarkGray))
+}
+
+/// What a box holds, as its folded line and its bubble count it, in this order: its messages
+/// (its comment and the replies under it, not its sub-threads'), then, only when it has some,
+/// its sub-threads and its comment's images.
+pub(super) fn counts(messages: usize, sub_threads: usize, images: usize) -> Vec<String> {
+    let count = |n: usize, word: &str| format!("{n} {word}{}", if n == 1 { "" } else { "s" });
+    std::iter::once(count(messages, "message"))
+        .chain((sub_threads > 0).then(|| count(sub_threads, "sub-thread")))
+        .chain((images > 0).then(|| count(images, "image")))
+        .collect()
+}
+
+/// Where a thread's line is drawn, and how.
+struct Shape {
+    /// What opens it, its box's border.
+    lead: &'static str,
+    /// Whether its kind's glyph and its passage are its box's border too, lit with it, the
+    /// passage in italics: at its head and in its bubble's title; on its folded line they are
+    /// grey.
+    passage_lit: bool,
+    /// What closes it, its box's border.
+    end: &'static str,
+    /// Columns of the passage kept before the indicators give way (`Mark::gives_way`).
+    min_quote: usize,
+    /// Whether it says the round: a box's head and its folded line do, a bubble's title does
+    /// not.
+    round: bool,
+}
+
+/// `╭ ▾ ✗ "passage" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`: `▾`, where `left` or a click
+/// folds the box, its kind's glyph, the passage cut to fit, the indicators. With the columns of
+/// its border: all but the indicators.
+pub(super) fn head(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<usize>>) {
+    let shape = Shape {
+        lead: "\u{256d} \u{25be} ",
+        passage_lit: true,
+        end: "\u{256e}",
+        min_quote: MIN_QUOTE_WIDTH,
+        round: true,
+    };
+    line(&shape, (thread.kind, &thread.quote), &thread.marks, &[], width, BORDER)
 }
 
 /// A folded thread in one line, saying what the head of its box says, then what the box holds:
-/// `▸ 💬 "passage" · ✓ Resolved · Round 2 · 3 messages · 1 sub-thread · 3e05f ─╴`,
-/// `▸ ✗ "passage" · Deletion · Replied · Round 2 · New · 2 messages · 3e05f ─╴` (`New` while a
-/// reply in it, at any depth, is), which `right` or a click draws open there; `╶` first for a
-/// box too narrow to draw, which does not open. `▸` and the rule are its box's border, with
-/// their columns.
+/// `▸ 💬 "passage" · ⚡ Live · 3 messages · 1 sub-thread ──── New · Round 2 · Sent ─╴` (`New`
+/// while a reply in it, at any depth, is), which `right` or a click draws open there; `╶`
+/// first for a box too narrow to draw, which does not open. On a narrow line the indicators
+/// give way, the counts stay. `▸` and the rule are its box's border, with their columns.
 pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<usize>>) {
-    let (messages, threads) = thread.size();
-    let start = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
-    let plural = |n: usize| if n == 1 { "" } else { "s" };
-    let counts = match threads {
-        0 => format!("{messages} message{}", plural(messages)),
-        _ => format!("{messages} message{} \u{b7} {threads} sub-thread{}", plural(messages), plural(threads)),
+    let lead = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
+    let shape =
+        Shape { lead, passage_lit: false, end: "\u{2500}\u{2574}", min_quote: MIN_QUOTE_WIDTH, round: true };
+    line(&shape, (thread.kind, &thread.quote), &thread.marks_and_new(), &thread.counts(), width, BORDER)
+}
+
+/// A bubble's top edge in the rail, `width` columns, corners and all, as the head of its box
+/// but for the round, `New` first on the right as on its folded line:
+/// `╭ 💬 "Deploy…" · ⚡ Live ──── New · Sent ╮`, its passage cut first, drawn in `border`.
+pub(super) fn title(kind: Kind, quote: &str, marks: &[Mark], width: usize, border: Style) -> Line<'static> {
+    let shape = Shape {
+        lead: "\u{256d} ",
+        passage_lit: true,
+        end: "\u{256e}",
+        min_quote: MIN_TITLE_QUOTE_WIDTH,
+        round: false,
     };
-    let lead = format!("{start}{} ", glyph(thread.kind));
-    let passage = one_line(&thread.quote);
-    let new = thread.holds_new().then_some(NEW);
-    // The head's chips in the head's order (Live, else the resolved mark, first), then what is new.
-    let resolved = thread.resolved.then_some(RESOLVED);
-    let marks: String = resolved
-        .into_iter()
-        .chain(thread.marks.iter().map(String::as_str))
-        .chain(new)
-        .flat_map(|mark| [" \u{b7} ", mark])
-        .collect();
-    // The passage tells folded threads apart better than the id and the marks: they go first.
-    let tails = [
-        format!("{marks} \u{b7} {counts} \u{b7} {} ", short_id(&thread.id)),
-        format!("{marks} \u{b7} {counts} "),
-        format!(" \u{b7} {counts} "),
-    ];
-    let wanted = passage.width().min(MIN_QUOTE_WIDTH);
-    let tail = tails
-        .iter()
-        .find(|tail| width.saturating_sub(lead.width() + tail.width() + 3) >= wanted)
-        .or_else(|| tails.last())
-        .cloned()
-        .unwrap_or_default();
-    let room = width.saturating_sub(lead.width() + tail.width() + 3);
-    let quote = format!("\"{}\"", fit(&passage, room));
-    let fill = width.saturating_sub(lead.width() + quote.width() + tail.width() + 1);
-    let line = fit(&format!("{lead}{quote}{tail}{}\u{2574}", "\u{2500}".repeat(fill)), width);
-    let grey = Style::new().fg(Color::DarkGray);
-    let Some(rest) = line.strip_prefix(start) else { return (Line::styled(line, grey), Vec::new()) };
-    // The mark that opens the line and the rule that closes it are the folded box's border.
-    let border = BORDER;
-    let mut spans = vec![Span::styled(start, border)];
-    let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
-    // The marks after the passage drawn as at the head, each coloured mark in its colour
-    // (`mark_style`), the rest grey.
-    let mut from = 0;
-    let mut search = (lead.len() - start.len() + quote.len()).min(words.len());
-    while let Some((at, mark)) = [LIVE, RESOLVED, DRAFT, SENT, REPLIED]
-        .into_iter()
-        .filter_map(|mark| words.get(search..)?.find(mark).map(|at| (search + at, mark)))
-        .min_by_key(|(at, _)| *at)
-    {
-        spans.push(Span::styled(words[from..at].to_owned(), grey));
-        spans.push(Span::styled(mark, mark_style(mark)));
-        from = at + mark.len();
-        search = from;
+    line(&shape, (kind, quote), marks, &[], width, border).0
+}
+
+/// A thread's line, `width` columns: `shape`'s lead, the kind's glyph, the passage cut to fit
+/// between quotes, the indicators on the left each after a dot, then `counts` (a folded box's),
+/// a rule, the indicators on the right (the round where `shape` says it), `shape`'s end. When
+/// the line is too narrow for every indicator, they give way one by one (`Mark::gives_way`)
+/// before the passage keeps fewer than `shape.min_quote` columns (or its own width); the counts
+/// never do, and a line still too wide is cut. With the columns that are its box's border,
+/// drawn in `border`.
+fn line(
+    shape: &Shape,
+    (kind, quote): (Kind, &str),
+    marks: &[Mark],
+    counts: &[String],
+    width: usize,
+    border: Style,
+) -> (Line<'static>, Vec<Range<usize>>) {
+    let passage = one_line(quote);
+    let glyph = format!("{} ", glyph(kind));
+    let mut kept: Vec<&Mark> =
+        marks.iter().filter(|mark| shape.round || !matches!(mark, Mark::Round(_))).collect();
+    kept.sort_by_key(|mark| mark.place());
+    let words = |kept: &[&Mark], left: bool| -> Vec<String> {
+        kept.iter().filter(|mark| mark.on_left() == left).map(|mark| mark.word()).collect()
+    };
+    // Each word on the left after a dot; the ones on the right between a space each side.
+    let after_dots = |words: &[String]| words.iter().map(|word| word.width() + 3).sum::<usize>();
+    let between_spaces =
+        |words: &[String]| if words.is_empty() { 0 } else { words.join(" \u{b7} ").width() + 2 };
+    // All but the passage: its quotes, the space before the rule and one column of it at least.
+    let around = |kept: &[&Mark]| {
+        shape.lead.width()
+            + glyph.width()
+            + 2
+            + after_dots(&words(kept, true))
+            + after_dots(counts)
+            + 2
+            + between_spaces(&words(kept, false))
+            + shape.end.width()
+    };
+    let wanted = passage.width().min(shape.min_quote);
+    while around(&kept) + wanted > width {
+        let first = kept.iter().enumerate().min_by_key(|(_, mark)| mark.gives_way()).map(|(at, _)| at);
+        let Some(first) = first else { break };
+        kept.remove(first);
     }
-    spans.push(Span::styled(words[from..].to_owned(), grey));
-    let rule = start.width() + words.width();
-    let end = start.width() + rest.width();
-    spans.push(Span::styled(rest[words.len()..].to_owned(), border));
-    (Line::from(spans), vec![0..start.width(), rule..end])
+    let quote = format!("\"{}\"", fit(&passage, width.saturating_sub(around(&kept))));
+    let fill = width.saturating_sub(around(&kept) + quote.width() - 3).max(1);
+    let (glyph_style, quote_style) =
+        if shape.passage_lit { (border, border.add_modifier(Modifier::ITALIC)) } else { (GREY, GREY) };
+    let mut parts = vec![
+        (Span::styled(shape.lead, border), true),
+        (Span::styled(glyph, glyph_style), shape.passage_lit),
+        (Span::styled(quote, quote_style), shape.passage_lit),
+    ];
+    for word in words(&kept, true) {
+        let style = mark_style(&word);
+        parts.extend([(Span::styled(" \u{b7} ", GREY), false), (Span::styled(word, style), false)]);
+    }
+    for count in counts {
+        parts.extend([(Span::styled(" \u{b7} ", GREY), false), (Span::styled(count.clone(), GREY), false)]);
+    }
+    parts.push((Span::styled(format!(" {}", "\u{2500}".repeat(fill)), border), true));
+    let right = words(&kept, false);
+    for (index, word) in right.iter().enumerate() {
+        let before = if index == 0 { " " } else { " \u{b7} " };
+        parts.extend([
+            (Span::styled(before, GREY), false),
+            (Span::styled(word.clone(), mark_style(word)), false),
+        ]);
+    }
+    if !right.is_empty() {
+        parts.push((Span::styled(" ", GREY), false));
+    }
+    parts.push((Span::styled(shape.end, border), true));
+    let parts = cut(parts, width);
+    let mut columns: Vec<Range<usize>> = Vec::new();
+    let mut at = 0;
+    for (span, of_border) in &parts {
+        let next = at + span.width();
+        if *of_border {
+            match columns.last_mut() {
+                Some(last) if last.end == at => last.end = next,
+                _ => columns.push(at..next),
+            }
+        }
+        at = next;
+    }
+    (Line::from(parts.into_iter().map(|(span, _)| span).collect::<Vec<_>>()), columns)
+}
+
+/// `parts` cut to `width` columns, the last one kept ending in `…` when they are cut.
+fn cut(parts: Vec<(Span<'static>, bool)>, width: usize) -> Vec<(Span<'static>, bool)> {
+    if parts.iter().map(|(span, _)| span.width()).sum::<usize>() <= width {
+        return parts;
+    }
+    let mut room = width;
+    let mut kept = Vec::new();
+    for (span, of_border) in parts {
+        // A part that fits with a column to spare for the `…` stays whole.
+        if span.width() < room {
+            room -= span.width();
+            kept.push((span, of_border));
+            continue;
+        }
+        let mut text = String::new();
+        for ch in span.content.chars() {
+            if text.width() + ch.width().unwrap_or(0) + 1 > room {
+                break;
+            }
+            text.push(ch);
+        }
+        if room > 0 {
+            text.push('\u{2026}');
+        }
+        kept.push((Span::styled(text, span.style), of_border));
+        break;
+    }
+    kept
 }

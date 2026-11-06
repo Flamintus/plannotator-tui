@@ -346,7 +346,7 @@ mod tests {
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
 
-    use super::super::head::RESOLVED;
+    use super::super::head::{Mark, RESOLVED};
     use super::super::{Message, Thread};
     use super::{Line, lines_of};
     use crate::theme::palette;
@@ -377,7 +377,8 @@ mod tests {
             resolved,
             folded: None,
             by_hand: None,
-            marks: Vec::new(),
+            marks: resolved.then_some(Mark::State(RESOLVED)).into_iter().collect(),
+            images: 0,
             messages,
             field: None,
         }
@@ -409,7 +410,7 @@ mod tests {
         let mut top = thread("a", true, vec![message("You", "The note.", vec![middle])]);
         let lines: Vec<String> = drawn(&top, 60).iter().map(ToString::to_string).collect();
         assert!(lines.len() > 1, "{lines:#?}");
-        assert!(lines[0].contains("\u{2713} Resolved"), "marked resolved while open: {lines:#?}");
+        assert!(lines[0].contains("Resolved"), "marked resolved while open: {lines:#?}");
         let nested = lines.iter().filter(|l| l.starts_with("\u{2502} \u{2502} \u{256d}")).count();
         assert_eq!(nested, 1, "the deepest thread is a box in a box in the box: {lines:#?}");
         assert!(lines.iter().any(|l| l.contains("Still open.")), "{lines:#?}");
@@ -417,7 +418,7 @@ mod tests {
         top.messages[0].threads[0].messages[0].threads[0].resolved = true;
         let lines = drawn(&top, 60);
         assert_eq!(lines.len(), 1, "everything resolved: one line");
-        assert!(lines[0].to_string().contains("3 messages \u{b7} 2 sub-threads"), "{lines:#?}");
+        assert!(lines[0].to_string().contains("1 message \u{b7} 2 sub-threads"), "{lines:#?}");
     }
 
     #[test]
