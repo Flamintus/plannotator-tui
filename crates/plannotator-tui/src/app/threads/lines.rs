@@ -64,12 +64,15 @@ impl App {
     }
 
     /// Bring the box of thread `id` into view, at any depth, as a unit of selection is
-    /// (`ensure_rows_visible`): all of it when it fits, else its head first and as much of it as
-    /// fits; nothing moves when that is in view already. Whether the flow draws it: a sub-thread
-    /// in a folded box is not.
+    /// (`ensure_rows_visible`): all of it when it fits; a box taller than the view is in view by
+    /// its head, brought into view head first with as much of it as fits. Nothing moves when it
+    /// is in view already. Whether the flow draws it: a sub-thread in a folded box is not.
     pub(in crate::app) fn show_box(&mut self, id: &str) -> bool {
         let Some(rows) = self.box_rows(id) else { return false };
         let height = usize::from(self.geometry.doc.height.max(1));
+        if rows.len() >= height && (self.scroll..self.scroll + height).contains(&rows.start) {
+            return true;
+        }
         let last = rows.end.saturating_sub(1).min(rows.start + height.saturating_sub(2));
         self.ensure_rows_visible(rows.start, last.max(rows.start));
         true
