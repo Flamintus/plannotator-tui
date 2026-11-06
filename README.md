@@ -105,7 +105,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | has the focus when a folder opens with more than one file to choose from · `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, once sent · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, what waits in the box sent first · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -305,7 +305,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `reply` `resolve` | `C` `V` | in the review loop, the thread of the box the cursor is in or of the bubble: reply under it, resolve it or open it again (keys provisional) |
 | `toggle-thread` | `f` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded |
 | `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
-| `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble; on a draft, send it at once and turn Live on: a reply saved under a Live comment goes at once, as `send-now` sends it |
+| `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble; turning it on first sends at once what waits in the box (the comment while a draft, else your replies waiting under it), as `send-now` sends it: a reply saved under a Live comment goes at once the same way |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -387,9 +387,11 @@ the agent answers with too:
   `Sent now · Round 2 still open · 1 comment(s) → claude in w1:p2`. A paste the agent did not
   get goes again first, with `s` or `E`, as for a round. The footer offers `s send now` where
   there is a draft to send.
-- `L` turns Live on or off on a sent comment, on its bubble in the rail or with the cursor in
-  its box, a sub-thread's at any depth, which has its own, apart from its thread's; on a draft
-  it sends it at once, as `s` does, then turns Live on; never from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
+- `L` turns Live on or off on a comment, on its bubble in the rail or with the cursor in
+  its box, a sub-thread's at any depth, which has its own, apart from its thread's; never from
+  its block. Turning it on first sends at once, as `s` does, what waits in the box: the comment
+  while it is a draft, else your replies waiting under it; when that send does not go, the
+  footer says why and Live stays off. Turning it off sends nothing. The journal keeps it (`plannotator threads live <id> on|off`), the
   head of the box, its folded line and its bubble say `⚡ Live`, after the passage and in
   yellow, while it is on, and the footer
   says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of

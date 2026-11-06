@@ -80,7 +80,8 @@ impl App {
 
     /// `s`: thread `id`'s draft sent alone, at once, the round going on, and pasted into the
     /// agent's pane as a round is; a send the agent did not get yet goes again first. A reply
-    /// saved under a Live thread is sent so too (`save_reply`).
+    /// saved under a Live thread is sent so too (`save_reply`), and so is what waits in a box
+    /// turned Live (`toggle_live`).
     pub(in crate::app) fn send_journal_now(&mut self, id: &str) {
         self.press_send(&Ask::Now(id.to_owned()));
     }

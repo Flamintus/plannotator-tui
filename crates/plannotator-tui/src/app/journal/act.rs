@@ -1,6 +1,6 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
 //! open it again, `send-now` sends its draft at once (`send`), `toggle-live` turns Live on or
-//! off on it once sent, or, on a draft, sends it at once and turns Live on, a reply saved
+//! off on it, turning it on sending first, at once, what waits in its box, a reply saved
 //! under a Live thread going at once by `send-now`'s own
 //! send, `toggle-thread` draws a folded thread open, or folds an open one, as `right` and
 //! `left` do on its fold line, whatever the box (`threads::fold`). These keys answer only
@@ -138,22 +138,24 @@ impl App {
         self.refresh_journal();
     }
 
-    /// Live turned on or off on the current note's thread, a sent one, where the keys offer it
-    /// (`help`): the view read again says it, at its head, on its folded line and in its bubble.
+    /// Live turned on or off on the current note's thread, where the keys offer it (`help`): the
+    /// view read again says it, at its head, on its folded line and in its bubble.
     fn toggle_live(&mut self) {
         let Some((review, node)) = self.current_thread() else { return };
         self.saw(&node);
-        // Live is a sent thread's: a draft turned Live is sent at once first, by the send of
-        // `send-now` itself; when it did not go, the status says why and Live stays off.
+        let on = node.draft || !node.live;
+        // Turned on, what waits in its box goes first, at once, by the send of `send-now`
+        // itself (`tree::now_drafts`): the comment while it is a draft, else the person's replies
+        // waiting under it; when it did not go, the status says why and Live stays off. Turned
+        // off, nothing is sent.
         let mut sent = String::new();
-        if node.draft {
+        if on && !tree::now_drafts(&node).is_empty() {
             self.send_journal_now(&node.id);
-            if self.node(&node.id).is_none_or(|now| now.draft) {
+            if self.node(&node.id).is_none_or(|now| !tree::now_drafts(now).is_empty()) {
                 return;
             }
             sent = self.status.take().map(|status| format!("{status} \u{b7} ")).unwrap_or_default();
         }
-        let on = node.draft || !node.live;
         self.status = Some(match review.journal.live(&review.target, &node.id, on) {
             Ok(()) if on => format!("{sent}live on"),
             Ok(()) => "live off".to_owned(),
