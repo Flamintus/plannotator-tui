@@ -149,7 +149,7 @@ fn colour(word: &str) -> Option<Color> {
         DRAFT => palette.draft,
         SENT => palette.sent,
         REPLIED => palette.replied,
-        RESOLVED => palette.looks_good,
+        RESOLVED => palette.resolved,
         NEW => palette.new,
         _ => return None,
     })

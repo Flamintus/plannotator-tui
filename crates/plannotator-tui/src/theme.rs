@@ -126,6 +126,8 @@ pub(crate) struct Palette {
     pub(crate) replied: Color,
     /// A reply of the agent's the person has not seen yet: `New`.
     pub(crate) new: Color,
+    /// A resolved thread: `Resolved`.
+    pub(crate) resolved: Color,
     /// The keyboard cursor cell.
     pub(crate) cursor: Style,
     /// A character selection, a picker row, a review-menu row.
@@ -146,13 +148,14 @@ pub(crate) static DARK: Palette = Palette {
     comment_bg: Color::Indexed(58),
     approve_bg: Color::Indexed(22),
     key: Color::Red,
-    live: Color::Yellow,
-    draft: Color::LightBlue,
-    sent: Color::Indexed(208),
-    // Violet, apart from the green of a resolved thread.
-    replied: Color::Indexed(135),
-    // Turquoise, greener than the cyan of the headings and the focused borders.
-    new: Color::Indexed(43),
+    // The indicators' colours are soft, light tones rather than bright ones (the owner's
+    // choice): gold, periwinkle blue, peach orange, lilac violet, teal turquoise, sage green.
+    live: Color::Indexed(222),
+    draft: Color::Indexed(111),
+    sent: Color::Indexed(216),
+    replied: Color::Indexed(183),
+    new: Color::Indexed(116),
+    resolved: Color::Indexed(151),
     cursor: Style::new().bg(Color::Indexed(240)),
     selection: Style::new().add_modifier(Modifier::REVERSED),
 };
@@ -174,11 +177,13 @@ pub(crate) static LIGHT: Palette = Palette {
     comment_bg: Color::Indexed(222),
     approve_bg: Color::Indexed(157),
     key: DARK.key,
-    live: DARK.live,
-    draft: DARK.draft,
-    sent: DARK.sent,
-    replied: DARK.replied,
-    new: DARK.new,
+    // The same hues, a step darker: the dark palette's light tones would fade on a light page.
+    live: Color::Indexed(178),
+    draft: Color::Indexed(68),
+    sent: Color::Indexed(173),
+    replied: Color::Indexed(140),
+    new: Color::Indexed(73),
+    resolved: Color::Indexed(71),
     // A dark cell with its own light foreground, so the glyph under the cursor stays legible.
     cursor: Style::new().bg(Color::Indexed(238)).fg(Color::White),
     selection: Style::new().bg(Color::Indexed(153)),

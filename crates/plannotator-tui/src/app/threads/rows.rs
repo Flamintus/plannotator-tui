@@ -433,14 +433,14 @@ mod tests {
     }
 
     #[test]
-    fn the_resolved_mark_takes_the_looks_good_colour_open_or_folded() {
+    fn the_resolved_mark_takes_the_resolved_colour_open_or_folded() {
         let open_under = thread("b", false, vec![message("You", "Still open.", Vec::new())]);
         let held_open = thread("a", true, vec![message("You", "The note.", vec![open_under])]);
         let folded = thread("c", true, vec![message("You", "Done.", Vec::new())]);
         for top in [&held_open, &folded] {
             let first = drawn(top, 60).into_iter().next().expect("a head or a folded line");
             let mark = first.spans.iter().find(|span| span.content == RESOLVED);
-            assert_eq!(mark.and_then(|span| span.style.fg), Some(palette().looks_good), "{first}");
+            assert_eq!(mark.and_then(|span| span.style.fg), Some(palette().resolved), "{first}");
         }
     }
 }
