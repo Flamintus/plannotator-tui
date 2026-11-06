@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, once sent · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Not sent`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, once sent · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -393,7 +393,7 @@ the agent answers with too:
   yellow, while it is on, and the footer
   says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of
   `s` itself: pasted into the agent's pane, then marked delivered. Under any other thread it
-  waits, `Not sent`, for `s` or `E`. Sending at once does not turn a thread Live.
+  waits, `Draft`, for `s` or `E`. Sending at once does not turn a thread Live.
 - A folder's tree counts the review's comments on each file. The Review menu acts on the
   review's threads, a finished note being a resolved thread: `F` resolves the sent threads
   still open (drafts stay), `U` opens again what it resolved, `H` lists the resolved threads
@@ -406,13 +406,14 @@ the agent answers with too:
 - The agent answers under each id (`plannotator reply --review <key> <id>`). The journal is
   watched while the pane is open: an answer comes into its thread's box under the passage,
   marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
-  Inbox: the head of a box, at any depth, says its kind when it is no comment (`Looks good`,
-  `Deletion`), `Unanchored` once its words are no longer found, what became of its send
-  (`Queued`, `Delivered`, `Read`, `Working`, `Replied`), `Live`, and its round (`Round 2`) or
-  `Not sent` for a draft, as its bubble's title does; a message names its author alone, a reply
-  with its status or `New`; and a bubble counts the replies under the passage (`↳ 1 reply under
+  Inbox: the head of a box, at any depth, says `⚡ Live` first (yellow), its kind when it is no
+  comment (`Looks good`, `Deletion`), `Unanchored` once its words are no longer found, what
+  became of its send (`Queued`, `Sent` in orange, `Read`, `Working`, `Replied` in green), and
+  its round (`Round 2`) or `Draft` for a draft (light blue), as its bubble's title does; a
+  message names its author alone, the person's reply with the state it is still in, `Draft`
+  until sent, then `Sent` until answered, then nothing, an agent's reply `New`; and a bubble counts the replies under the passage (`↳ 1 reply under
   the passage`), its thread open or folded.
-- Each comment the journal has, a draft included (`Not sent`), is a box right under the block
+- Each comment the journal has, a draft included (`Draft`), is a box right under the block
   its passage is in (under a whole list or table when the passage is inside one): the passage
   at its head, then the comment and each reply by author. A resolved thread folds to one line (`▸ ✓ Resolved · 💬 "…"
   · 2 messages`) once nothing under it is open, its bubble dimmed; `✓ Resolved` takes the
@@ -446,7 +447,7 @@ the agent answers with too:
   sub-thread. The passage stays marked in the message's words, at any depth,
   as a note's of the same kind is in the document. With nothing selected, `c` on a line takes a
   comment on the line's words, as on a block. A draft's words take none until it is sent:
-  on any line of a draft's box (`Not sent`), at any depth, its words, its head or its folded
+  on any line of a draft's box (`Draft`), at any depth, its words, its head or its folded
   line, `e` or `Enter` edits it right there, in place of its words, as `e` on its bubble does
   (`l` or a click still draws its folded line open).
 - The rail stacks its bubbles from the top in the document's order, as the column of

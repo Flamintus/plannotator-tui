@@ -16,7 +16,7 @@ use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
 use super::field::{Field, Place};
-use super::head::{BORDER, folded, head};
+use super::head::{BORDER, folded, head, mark_style};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
@@ -152,11 +152,19 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
         if index > 0 {
             rows.push(rule('├', '┤', width, &thread.id));
         }
-        let named = match &message.tag {
-            Some(tag) => format!("{} \u{b7} {tag}", one_line(&message.author)),
-            None => one_line(&message.author),
+        // Who wrote it, then the state it is still in, in that state's colour (`mark_style`).
+        let name = one_line(&message.author);
+        let author = match &message.tag {
+            Some(tag) => Line::from(vec![
+                Span::styled(
+                    fit(&name, inner.saturating_sub(tag.width() + 3)),
+                    text.add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(" \u{b7} ", text),
+                Span::styled(tag.clone(), mark_style(tag)),
+            ]),
+            None => Line::styled(fit(&name, inner), text.add_modifier(Modifier::BOLD)),
         };
-        let author = Line::styled(fit(&named, inner), text.add_modifier(Modifier::BOLD));
         rows.push(BoxRow::plain(author).in_box(inner, BORDER, id));
         let edited = field.filter(|field| index == 0 && field.place == Place::Words);
         let lines = if edited.is_some() { Vec::new() } else { words_of(message, inner, text, said) };

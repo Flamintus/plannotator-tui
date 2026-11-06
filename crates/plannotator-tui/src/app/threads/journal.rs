@@ -2,9 +2,9 @@
 //! each comment with its replies and the sub-threads on their words, the person's drafts and
 //! what became of each send, the agent's replies not seen yet marked new, and a comment whose
 //! words are no longer found boxed at the end of the words it was on, marked so, in the words
-//! the Inbox's boxes use (`Round 2`, `Not sent`, `Replied`, `Live`, `New`, `Unanchored`). One
+//! the Inbox's boxes use (`Round 2`, `Draft`, `Sent`, `Replied`, `⚡ Live`, `New`, `Unanchored`). One
 //! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
-//! and its marks with it, a draft's box `Not sent` at any depth. The view decides what folds.
+//! and its marks with it, a draft's box `Draft` at any depth. The view decides what folds.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -13,7 +13,7 @@ use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, T
 use plannotator_tui_schema::Kind;
 
 use super::super::App;
-use super::head::LIVE;
+use super::head::{DRAFT, LIVE, REPLIED, SENT};
 use super::{Message, Thread};
 use crate::journal::{passage, tree};
 use crate::store::kind_of;
@@ -26,16 +26,16 @@ pub(super) const NEW: &str = "New";
 fn status_word(status: Status) -> Option<&'static str> {
     Some(match status {
         Status::Pending => "Queued",
-        Status::Delivered => "Delivered",
+        Status::Delivered => SENT,
         Status::Read => "Read",
         Status::Working => "Working",
-        Status::Replied => "Replied",
+        Status::Replied => REPLIED,
         Status::Unknown => return None,
     })
 }
 
 /// What a comment's state is, as its box's head and its bubble in the rail both say it: while
-/// it is open, Live first (`LIVE`), then what became of its send; then its round, or Not sent
+/// it is open, Live first (`LIVE`), then what became of its send; then its round, or Draft
 /// for a draft. Live goes first, so a narrow head keeps it longest; the round goes last, so it
 /// is given up first.
 pub(in crate::app) fn state_marks(node: &ThreadNode) -> Vec<String> {
@@ -44,7 +44,7 @@ pub(in crate::app) fn state_marks(node: &ThreadNode) -> Vec<String> {
         marks.extend(node.live.then(|| LIVE.to_owned()));
         marks.extend(node.status.and_then(status_word).map(str::to_owned));
     }
-    marks.push(if node.draft { "Not sent".to_owned() } else { format!("Round {}", node.round) });
+    marks.push(if node.draft { DRAFT.to_owned() } else { format!("Round {}", node.round) });
     marks
 }
 
@@ -57,12 +57,16 @@ fn kind_word(kind: Kind) -> Option<&'static str> {
     }
 }
 
-/// What a reply says beside its author: its status or New, never its round or Not sent, which
-/// the box's head says already.
+/// What a reply says beside its author, its states that are not final only: the person's
+/// `Draft` until it is sent, then `Sent` until the agent answers, then nothing; an agent's `New`
+/// until the person sees it. Never its round, which the box's head says.
 fn reply_tag(reply: &ReplyNode, seen: &HashSet<String>) -> Option<String> {
     let after = match reply.author {
-        Author::Person if reply.draft => None,
-        Author::Person => reply.status.and_then(status_word),
+        Author::Person if reply.draft => Some(DRAFT),
+        Author::Person => match reply.status {
+            Some(Status::Replied | Status::Unknown) | None => None,
+            Some(_) => Some(SENT),
+        },
         Author::Agent { .. } => (!seen.contains(&reply.id)).then_some(NEW),
     };
     after.map(str::to_owned)
@@ -90,7 +94,7 @@ impl Thread {
         let comment = Message {
             id: node.id.clone(),
             author: "You".to_owned(),
-            // Its round, or Not sent, is in the box's head already: the author stands alone.
+            // Its round, or Draft, is in the box's head already: the author stands alone.
             tag: None,
             body: node.text.clone(),
             draft: node.draft,

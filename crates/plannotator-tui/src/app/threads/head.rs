@@ -33,14 +33,29 @@ pub(in crate::app) fn resolved_style() -> Style {
 /// bubble's title.
 pub(in crate::app) const LIVE: &str = "\u{26a1} Live";
 
-/// How a mark is drawn on a head or a folded line: the resolved mark in its colour, the Live
-/// mark in the lightning's yellow, the others grey.
-fn mark_style(mark: &str) -> Style {
-    match mark {
-        RESOLVED => resolved_style(),
-        LIVE => Style::new().fg(palette().live).add_modifier(Modifier::BOLD),
-        _ => Style::new().fg(Color::DarkGray),
-    }
+/// A comment not sent yet, at its box's head and beside the person's reply.
+pub(in crate::app) const DRAFT: &str = "Draft";
+
+/// A comment sent and waiting for its answer: what the journal calls delivered, at its box's
+/// head; beside the person's reply, any send not answered yet.
+pub(in crate::app) const SENT: &str = "Sent";
+
+/// A comment the agent answered, at its box's head.
+pub(in crate::app) const REPLIED: &str = "Replied";
+
+/// How a mark is drawn wherever a box or its author line says it: the resolved mark in its
+/// colour, Live in the lightning's yellow, a draft light blue, sent orange, replied green, the
+/// others grey.
+pub(super) fn mark_style(mark: &str) -> Style {
+    let colour = match mark {
+        RESOLVED => return resolved_style(),
+        LIVE => palette().live,
+        DRAFT => palette().draft,
+        SENT => palette().sent,
+        REPLIED => palette().replied,
+        _ => return Style::new().fg(Color::DarkGray),
+    };
+    Style::new().fg(colour).add_modifier(Modifier::BOLD)
 }
 
 /// The border of every box at rest, its head's and its folded line's mark and rule with it, at
@@ -161,11 +176,11 @@ pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range
     let border = BORDER;
     let mut spans = vec![Span::styled(start, border)];
     let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
-    // The marks after the passage drawn as at the head: the Live and resolved marks in their
-    // colours (`mark_style`), the rest grey.
+    // The marks after the passage drawn as at the head, each coloured mark in its colour
+    // (`mark_style`), the rest grey.
     let mut from = 0;
     let mut search = (lead.len() - start.len() + quote.len()).min(words.len());
-    while let Some((at, mark)) = [LIVE, RESOLVED]
+    while let Some((at, mark)) = [LIVE, RESOLVED, DRAFT, SENT, REPLIED]
         .into_iter()
         .filter_map(|mark| words.get(search..)?.find(mark).map(|at| (search + at, mark)))
         .min_by_key(|(at, _)| *at)
