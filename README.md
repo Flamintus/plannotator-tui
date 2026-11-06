@@ -462,7 +462,7 @@ the agent answers with too:
   be rebound under `[keys]`.
 - The footer names only what can be done on the selection, the line the cursor is on (a block,
   a line of a box's words, a draft's or not, a head, a folded line), the bubble in the rail or
-  the tree's row, first, then, past a wider `·`, the keys that do not change with it (`E`, `A`
+  the tree's row, first, then, past a `|`, the keys that do not change with it (`E`, `A`
   in a gated review, `Tab`, `S`, `q`, `ctrl+p`): `l unfold` or `h fold` on a fold line, `e edit`
   and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` on a sent thread,
   `z fold` or `z unfold` as it would act, no `c comment` or `v select` where there are no words

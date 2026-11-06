@@ -555,13 +555,13 @@ impl App {
     }
 
     /// The key help, in the user's keys, a space after it: under the review loop what the
-    /// selection lets the keys do, then, past a wider `·`, the keys that do not change with it
+    /// selection lets the keys do, then, past a `|`, the keys that do not change with it
     /// (`journal::help`); else the focused pane's, as it always was.
     fn footer_help(&self) -> String {
         let groups = self.loop_help().unwrap_or_else(|| [self.pane_help(), Vec::new()]);
         let groups: Vec<String> =
             groups.iter().filter(|group| !group.is_empty()).map(|group| group.join(" \u{b7} ")).collect();
-        if groups.is_empty() { String::new() } else { format!("{} ", groups.join("  \u{b7}  ")) }
+        if groups.is_empty() { String::new() } else { format!("{} ", groups.join(" | ")) }
     }
 
     /// `down` and `up`'s first keys run together, as the hints show them: `j/k`; none when

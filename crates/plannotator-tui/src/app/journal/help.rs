@@ -2,7 +2,7 @@
 //! list (`selection_keys`) that the footer names first and that every key whose action depends
 //! on the selection (`DECIDED`) consults before acting (`applies`), so the footer and the keys
 //! never differ: such a key the footer does not name does nothing, says nothing, opens nothing;
-//! the others (moves, `clear-all`…) act as they always did. Past a wider `·`, the footer
+//! the others (moves, `clear-all`…) act as they always did. Past a `|`, the footer
 //! names the keys that do not change with the selection (send the round, approve, Tab, send
 //! and close, quit, find). The selection is the line the cursor is on in the document (a block,
 //! a line of a box's words, a draft's or not, a box's head or folded line), the bubble in the
