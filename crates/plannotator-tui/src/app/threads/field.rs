@@ -83,17 +83,14 @@ impl Thread {
 }
 
 impl App {
-    /// The box the person types in, while they do, and the verb of the compose box's title: a
-    /// reply's, an edit's, a comment's on a passage of a box's words. A comment on the
-    /// document's words is typed in no box.
-    pub(super) fn typing(&self) -> Option<(Target, &'static str)> {
+    /// The box the person types in, while they do: a reply's, an edit's, a comment's on a
+    /// passage of a box's words. A comment on the document's words is typed in no box.
+    pub(super) fn typing(&self) -> Option<Target> {
         match &self.mode {
-            Mode::Reply(id) => Some((Target::Thread(id.clone(), Place::Bottom), "reply")),
-            Mode::Edit(id) => Some((Target::Thread(id.clone(), Place::Words), "edit")),
+            Mode::Reply(id) => Some(Target::Thread(id.clone(), Place::Bottom)),
+            Mode::Edit(id) => Some(Target::Thread(id.clone(), Place::Words)),
             Mode::Compose => match &self.pending.as_ref()?.on {
-                Selected::Passage(passage) => {
-                    Some((Target::Message(passage.on.parent.clone(), passage.start), "comment"))
-                }
+                Selected::Passage(passage) => Some(Target::Message(passage.on.parent.clone(), passage.start)),
                 Selected::Source(_) => None,
             },
             _ => None,

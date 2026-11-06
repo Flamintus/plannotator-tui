@@ -199,7 +199,7 @@ impl App {
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
         let kept = self.kept_at_cursor();
-        let typing = self.typing().map(|(target, verb)| (target, self.compose_title(verb)));
+        let typing = self.typing().map(|target| (target, self.compose_title()));
         let compose = &self.compose;
         let open = &mut self.open;
         for (_, thread) in &mut threads {

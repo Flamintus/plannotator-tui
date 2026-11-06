@@ -23,6 +23,9 @@ const TREE_WIDTH: u16 = 28;
 /// Below this the tree is hidden unless toggled on; Tab still reaches it.
 pub(super) const TREE_MIN_TOTAL_WIDTH: u16 = 120;
 const COMPOSE_WIDTH: u16 = 48;
+/// The frame and the title of the field a comment, a reply or an edit is typed in, floating or
+/// in its box (`threads::field`): the text's colour, the terminal's own, with no tint.
+pub(super) const FIELD: Style = Style::new();
 
 pub(super) fn accent(kind: Kind) -> Color {
     match kind {
@@ -115,11 +118,10 @@ impl App {
         }
         self.draw_footer(frame, footer);
         match &self.mode {
-            Mode::Compose => self.draw_typed(frame, "comment"),
-            Mode::Edit(_) => self.draw_typed(frame, "edit"),
-            Mode::Reply(_) => self.draw_typed(frame, "reply"),
+            Mode::Compose | Mode::Edit(_) | Mode::Reply(_) => self.draw_typed(frame),
             Mode::AttachImage(_) => {
-                self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ");
+                let prompt = (Style::new().fg(palette().comment), Style::new().dim());
+                self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ", prompt);
             }
             Mode::Browse if self.pending.is_some() => self.draw_toolbar(frame),
             Mode::Pick => self.draw_pick(frame),
@@ -284,25 +286,34 @@ impl App {
         self.geometry.toolbar = Some((rect, spans));
     }
 
-    /// The compose box: at the pending selection when there is one, else over the rail
-    /// bubble being edited, else centered.
-    /// The compose box title; the Shift+Enter hint appears only when the terminal
-    /// actually distinguishes it, so the hint is never a lie.
-    pub(in crate::app) fn compose_title(&self, verb: &str) -> String {
-        let newline = if self.shift_enter { "shift+enter new line" } else { "alt+enter new line" };
-        format!(" {verb} \u{b7} enter saves \u{b7} {newline} \u{b7} esc cancels ")
+    /// The title of the field a comment, a reply or an edit is typed in, floating or in its box
+    /// (`threads::field`), the one source of it: what is typed, then the keys that save, break a
+    /// line and cancel (`compose`). Shift+Enter is named only where the terminal tells it from
+    /// Enter, else Alt+Enter, which saves everywhere, so the title never names a key that
+    /// cannot arrive.
+    pub(in crate::app) fn compose_title(&self) -> String {
+        let verb = match &self.mode {
+            Mode::Reply(_) => "Reply",
+            Mode::Edit(_) => "Edit",
+            _ => "Comment",
+        };
+        let save = if self.shift_enter { "shift+enter saves" } else { "alt+enter saves" };
+        format!(" {verb} \u{b7} {save} \u{b7} enter new line \u{b7} esc cancels ")
     }
 
-    /// The compose box, `verb` in its title: in the box the person types about, when there is
-    /// one (`threads::field`), else floating.
-    fn draw_typed(&self, frame: &mut Frame, verb: &str) {
+    /// The compose box: in the box the person types about, when there is one
+    /// (`threads::field`), else floating, in the text's colour (`FIELD`).
+    fn draw_typed(&self, frame: &mut Frame) {
         match self.typed_field() {
             Some(field) => self.draw_field(frame, field),
-            None => self.draw_compose(frame, &self.compose_title(verb)),
+            None => self.draw_compose(frame, &self.compose_title(), (FIELD, FIELD)),
         }
     }
 
-    fn draw_compose(&self, frame: &mut Frame, title: &str) {
+    /// A floating box to type in, `title` at its head, its frame and its title in their styles:
+    /// at the pending selection when there is one, else over the rail bubble being edited, else
+    /// centered.
+    fn draw_compose(&self, frame: &mut Frame, title: &str, (border, heading): (Style, Style)) {
         let wrap_width = usize::from(COMPOSE_WIDTH.saturating_sub(3));
         let content_rows = self.compose.rows(wrap_width);
         let height = content_rows as u16 + 2;
@@ -318,8 +329,8 @@ impl App {
         let boxed = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
-            .border_style(Style::new().fg(palette().comment))
-            .title(Span::styled(title.to_owned(), Style::new().dim()));
+            .border_style(border)
+            .title(Span::styled(title.to_owned(), heading));
         let inner = boxed.inner(rect);
         frame.render_widget(boxed, rect);
         let words = Rect {

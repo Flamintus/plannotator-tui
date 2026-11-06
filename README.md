@@ -100,6 +100,7 @@ dimmed. The keys also work without opening the menu.
 | gated review | `A` approve; `E` send and finish; `q` dismiss |
 | document | `j`/`k` block; `c` comment on the block; `x` clear its annotations; `X` clear every annotation on the document, after a `y`; `v` select with `hjkl` `w` `b` `0` `$`, `Enter` to finish; `i` move the cursor with those keys first, then `v` to select from there; `I`/`D` attach or remove an image on the block's note |
 | toolbar | `a` looks good · `c` comment · `d` delete · `y` copy · `Esc` |
+| comment, reply or edit | `Enter` or `Ctrl+J` new line · `Shift+Enter` saves where the terminal tells it from `Enter` (the kitty keyboard protocol), `Alt+Enter` everywhere · `Esc` cancels; the field's title names the key that saves here |
 | notes | `j`/`k`; `e` edit; `x` remove; `I` attach an image, `D` remove the last; click a bubble |
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
@@ -219,7 +220,7 @@ its light or dark value. A colour is a name (`yellow`, `light-cyan`), a 256-colo
 [colors]
 accent = "cyan"          # focused borders and gutter, the open file, menu and picker frames
 heading = "cyan"         # every heading level
-comment = "yellow"       # comment titles, the compose box, annotated rows in the gutter
+comment = "yellow"       # comment titles, the image path prompt, annotated rows in the gutter
 looks-good = "green"     # also a resolved thread's Resolved
 delete = "red"           # also the struck-through text
 comment-bg = "58"        # the tint under commented text

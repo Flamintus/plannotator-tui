@@ -15,12 +15,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use super::super::draw::FIELD;
 use super::field::{Field, Place};
 use super::head::{BORDER, folded, head, mark_style};
 use super::words::{Said, Spot};
 use super::{Message, Thread};
 use crate::doc::{block_holding, plain_blocks};
-use crate::theme::palette;
 use crate::wrap::wrap_line;
 
 /// Narrowest box worth drawing; a thread nested past it shows its folded line instead.
@@ -197,16 +197,16 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     rows
 }
 
-/// The field the person types in, a box `width` columns wide drawn as the compose box is: its
-/// title at its head, then a row of its sides for each row of the words, which are drawn over
-/// them.
+/// The field the person types in, a box `width` columns wide drawn as the compose box is, its
+/// frame and title in the text's colour (`draw::FIELD`): its title at its head, then a row of
+/// its sides for each row of the words, which are drawn over them.
 fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
-    let border = Style::new().fg(palette().comment);
+    let border = FIELD;
     let title = fit(&field.title, width.saturating_sub(2));
     let rule = "\u{2500}".repeat(width.saturating_sub(2 + title.width()));
     let head = Line::from(vec![
         Span::styled("\u{256d}", border),
-        Span::styled(title, Style::new().add_modifier(Modifier::DIM)),
+        Span::styled(title, border),
         Span::styled(format!("{rule}\u{256e}"), border),
     ]);
     let words = (0..field.rows).map(|_| BoxRow { field: true, ..BoxRow::plain(Line::default()) });
