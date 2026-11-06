@@ -121,7 +121,12 @@ impl App {
             Mode::Compose | Mode::Edit(_) | Mode::Reply(_) => self.draw_typed(frame),
             Mode::AttachImage(_) => {
                 let prompt = (Style::new().fg(palette().comment), Style::new().dim());
-                self.draw_compose(frame, " image path \u{b7} enter attaches \u{b7} esc cancels ", prompt);
+                self.draw_compose(
+                    frame,
+                    " image path \u{b7} enter attaches \u{b7} esc cancels ",
+                    None,
+                    prompt,
+                );
             }
             Mode::Browse if self.pending.is_some() => self.draw_toolbar(frame),
             Mode::Pick => self.draw_pick(frame),
@@ -286,34 +291,43 @@ impl App {
         self.geometry.toolbar = Some((rect, spans));
     }
 
-    /// The title of the field a comment, a reply or an edit is typed in, floating or in its box
-    /// (`threads::field`), the one source of it: what is typed, then the keys that save, break a
-    /// line and cancel (`compose`). Shift+Enter is named only where the terminal tells it from
-    /// Enter, else Alt+Enter, which saves everywhere, so the title never names a key that
-    /// cannot arrive.
-    pub(in crate::app) fn compose_title(&self) -> String {
+    /// The titles of the field a comment, a reply or an edit is typed in, floating or in its box
+    /// (`threads::field`), the one source of them: what is typed, on its top edge; the keys that
+    /// break a line, save and cancel (`compose`), on its bottom edge. Shift+Enter is named only
+    /// where the terminal tells it from Enter, else Alt+Enter, which saves everywhere, so the
+    /// title never names a key that cannot arrive.
+    pub(in crate::app) fn compose_titles(&self) -> (String, String) {
         let verb = match &self.mode {
             Mode::Reply(_) => "Reply",
             Mode::Edit(_) => "Edit",
             _ => "Comment",
         };
         let save = if self.shift_enter { "shift+enter saves" } else { "alt+enter saves" };
-        format!(" {verb} \u{b7} enter new line \u{b7} {save} \u{b7} esc cancels ")
+        (format!(" {verb} "), format!(" enter new line \u{b7} {save} \u{b7} esc cancels "))
     }
 
     /// The compose box: in the box the person types about, when there is one
     /// (`threads::field`), else floating, in the text's colour (`FIELD`).
     fn draw_typed(&self, frame: &mut Frame) {
-        match self.typed_field() {
-            Some(field) => self.draw_field(frame, field),
-            None => self.draw_compose(frame, &self.compose_title(), (FIELD, FIELD)),
+        if let Some(field) = self.typed_field() {
+            self.draw_field(frame, field);
+        } else {
+            let (title, keys) = self.compose_titles();
+            self.draw_compose(frame, &title, Some(&keys), (FIELD, FIELD));
         }
     }
 
-    /// A floating box to type in, `title` at its head, its frame and its title in their styles:
+    /// A floating box to type in, `title` at its head and `keys`, if any, on its bottom edge, its
+    /// frame and its titles in their styles:
     /// at the pending selection when there is one, else over the rail bubble being edited, else
     /// centered.
-    fn draw_compose(&self, frame: &mut Frame, title: &str, (border, heading): (Style, Style)) {
+    fn draw_compose(
+        &self,
+        frame: &mut Frame,
+        title: &str,
+        keys: Option<&str>,
+        (border, heading): (Style, Style),
+    ) {
         let wrap_width = usize::from(COMPOSE_WIDTH.saturating_sub(3));
         let content_rows = self.compose.rows(wrap_width);
         let height = content_rows as u16 + 2;
@@ -326,11 +340,14 @@ impl App {
                 Rect { x: area.x + (area.width - width) / 2, y: area.y + area.height / 2, width, height }
             });
         frame.render_widget(Clear, rect);
-        let boxed = Block::default()
+        let mut boxed = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Rounded)
             .border_style(border)
             .title(Span::styled(title.to_owned(), heading));
+        if let Some(keys) = keys {
+            boxed = boxed.title_bottom(Span::styled(keys.to_owned(), heading));
+        }
         let inner = boxed.inner(rect);
         frame.render_widget(boxed, rect);
         let words = Rect {

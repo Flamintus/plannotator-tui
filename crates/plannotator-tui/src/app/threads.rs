@@ -199,13 +199,18 @@ impl App {
     pub(super) fn sync_threads(&mut self) {
         let mut threads = self.journal_threads().unwrap_or_default();
         let kept = self.kept_at_cursor();
-        let typing = self.typing().map(|target| (target, self.compose_title()));
+        let typing = self.typing().map(|target| (target, self.compose_titles()));
         let compose = &self.compose;
         let open = &mut self.open;
         for (_, thread) in &mut threads {
             thread.by_hand(&open.flow.by_hand);
-            if let Some((target, title)) = &typing {
-                let field = |place, words| Field { place, title: title.clone(), rows: compose.rows(words) };
+            if let Some((target, (title, keys))) = &typing {
+                let field = |place, words| Field {
+                    place,
+                    title: title.clone(),
+                    keys: keys.clone(),
+                    rows: compose.rows(words),
+                };
                 thread.typing(target, open.layout.width, &field);
             }
         }

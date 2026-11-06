@@ -29,11 +29,13 @@ pub(super) enum Place {
     Passage { message: usize, start: usize },
 }
 
-/// The field typed in a box: where, the compose box's title, and the rows its words take.
+/// The field typed in a box: where, the compose box's titles (what is typed, on its top edge;
+/// its keys, on its bottom edge), and the rows its words take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Field {
     pub(super) place: Place,
     pub(super) title: String,
+    pub(super) keys: String,
     pub(super) rows: usize,
 }
 

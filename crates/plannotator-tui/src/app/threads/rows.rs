@@ -198,8 +198,9 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
 }
 
 /// The field the person types in, a box `width` columns wide drawn as the compose box is, its
-/// frame and title in the text's colour (`draw::FIELD`): its title at its head, then a row of
-/// its sides for each row of the words, which are drawn over them.
+/// frame and titles in the text's colour (`draw::FIELD`): what is typed at its head, then a row
+/// of its sides for each row of the words, which are drawn over them, then its keys on its
+/// bottom edge.
 fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
     let border = FIELD;
     let title = fit(&field.title, width.saturating_sub(2));
@@ -210,9 +211,16 @@ fn field_of(field: &Field, width: usize) -> Vec<BoxRow> {
         Span::styled(format!("{rule}\u{256e}"), border),
     ]);
     let words = (0..field.rows).map(|_| BoxRow { field: true, ..BoxRow::plain(Line::default()) });
+    let keys = fit(&field.keys, width.saturating_sub(2));
+    let bottom_rule = "\u{2500}".repeat(width.saturating_sub(2 + keys.width()));
+    let bottom = Line::from(vec![
+        Span::styled("\u{2570}", border),
+        Span::styled(keys, border),
+        Span::styled(format!("{bottom_rule}\u{256f}"), border),
+    ]);
     std::iter::once(BoxRow::plain(head))
         .chain(words.map(|row| row.in_box(inside(width), border, None)))
-        .chain([BoxRow::plain(edge('╰', '╯', width, border))])
+        .chain([BoxRow::plain(bottom)])
         .collect()
 }
 
