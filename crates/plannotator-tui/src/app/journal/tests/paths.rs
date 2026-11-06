@@ -161,7 +161,7 @@ fn a_folders_tree_counts_the_reviews_comments_by_file() {
     journal.state.borrow_mut().comments.push(Comment::draft("b1", on, "bee", "Left by an earlier pane."));
     app.review_path_in_journal(Ok(Some((journal.clone(), to()))));
     let status = app.status.clone().unwrap_or_default();
-    assert!(status.contains("1 draft(s) left by an earlier pane go with the next E"), "{status}");
+    assert!(status.contains("1 draft(s) left by an earlier pane go with the next send"), "{status}");
     assert_eq!(
         journal.state.borrow().targets[0],
         ReviewTarget::File { path: real_path(&root.join("docs")).display().to_string() },

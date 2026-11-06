@@ -9,7 +9,6 @@ use super::super::App;
 use super::send::Press;
 use crate::journal::Review;
 use crate::journal::tree::{all_drafts, pending_sends};
-use crate::keys::Action;
 
 impl App {
     /// What an earlier pane left, when the review loop starts: the sends nothing marked
@@ -27,9 +26,8 @@ impl App {
             review_loop.left = left;
         }
         if drafts > 0 {
-            let send = self.keys.hint(Action::Send);
             self.add_status(&format!(
-                "review loop: {drafts} draft(s) left by an earlier pane go with the next {send}"
+                "review loop: {drafts} draft(s) left by an earlier pane go with the next send"
             ));
         }
     }

@@ -88,7 +88,7 @@ impl App {
         self.status = Some(match saved {
             // The send reads the view again, the reply in it.
             Ok(saved) if saved.now => return self.send_journal_now(id),
-            Ok(_) => format!("reply saved \u{b7} {} sends it", self.keys.hint(Action::Send)),
+            Ok(_) => "reply saved".to_owned(),
             Err(err) => format!("review loop: {err}"),
         });
         self.refresh_journal();

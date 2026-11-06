@@ -19,7 +19,6 @@ use super::{ReviewLoop, keep_in_journal};
 use crate::export;
 use crate::gate::Gate;
 use crate::journal::{Review, Shared, real_path};
-use crate::keys::Action;
 use crate::store::draft_note;
 use crate::tree::Tree;
 
@@ -217,9 +216,7 @@ impl App {
         let review = self.path_review().cloned()?;
         let closed = review.journal.close(&review.target);
         if let Err(err) = &closed {
-            let quit = self.keys.hint(Action::Quit);
-            self.status =
-                Some(format!("approved \u{b7} the review stays in the journal: {err} \u{b7} {quit} closes"));
+            self.status = Some(format!("approved \u{b7} the review stays in the journal: {err}"));
         }
         Some(closed.is_ok())
     }

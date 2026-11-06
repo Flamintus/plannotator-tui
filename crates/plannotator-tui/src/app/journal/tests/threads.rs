@@ -76,7 +76,7 @@ fn the_agents_reply_comes_into_the_box_marked_new_once_its_journal_moves() {
 fn the_persons_reply_is_a_draft_that_e_sends() {
     let (mut app, journal) = commented();
     reply_with(&mut app, "And on weekends?");
-    assert_eq!(app.status.as_deref(), Some("reply saved \u{b7} E sends it"));
+    assert_eq!(app.status.as_deref(), Some("reply saved"));
     let reply = journal.state.borrow().comments.last().cloned().expect("a reply");
     assert_eq!(
         (reply.re.as_deref(), reply.text.as_str(), reply.draft),
