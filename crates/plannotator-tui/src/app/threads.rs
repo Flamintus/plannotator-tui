@@ -16,13 +16,14 @@
 //! Every box's border is grey at rest, at any depth, of any kind and in any state; the box the
 //! person is in, the innermost, the current note's, whose bubble the rail lights, is drawn in
 //! that bubble's lit colour (`draw::lit`): its kind's, green once resolved. A box holding it
-//! stays grey.
+//! stays grey. On a line of the document, no box entered, every note on it is lit, boxes and
+//! bubbles alike (`lit_notes`).
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
-//! thread or the width changes; how a thread is drawn in them is `rows`. The box the person
-//! is in is lit as the rows are drawn, over the columns each row keeps as its border, so
-//! moving from one box to another rebuilds nothing. Each row knows, per column, the message's
+//! thread or the width changes; how a thread is drawn in them is `rows`. The boxes lit are
+//! lit as the rows are drawn, over the columns each row keeps as its border, so moving from
+//! one box to another rebuilds nothing. Each row knows, per column, the message's
 //! words it shows, so a passage of them can be selected as the document's words are (`words`),
 //! and `down` and `up` stop on their lines as on the blocks (`lines`), and on a thread's fold
 //! line: its folded line, or the head of its box.
@@ -49,8 +50,9 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::style::Style;
 
-use super::App;
 use super::draw::lit;
+use super::{App, Focus, Mode};
+use crate::store::Placed;
 use field::Field;
 use rows::{BoxRow, Under, spaced};
 
@@ -218,11 +220,12 @@ impl App {
     }
 
     /// The flow's rows that are in view, on the rows the layout keeps free for them, the
-    /// border of the box the person is in lit, with the passages of the sub-threads, the
-    /// selection and the cursor over their words, and the line `down` and `up` selected.
+    /// borders of the boxes lit (`lit_notes`) in their colour, with the passages of the
+    /// sub-threads, the selection and the cursor over their words, and the line `down` and `up`
+    /// selected.
     pub(super) fn draw_threads(&self, buf: &mut Buffer, gutter: Rect, doc: Rect) {
         let view = self.scroll..self.scroll + usize::from(doc.height);
-        let lit = self.lit_box();
+        let lit = self.lit_boxes();
         for (block, rows) in &self.open.flow.rows {
             let Some(rendered) = self.open.layout.blocks.get(*block) else { continue };
             let top = rendered.first_row + rendered.rows.len();
@@ -230,9 +233,7 @@ impl App {
                 let Some(drawn) = rows.get(row - top) else { continue };
                 let y = doc.y + (row - self.scroll) as u16;
                 buf.set_line(doc.x, y, &drawn.line, doc.width);
-                if let Some((id, style)) = &lit {
-                    light(buf, Rect { y, height: 1, ..doc }, &drawn.border, id, *style);
-                }
+                light(buf, Rect { y, height: 1, ..doc }, &drawn.border, &lit);
                 self.mark_line(buf, (gutter, doc), (row, y));
                 self.mark_passages(buf, doc, y, &drawn.words);
                 self.mark_words(buf, doc, (row, y), &drawn.words);
@@ -240,25 +241,46 @@ impl App {
         }
     }
 
-    /// The box the person is in, the current note's (the innermost box the cursor is in, else
-    /// the rail's note or the selected block's, whose bubble the rail lights), and the colour
-    /// its border takes: its bubble's lit.
-    fn lit_box(&self) -> Option<(String, Style)> {
-        let id = self.current_note()?;
-        let thread = self.open.flow.thread(&id)?;
-        let style = lit(thread.kind, thread.resolved);
-        Some((id, style))
+    /// The notes lit, their boxes here and their bubbles in the rail alike, so the two never
+    /// differ: in the rail, or in a box at any depth, the current note's alone (`current_note`),
+    /// the innermost box's, not the threads on the line of words the cursor is on, and while a
+    /// reply or an edit is typed in a box (`field`), that box's; on a line of the document, the
+    /// selected block, every note on it, the current note among them, as the rail lit them
+    /// before the boxes: each comment whose passage starts in it, the sub-threads under them,
+    /// and under the last block the comments whose words are no longer found.
+    pub(super) fn lit_notes(&self) -> Vec<String> {
+        if let Mode::Reply(id) | Mode::Edit(id) = &self.mode {
+            return vec![id.clone()];
+        }
+        if self.focus == Focus::Rail || self.thread_at_cursor().is_some() {
+            return self.current_note().into_iter().collect();
+        }
+        let doc = &self.open.doc;
+        let on_line = |placed: &&Placed<'_>| doc.block_containing(placed.range.start) == Some(self.selected);
+        self.open.store.notes().iter().filter(on_line).map(|placed| placed.annotation.id.clone()).collect()
+    }
+
+    /// The boxes lit (`lit_notes`), each with the colour its border takes: its bubble's lit.
+    fn lit_boxes(&self) -> Vec<(String, Style)> {
+        let lit_box = |id: String| {
+            let thread = self.open.flow.thread(&id)?;
+            let style = lit(thread.kind, thread.resolved);
+            Some((id, style))
+        };
+        self.lit_notes().into_iter().filter_map(lit_box).collect()
     }
 }
 
-/// The columns of a row, drawn on `line`, that are thread `id`'s border, in `style`.
-fn light(buf: &mut Buffer, line: Rect, border: &[(String, Range<usize>)], id: &str, style: Style) {
+/// The columns of a row, drawn on `line`, that are a lit box's border, in its colour (`lit`,
+/// each thread with its).
+fn light(buf: &mut Buffer, line: Rect, border: &[(String, Range<usize>)], lit: &[(String, Style)]) {
     let width = usize::from(line.width);
-    for (_, columns) in border.iter().filter(|(of, _)| of == id) {
+    for (of, columns) in border {
+        let Some((_, style)) = lit.iter().find(|(id, _)| id == of) else { continue };
         let (start, end) = (columns.start.min(width), columns.end.min(width));
         if end > start {
             let lit = Rect { x: line.x + start as u16, width: (end - start) as u16, ..line };
-            buf.set_style(lit, style);
+            buf.set_style(lit, *style);
         }
     }
 }

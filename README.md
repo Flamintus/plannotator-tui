@@ -411,8 +411,10 @@ the agent answers with too:
   border is grey, its head's and its folded line's with it, at any depth; only the box the keys
   act on, the innermost, the current note's, takes the colour of its bubble lit in the rail:
   its kind's (`comment`, `looks-good`, `delete`), `looks-good` once resolved. A box holding it
-  stays grey. Without the loop, the replies and the resolved state a record may carry change
-  nothing on screen.
+  stays grey. On a line of the document, no box entered, every note on it is lit, its comments'
+  boxes and the sub-threads' in them, each with its bubble; once the cursor is in one of them,
+  that box alone. Without the loop, the replies and the resolved state a record may carry
+  change nothing on screen.
 - `j`/`k` stop on each line of the boxes' words on the way from a block to the next, a
   sub-thread's at any depth, drawn as a selected block, and on each box's head (`▾`) or
   folded line (`▸`); sides, authors and blank rows are stepped over as the gaps between blocks
@@ -441,12 +443,13 @@ the agent answers with too:
 - The rail stacks its bubbles from the top in the document's order, as the column of
   Plannotator's screens lists its comments, each sub-thread's bubble right after its thread's,
   a comment whose words are no longer found last, as its box is under the last block, each
-  drawn and acted on as any note's (edit, remove, image, reply, resolve, send now). The bubble
-  lit is the current note's, as its box is (its kind's colour, `looks-good` once its thread is
-  resolved), the one the keys act on: the rail's, the box the cursor is in at any depth (a
-  sub-thread's alone, not its thread's), else the selected block's; the rail scrolls only as
-  far as keeps it in full. Without the loop each bubble sits level with its
-  passage, and every note of the selected block is lit, as before.
+  drawn and acted on as any note's (edit, remove, image, reply, resolve, send now). The bubbles
+  lit are the boxes lit, in the same colour (its kind's, `looks-good` once its thread is
+  resolved): the current note's, the one the keys act on, in the rail or in the box the cursor
+  is in at any depth (a sub-thread's alone, not its thread's); on a line of the document, every
+  note of the selected block, the keys acting on its first, or on the rail's when it is one of
+  them. The rail scrolls only as far as keeps the first lit in full. Without the loop each
+  bubble sits level with its passage, and every note of the selected block is lit, as before.
 - `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
   block's note, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves
   it or opens it again. `z` draws the folded threads open, in the box the cursor is in or under

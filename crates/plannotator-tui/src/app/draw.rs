@@ -32,9 +32,9 @@ pub(super) fn accent(kind: Kind) -> Color {
     }
 }
 
-/// The border of the note the keys act on: its bubble's in the rail, lit, and under the review
-/// loop its box's in the flow (`threads`): green once its thread is resolved, else its kind's
-/// colour.
+/// The border of a note lit (under the review loop, `threads::lit_notes`): its bubble's in the
+/// rail, and under the review loop its box's in the flow (`threads`): green once its thread is
+/// resolved, else its kind's colour.
 pub(super) fn lit(kind: Kind, resolved: bool) -> Style {
     Style::new().fg(if resolved { palette().looks_good } else { accent(kind) })
 }
@@ -382,10 +382,10 @@ impl App {
 
     /// The notes' bubbles. Under the review loop they stack from the top, in the document's
     /// order, a sub-thread's after its thread's note, as the column of Plannotator's screens
-    /// lists its comments, and the one lit is the current note's, which the keys act on (the
-    /// rail's, the box the cursor is in at any depth, else the selected block's); without it
-    /// each sits level with its passage, as it always did, and every note of the selected block
-    /// is lit.
+    /// lists its comments, and the ones lit are the boxes lit (`lit_notes`): the current note's,
+    /// which the keys act on, in the rail or in a box at any depth, every note of the selected
+    /// block on a line of the document; without it each sits level with its passage, as it
+    /// always did, and every note of the selected block is lit.
     fn draw_rail(&mut self, frame: &mut Frame, rail: Rect) {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;
@@ -394,10 +394,11 @@ impl App {
         let inner_width = usize::from(rail.width.saturating_sub(4));
         let mut next_y = rail.y;
         let notes = self.open.store.notes();
-        // A sub-thread's note is on its thread's block: the block alone would light them all.
-        let current = in_loop.then(|| self.current_note()).flatten();
-        let current = current.and_then(|id| notes.iter().position(|p| p.annotation.id == id));
-        let first = if in_loop { first_stacked(&notes, current, inner_width, rail.height) } else { 0 };
+        // The bubbles lit are the boxes lit (`lit_notes`): in a box, a sub-thread's alone, though
+        // its note is on its thread's block.
+        let lit_notes = if in_loop { self.lit_notes() } else { Vec::new() };
+        let first_lit = notes.iter().position(|p| lit_notes.contains(&p.annotation.id));
+        let first = if in_loop { first_stacked(&notes, first_lit, inner_width, rail.height) } else { 0 };
         let mut bubbles = Vec::new();
         for (index, placed) in notes.iter().enumerate().skip(first) {
             let Some(block) = self.open.doc.block_containing(placed.range.start) else { continue };
@@ -423,7 +424,7 @@ impl App {
                 break;
             }
             let highlighted = if in_loop {
-                current == Some(index)
+                lit_notes.contains(&placed.annotation.id)
             } else if rail_focused {
                 index == self.rail_cursor
             } else {
@@ -648,17 +649,18 @@ impl App {
     }
 }
 
-/// The first of the stacked bubbles drawn: the top one, unless the current note's (`current`,
-/// by its place in `notes`) would be cut; then the rail scrolls only as far as shows it whole.
+/// The first of the stacked bubbles drawn: the top one, unless the first of those lit
+/// (`first_lit`, by its place in `notes`) would be cut; then the rail scrolls only as far as
+/// shows it whole.
 fn first_stacked(
     notes: &[crate::store::Placed<'_>],
-    current: Option<usize>,
+    first_lit: Option<usize>,
     width: usize,
     height: u16,
 ) -> usize {
     let tall =
         |p: &crate::store::Placed<'_>| bubble::lines(p.annotation, label(p.kind()), width, true).len() + 2;
-    let mut first = current.unwrap_or(0).min(notes.len().saturating_sub(1));
+    let mut first = first_lit.unwrap_or(0).min(notes.len().saturating_sub(1));
     let mut used = notes.get(first).map_or(0, tall);
     while let Some(above) = first.checked_sub(1).and_then(|index| notes.get(index)) {
         used += tall(above);
