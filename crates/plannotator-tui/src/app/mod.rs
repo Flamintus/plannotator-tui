@@ -318,10 +318,12 @@ impl App {
     }
 
     /// Folder mode: a lazy tree on the left, the shallowest Markdown file open. A folder
-    /// with none near the top opens on a placeholder so the tree is still browsable.
+    /// with none near the top opens on a placeholder so the tree is still browsable. With more
+    /// than one file to choose from, the tree has the focus: choosing the file comes first.
     pub(crate) fn open_folder(root: &Path, width: usize, delivery: Box<dyn Delivery>) -> Result<Self> {
         let mut tree = Tree::scan(root)?;
-        let first = crate::tree::first_file_shallow(root, 2_000);
+        let shallow = crate::tree::shallow_files(root, 2_000, 2);
+        let first = shallow.first().cloned();
         let source = match &first {
             Some(path) => read_file(path)?,
             None => DocumentSource::new(
@@ -343,6 +345,9 @@ impl App {
         app.refresh_counts(&mut tree);
         app.tree_cursor = first.as_deref().and_then(|p| tree.position(p)).unwrap_or(0);
         app.tree = Some(tree);
+        if shallow.len() > 1 {
+            app.focus = Focus::Tree;
+        }
         app.refresh_review_counts();
         app.derive_send_state();
         Ok(app)

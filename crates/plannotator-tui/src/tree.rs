@@ -220,24 +220,24 @@ impl Tree {
     }
 }
 
-/// The first markdown file at or near the top of `root`, hidden entries excluded: the
-/// shallowest match, found by a breadth-first look that gives up after `budget` entries. Big trees stay fast; the caller
-/// shows a placeholder when nothing shallow exists.
-pub(crate) fn first_file_shallow(root: &Path, budget: usize) -> Option<PathBuf> {
+/// The first `wanted` markdown files at or near the top of `root`, hidden entries excluded,
+/// the shallowest first, found by a breadth-first look that gives up after `budget` entries:
+/// fewer when the folder holds fewer near its top. Big trees stay fast; the caller shows a
+/// placeholder when nothing shallow exists.
+pub(crate) fn shallow_files(root: &Path, budget: usize, wanted: usize) -> Vec<PathBuf> {
     let mut queue = std::collections::VecDeque::from([root.to_path_buf()]);
     let mut seen = 0usize;
+    let mut files = Vec::new();
     while let Some(dir) = queue.pop_front() {
         let Ok(rows) = list(&dir, 0, false) else { continue };
         seen += rows.len();
-        if let Some(file) = rows.iter().find(|r| !r.is_dir) {
-            return Some(file.path.clone());
-        }
-        if seen >= budget {
-            return None;
+        files.extend(rows.iter().filter(|r| !r.is_dir).map(|r| r.path.clone()).take(wanted - files.len()));
+        if files.len() >= wanted || seen >= budget {
+            return files;
         }
         queue.extend(rows.iter().filter(|r| r.is_dir).map(|r| r.path.clone()));
     }
-    None
+    files
 }
 
 fn file_name(path: &Path) -> String {
@@ -379,20 +379,20 @@ mod tests {
         std::fs::remove_file(root.join("a.MD")).expect("rm");
         std::fs::remove_file(root.join("b.md")).expect("rm");
         std::fs::remove_dir_all(root.join("docs")).expect("rm docs");
-        assert_eq!(first_file_shallow(&root, 2000), None);
+        assert_eq!(shallow_files(&root, 2000, 1).into_iter().next(), None);
         std::fs::remove_dir_all(&root).expect("cleanup");
     }
 
     #[test]
     fn the_shallowest_markdown_is_found_without_walking_everything() {
         let root = fixture("shallow");
-        assert_eq!(first_file_shallow(&root, 2000), Some(root.join("a.MD")));
+        assert_eq!(shallow_files(&root, 2000, 1).into_iter().next(), Some(root.join("a.MD")));
         // A tree whose markdown is only deep inside still resolves breadth-first.
         std::fs::remove_file(root.join("a.MD")).expect("rm");
         std::fs::remove_file(root.join("b.md")).expect("rm");
-        assert_eq!(first_file_shallow(&root, 2000), Some(root.join("docs/deep/plan.md")));
+        assert_eq!(shallow_files(&root, 2000, 1).into_iter().next(), Some(root.join("docs/deep/plan.md")));
         // A zero budget gives up instead of scanning.
-        assert_eq!(first_file_shallow(&root, 0), None);
+        assert_eq!(shallow_files(&root, 0, 1).into_iter().next(), None);
         std::fs::remove_dir_all(&root).expect("cleanup");
     }
 }

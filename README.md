@@ -103,7 +103,7 @@ dimmed. The keys also work without opening the menu.
 | notes | `j`/`k`; `e` edit; `x` remove; `I` attach an image, `D` remove the last; click a bubble |
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
-| tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
+| tree | has the focus when a folder opens with more than one file to choose from · `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
 | review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, once sent · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
