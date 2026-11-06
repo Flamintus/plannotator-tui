@@ -298,7 +298,7 @@ impl App {
             _ => "Comment",
         };
         let save = if self.shift_enter { "shift+enter saves" } else { "alt+enter saves" };
-        format!(" {verb} \u{b7} {save} \u{b7} enter new line \u{b7} esc cancels ")
+        format!(" {verb} \u{b7} enter new line \u{b7} {save} \u{b7} esc cancels ")
     }
 
     /// The compose box: in the box the person types about, when there is one
