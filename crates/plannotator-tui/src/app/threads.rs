@@ -58,7 +58,7 @@ use field::Field;
 use head::{DRAFT, Mark, NOT_SAVED, lit_border, state_of};
 use rows::{BoxRow, Under, spaced};
 
-pub(super) use head::GREY;
+pub(super) use head::{GREY, LIVE, mark_style};
 pub(super) use words::Passage;
 
 /// One thread as drawn: the passage it is on, then its messages.

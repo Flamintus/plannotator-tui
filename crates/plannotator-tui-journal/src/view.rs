@@ -16,6 +16,11 @@ pub struct ThreadView {
     /// The round under way (1 before anything was sent).
     pub round: u64,
     pub threads: Vec<ThreadNode>,
+    /// The review's Live mode is on (`threads live-mode`, else the default): every thread is
+    /// live but those turned Unlive, and a new comment or sub-thread goes as soon as it is
+    /// saved (`Commented::now`). Off when the journal does not say (before Plannotator wrote it).
+    #[serde(default)]
+    pub live_mode: bool,
     #[serde(flatten)]
     pub other: Map<String, Value>,
 }
@@ -44,8 +49,9 @@ pub struct ThreadNode {
     /// What became of it, once a comment send carried it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<Status>,
-    /// The person turned it Live (`threads live`), once sent: a reply they save under it goes
-    /// at once (`Commented::now`).
+    /// Live, once sent: turned Live by the person (`threads live`), or by the review's Live
+    /// mode (`ThreadView::live_mode`) unless turned Unlive since; a reply they save under it
+    /// goes at once (`Commented::now`).
     pub live: bool,
     pub replies: Vec<ReplyNode>,
     /// The sub-threads on its own words.

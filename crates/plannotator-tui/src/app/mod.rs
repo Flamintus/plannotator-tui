@@ -73,6 +73,8 @@ enum Mode {
     ConfirmQuit,
     /// `clear-all` was pressed; the footer asks before every note on the document goes.
     ConfirmClearAll,
+    /// `toggle-live-mode` was pressed with drafts waiting; the footer asks before they go.
+    ConfirmLiveOn,
     /// Choosing which of the agent's recent messages to review.
     Pick,
     /// Quick Open: finding a file in the folder by name.
@@ -482,8 +484,9 @@ impl App {
     /// Note what a selection is on, saved immediately: a source range, its rendered text derived
     /// from the layout so the Workspaces web client can find it; or, under the review loop, a
     /// passage of a message in a thread's box, a sub-thread. The same note either way: the
-    /// same kinds, a bubble in the rail, written to the journal alike.
-    fn annotate(&mut self, on: Selected, kind: Kind, body: String) -> Result<()> {
+    /// same kinds, a bubble in the rail, written to the journal alike. True when it went at
+    /// once (the review's Live mode, `send_goes_now`), the footer saying so.
+    fn annotate(&mut self, on: Selected, kind: Kind, body: String) -> Result<bool> {
         match on {
             Selected::Source(range) => {
                 let rendered = self.open.layout.rendered_in_range(&self.open.doc.source, &range);
@@ -496,7 +499,7 @@ impl App {
         }
         self.mark_unsent();
         self.sync_tree_counts();
-        Ok(())
+        Ok(self.send_goes_now())
     }
 
     /// Apply a toolbar action to the pending selection.
@@ -508,9 +511,11 @@ impl App {
                 self.compose = Compose::default();
             }
             Kind::LooksGood | Kind::Delete => {
-                self.annotate(pending.on, kind, String::new())?;
+                let went = self.annotate(pending.on, kind, String::new())?;
                 self.clear_selection();
-                self.status = Some(format!("{} saved", label(kind)));
+                if !went {
+                    self.status = Some(format!("{} saved", label(kind)));
+                }
             }
         }
         Ok(())
@@ -720,7 +725,7 @@ impl App {
         let range = range.ok_or_else(|| {
             anyhow::anyhow!("block {block} out of range ({} blocks)", self.open.doc.blocks.len())
         })?;
-        self.annotate(Selected::Source(range), kind, body)
+        self.annotate(Selected::Source(range), kind, body).map(drop)
     }
 
     /// Annotate the first occurrence of `quote` in the source.
@@ -746,7 +751,7 @@ impl App {
             }
             anyhow::bail!("occurrence {occurrence} of {quote:?} not found: it appears {found} time(s)");
         };
-        self.annotate(Selected::Source(start..start + quote.len()), kind, body)
+        self.annotate(Selected::Source(start..start + quote.len()), kind, body).map(drop)
     }
 
     pub(crate) fn describe_blocks(&self) -> Vec<String> {

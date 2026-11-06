@@ -13,6 +13,7 @@ use super::send::SendState;
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
+use super::threads::{LIVE, mark_style};
 
 // These three set their own foreground as well as their background, so they read the same
 // on a light terminal as on a dark one; only the idle button borrows the theme's grey.
@@ -76,7 +77,19 @@ impl App {
     }
 
     pub(super) fn draw_header(&mut self, frame: &mut Frame, area: Rect) {
-        for (button, label, mut rect) in self.header_buttons(area.width) {
+        let buttons = self.header_buttons(area.width);
+        // The review's Live mode, on: said at the left of the buttons' first row, in the
+        // lightning's yellow of a Live thread, where it fits.
+        if self.review_loop.is_some() && self.journal_live_mode() && area.height > 0 {
+            let words = format!(" {LIVE} mode ");
+            let first = buttons.iter().filter(|(_, _, rect)| rect.y == 0).map(|(_, _, rect)| rect.x).min();
+            let room = first.unwrap_or(area.width);
+            let width = words.width() as u16;
+            if width < room {
+                frame.buffer_mut().set_span(area.x, area.y, &Span::styled(words, mark_style(LIVE)), width);
+            }
+        }
+        for (button, label, mut rect) in buttons {
             if rect.y >= area.height {
                 continue;
             }

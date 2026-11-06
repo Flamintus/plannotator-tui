@@ -15,7 +15,7 @@ use plannotator_tui_journal::{Error, IdempotencyKey, SendMode, Sent, ThreadView}
 use crate::journal::Review;
 use plannotator_tui_schema::{Annotation, Kind};
 
-use super::super::App;
+use super::super::{App, Mode};
 use super::super::draw::short_id;
 use super::super::feedback::Feedback;
 use super::super::send::SendState;
@@ -63,6 +63,8 @@ enum Ask {
     Round { named: bool },
     /// The drafts of thread `id` at once (`now_drafts`), the round going on.
     Now(String),
+    /// Every draft at once, the round going on: what turning the Live mode on sends first.
+    AllNow,
 }
 
 impl App {
@@ -86,11 +88,81 @@ impl App {
         self.press_send(&Ask::Now(id.to_owned()));
     }
 
+    /// The notes the journal said go at once as it wrote them (the review's Live mode: a new
+    /// note, `Commented::now`), each sent as `s` sends it. True when one was.
+    pub(in crate::app) fn send_goes_now(&mut self) -> bool {
+        let ids = self.open.store.take_goes_now();
+        for id in &ids {
+            self.send_journal_now(id);
+        }
+        !ids.is_empty()
+    }
+
+    /// Every draft of the review sent at once, the round going on (turning the Live mode on).
+    /// True when none is left waiting.
+    fn send_all_journal_now(&mut self) -> bool {
+        self.press_send(&Ask::AllNow);
+        self.loop_view().is_none_or(|view| all_drafts(view).is_empty())
+    }
+
+    /// The review's view as last read: the open document's, or the file's or folder's.
+    fn loop_view(&self) -> Option<&ThreadView> {
+        self.open.store.journal_view().map(|(_, view)| view).or_else(|| self.path_view())
+    }
+
+    /// Whether the review's Live mode is on (`ThreadView::live_mode`).
+    pub(in crate::app) fn journal_live_mode(&self) -> bool {
+        self.loop_view().is_some_and(|view| view.live_mode)
+    }
+
+    /// `ctrl+l`: the review's Live mode on or off. Off at once; on at once with no draft
+    /// waiting, else the footer asks first (`Mode::ConfirmLiveOn`), the drafts going before
+    /// the mode, as a thread's Live sends its box first.
+    pub(in crate::app) fn toggle_live_mode(&mut self) {
+        if self.review_loop.is_none() || self.loop_review().is_none() {
+            return;
+        }
+        if self.journal_live_mode() {
+            self.set_live_mode(false, "");
+        } else if self.loop_view().is_some_and(|view| !all_drafts(view).is_empty()) {
+            self.mode = Mode::ConfirmLiveOn;
+        } else {
+            self.set_live_mode(true, "");
+        }
+    }
+
+    /// `yes` on the footer's question: every draft at once, then the Live mode; a send that
+    /// did not go leaves the mode off, the status saying why.
+    pub(in crate::app) fn confirm_live_mode(&mut self) {
+        self.mode = Mode::Browse;
+        if !self.send_all_journal_now() {
+            return;
+        }
+        let sent = self.status.take().map(|status| format!("{status} \u{b7} ")).unwrap_or_default();
+        self.set_live_mode(true, &sent);
+    }
+
+    /// The drafts the Live mode would send first, as the footer's question counts them.
+    pub(in crate::app) fn live_mode_drafts(&self) -> usize {
+        self.loop_view().map(|view| all_drafts(view).len()).unwrap_or_default()
+    }
+
+    fn set_live_mode(&mut self, on: bool, sent: &str) {
+        let Some(review) = self.loop_review() else { return };
+        self.status = Some(match review.journal.live_mode(&review.target, on) {
+            Ok(()) if on => format!("{sent}live mode on: every thread live, new notes sent as saved"),
+            Ok(()) => "live mode off".to_owned(),
+            Err(err) => format!("{sent}review loop: {err}"),
+        });
+        self.refresh_journal();
+    }
+
     fn press_send(&mut self, ask: &Ask) {
         let Some(review) = self.loop_review() else { return };
         let retry = self.keys.hint(match ask {
             Ask::Round { .. } => Action::Send,
             Ask::Now(_) => Action::SendNow,
+            Ask::AllNow => Action::ToggleLiveMode,
         });
         let press = self.review_loop.as_mut().and_then(|review_loop| review_loop.press.take());
         let (press, sent) = if let Some(press) = press {
@@ -194,6 +266,14 @@ impl App {
                 None
             }
             Ask::Round { .. } => Some((SendMode::Round, Vec::new())),
+            Ask::AllNow => {
+                let ids = all_drafts(view);
+                if ids.is_empty() {
+                    self.status = Some("nothing to send".into());
+                    return None;
+                }
+                Some((SendMode::Now, ids))
+            }
             Ask::Now(id) => {
                 let ids = find(&view.threads, id).map(now_drafts).unwrap_or_default();
                 if ids.is_empty() {

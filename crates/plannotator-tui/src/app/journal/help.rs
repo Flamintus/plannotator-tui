@@ -126,8 +126,11 @@ impl App {
     fn steady_help(&self) -> Vec<Option<Hint>> {
         let key = |action, label| self.hint(action, label);
         let tab = self.keys.hint(Action::CycleFocus);
+        // The review's Live mode, under the review loop: on, every thread live and new notes sent as saved.
+        let live_mode = if self.journal_live_mode() { "unlive mode" } else { "live mode" };
         vec![
             key(Action::Send, "send"),
+            self.review_loop.is_some().then(|| key(Action::ToggleLiveMode, live_mode)).flatten(),
             (self.gate == Gate::Approve).then(|| key(Action::Approve, "approve")).flatten(),
             (!tab.is_empty()).then_some(Hint { keys: tab, label: None }),
             // `send-and-close` is bound only in a reply review.

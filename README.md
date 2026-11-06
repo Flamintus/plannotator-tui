@@ -105,7 +105,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | has the focus when a folder opens with more than one file to choose from · `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, what waits in the box sent first · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `L` Live on or off, what waits in the box sent first · `ctrl+l` the review's Live mode on or off, from anywhere (on: every thread Live, each new note sent as it is saved; the drafts waiting go first, once you answer `y`) · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Draft`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Draft`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -306,6 +306,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `toggle-thread` | `f` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded |
 | `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
 | `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble; turning it on first sends at once what waits in the box (the comment while a draft, else your replies waiting under it), as `send-now` sends it: a reply saved under a Live comment goes at once the same way |
+| `toggle-live-mode` | `ctrl+l` | in the review loop, turn the review's Live mode on or off: on, every thread is Live (`L` still turns one off) and each new comment or sub-thread is sent at once as it is saved; the footer asks before the drafts waiting go first. Off, each thread is back to its own Live. The header says `⚡ Live mode` while it is on |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote

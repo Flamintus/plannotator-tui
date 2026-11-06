@@ -55,7 +55,8 @@ fn split_images(text: &str) -> (String, Vec<String>) {
 impl Kept {
     /// Write `annotation` as a new comment, or as an edit of its draft, its words `text`: on
     /// the document's words, or a sub-thread on its box's passage, of its kind either way.
-    pub(super) fn comment(&self, annotation: &Annotation, text: &str) -> Result<()> {
+    /// True when the journal says it goes at once (`Commented::now`: the review's Live mode).
+    pub(super) fn comment(&self, annotation: &Annotation, text: &str) -> Result<bool> {
         let quote = annotation.anchor.rendered().to_owned();
         let deletion = annotation.anchor.kind() == Kind::Delete;
         let placement = match (&self.target, self.passages.get(&annotation.id)) {
@@ -75,11 +76,11 @@ impl Kept {
         };
         let comment = NewComment { id: annotation.id.clone(), text: text.to_owned(), placement };
         let review = &self.review;
-        // `now` is a reply's, which no note is.
+        // `now`: a new note in the review's Live mode goes at once; the app sends it (`take_goes_now`).
         review
             .journal
             .comment(&review.target, &comment)
-            .map(drop)
+            .map(|commented| commented.now)
             .with_context(|| format!("comment {}", annotation.id))
     }
 

@@ -61,6 +61,10 @@ pub trait Journal {
     /// Turn Live on or off on a sent comment or sub-thread, each its own: a reply the person
     /// saves under a Live thread goes at once. A draft is refused.
     fn live(&self, target: &ReviewTarget, id: &str, on: bool) -> Result<(), Error>;
+    /// Turn the review's Live mode on or off: every thread live but those turned Unlive since,
+    /// and a new comment or sub-thread going as soon as it is saved; off, each thread is back
+    /// to its own Live. The drafts waiting are the client's to send first.
+    fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error>;
     /// Send drafts to the agent's session: `now` the ones named, or `round` every draft left,
     /// ending the round. `to` is the session, which a review of a session's last messages
     /// names itself. `key` is the press's: the same press tried again goes under the same
@@ -288,6 +292,11 @@ impl Journal for Cli {
     fn live(&self, target: &ReviewTarget, id: &str, on: bool) -> Result<(), Error> {
         let state = if on { "on" } else { "off" };
         self.call_with::<Value>("live", &[id, state], target, Map::new()).map(drop)
+    }
+
+    fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error> {
+        let state = if on { "on" } else { "off" };
+        self.call_with::<Value>("live-mode", &[state], target, Map::new()).map(drop)
     }
 
     fn send(

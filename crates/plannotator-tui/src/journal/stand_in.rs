@@ -10,7 +10,7 @@ use std::cell::RefCell;
 
 use plannotator_tui_journal::{
     Commented, Error, IdempotencyKey, Journal, NewComment, Placement, ReviewTarget, Send, SendMode, SendTo,
-    Sent, Stamp, Status, ThreadView, Viewed,
+    Sent, Stamp, Status, ThreadNode, ThreadView, Viewed,
 };
 
 pub(crate) use comments::Comment;
@@ -28,7 +28,7 @@ pub(crate) struct StandIn {
 pub(crate) struct State {
     pub(crate) comments: Vec<Comment>,
     /// Every write, in order: `comment <id>`, `remove <id>`, `resolve <id> <bool>`,
-    /// `live <id> <bool>`.
+    /// `live <id> <bool>`, `live-mode <bool>`.
     pub(crate) writes: Vec<String>,
     /// Rounds finished: the round under way is the next one.
     pub(crate) finished: u64,
@@ -42,8 +42,8 @@ pub(crate) struct State {
     pub(crate) closed: bool,
     /// The sends marked delivered, by id.
     pub(crate) delivered: Vec<String>,
-    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `live`, `send`,
-    /// `resend`, `delivered`, `close`.
+    /// Calls refused, by action: `view`, `comment`, `remove`, `resolve`, `live`, `live-mode`,
+    /// `send`, `resend`, `delivered`, `close`.
     pub(crate) refused: Vec<&'static str>,
     /// The code they are refused with: `locked` unless a test names another.
     pub(crate) refused_as: Option<&'static str>,
@@ -54,6 +54,10 @@ pub(crate) struct State {
     pub(crate) targets: Vec<ReviewTarget>,
     /// Bumped by every write: what `stamp` says.
     pub(crate) written: u64,
+    /// The review's Live mode is on.
+    pub(crate) live_mode: bool,
+    /// How many times the Live mode came on: an Unlive counts against the turn it was made in.
+    pub(crate) mode_on: u64,
 }
 
 impl State {
@@ -112,15 +116,33 @@ impl StandIn {
     }
 }
 
+/// A sent thread's Live as the journal reads it: its own, or the review's Live mode unless
+/// turned Unlive since that mode came on.
+fn live_now(state: &State, comment: &Comment) -> bool {
+    !comment.draft && (comment.live || (state.live_mode && comment.unlive != Some(state.mode_on)))
+}
+
+/// Each thread of the view live as `live_now` says, at any depth.
+fn live_by_mode(threads: &mut [ThreadNode], state: &State) {
+    for node in threads {
+        if let Some(comment) = state.comments.iter().find(|comment| comment.id == node.id) {
+            node.live = live_now(state, comment);
+        }
+        live_by_mode(&mut node.sub_threads, state);
+        for reply in &mut node.replies {
+            live_by_mode(&mut reply.sub_threads, state);
+        }
+    }
+}
+
 impl Journal for StandIn {
     fn view(&self, target: &ReviewTarget) -> Result<Viewed, Error> {
         self.call("view", target)?;
         let state = self.state.borrow();
-        let view = state.view.clone().unwrap_or_else(|| ThreadView {
-            v: 1,
-            round: state.finished + 1,
-            threads: view(&state.comments),
-            other: serde_json::Map::new(),
+        let view = state.view.clone().unwrap_or_else(|| {
+            let mut threads = view(&state.comments);
+            live_by_mode(&mut threads, &state);
+            ThreadView { v: 1, round: state.finished + 1, threads, live_mode: state.live_mode, other: serde_json::Map::new() }
         });
         Ok(Viewed { review: REVIEW.to_owned(), view })
     }
@@ -138,8 +160,8 @@ impl Journal for StandIn {
         }
         let sent = |state: &State, id: &str| state.comments.iter().find(|c| c.id == id && !c.draft).cloned();
         let now = match &comment.placement {
-            Placement::Under { re } => sent(&state, re).is_some_and(|under| under.live),
-            Placement::On { .. } | Placement::Passage { .. } => false,
+            Placement::Under { re } => sent(&state, re).is_some_and(|under| live_now(&state, &under)),
+            Placement::On { .. } | Placement::Passage { .. } => state.live_mode,
         };
         let kept = match &comment.placement {
             Placement::On { on, quote, deletion } => {
@@ -222,10 +244,26 @@ impl Journal for StandIn {
         self.call("live", target)?;
         let mut state = self.state.borrow_mut();
         state.writes.push(format!("live {id} {on}"));
+        let (live_mode, mode_on) = (state.live_mode, state.mode_on);
         let Some(kept) = state.comments.iter_mut().find(|comment| comment.id == id && !comment.draft) else {
             return Err(refused("live", "not_found"));
         };
         kept.live = on;
+        kept.unlive = (!on && live_mode).then_some(mode_on);
+        state.written += 1;
+        Ok(())
+    }
+
+    /// The review's Live mode on or off, as the journal keeps it: coming on again makes every
+    /// thread live again.
+    fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error> {
+        self.call("live-mode", target)?;
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("live-mode {on}"));
+        if on && !state.live_mode {
+            state.mode_on += 1;
+        }
+        state.live_mode = on;
         state.written += 1;
         Ok(())
     }

@@ -62,6 +62,9 @@ pub(crate) struct Kept {
     /// Notes whose last write the journal did not take, as the person left them: kept here,
     /// words and all, until a write takes them or the person removes them.
     unsaved: Vec<Annotation>,
+    /// Notes the journal said go at once as it wrote them (the review's Live mode): the app
+    /// sends them (`take_goes_now`).
+    goes_now: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +142,7 @@ impl Store {
             stale: false,
             refused: Vec::new(),
             unsaved: Vec::new(),
+            goes_now: Vec::new(),
         };
         let mut store = Self::transient();
         store.backing = Backing::Journal(Box::new(kept));
@@ -310,6 +314,14 @@ impl Store {
         matches!(&self.backing, Backing::Journal(kept) if kept.stale)
     }
 
+    /// The notes the journal said go at once since the last call (the review's Live mode).
+    pub(crate) fn take_goes_now(&mut self) -> Vec<String> {
+        match &mut self.backing {
+            Backing::Journal(kept) => std::mem::take(&mut kept.goes_now),
+            _ => Vec::new(),
+        }
+    }
+
     /// What the journal refused since the last call.
     pub(crate) fn take_refusals(&mut self) -> Vec<String> {
         match &mut self.backing {
@@ -338,8 +350,11 @@ impl Store {
             };
             kept.stale |= written.is_some();
             match written {
-                Some(Ok(())) => {
+                Some(Ok(now)) => {
                     kept.unsaved.retain(|unsaved| unsaved.id != annotation.id);
+                    if now && !kept.goes_now.contains(&annotation.id) {
+                        kept.goes_now.push(annotation.id.clone());
+                    }
                     kept.wrote(annotation, text);
                 }
                 // Kept here, its words with it, until a write takes it or the person removes it.

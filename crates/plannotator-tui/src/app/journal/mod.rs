@@ -165,6 +165,8 @@ impl App {
             return false;
         }
         self.refresh_journal();
+        // A note an edit or another path wrote that goes at once (the review's Live mode).
+        self.send_goes_now();
         true
     }
 

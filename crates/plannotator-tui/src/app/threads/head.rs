@@ -29,7 +29,7 @@ const MIN_QUOTE_WIDTH: usize = 16;
 const MIN_TITLE_QUOTE_WIDTH: usize = 6;
 
 /// A Live thread, while it is open: a reply saved under it goes at once.
-pub(super) const LIVE: &str = "\u{26a1} Live";
+pub(in crate::app) const LIVE: &str = "\u{26a1} Live";
 
 // The states of a comment, in the order it goes through them.
 
@@ -159,7 +159,7 @@ fn colour(word: &str) -> Option<Color> {
 /// How an indicator is drawn wherever a box, its folded line, its bubble's title or an author
 /// line says it: Live in the lightning's yellow, a draft light blue, sent orange, replied
 /// violet, new turquoise, each bold; resolved green, not bold; the others grey.
-pub(super) fn mark_style(word: &str) -> Style {
+pub(in crate::app) fn mark_style(word: &str) -> Style {
     match colour(word) {
         Some(colour) if word == RESOLVED => Style::new().fg(colour),
         Some(colour) => Style::new().fg(colour).add_modifier(Modifier::BOLD),

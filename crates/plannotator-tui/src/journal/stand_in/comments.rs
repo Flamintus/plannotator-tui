@@ -21,6 +21,8 @@ pub(crate) struct Comment {
     pub(crate) draft: bool,
     pub(crate) status: Option<Status>,
     pub(crate) live: bool,
+    /// Turned Unlive while the Live mode was on: that mode's turn (`State::mode_on`).
+    pub(crate) unlive: Option<u64>,
     pub(crate) resolved: bool,
     pub(crate) re: Option<String>,
     pub(crate) parent: Option<String>,
@@ -44,6 +46,7 @@ impl Comment {
             draft: true,
             status: None,
             live: false,
+            unlive: None,
             resolved: false,
             re: None,
             parent: None,

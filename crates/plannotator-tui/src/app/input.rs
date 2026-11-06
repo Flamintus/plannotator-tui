@@ -20,6 +20,10 @@ impl App {
                 Mode::Browse => self.browse_key(*key),
                 Mode::ConfirmQuit => self.confirm_quit_key(*key),
                 Mode::ConfirmClearAll => self.confirm_clear_all_key(*key),
+                Mode::ConfirmLiveOn => {
+                    self.confirm_live_mode_key(*key);
+                    Ok(())
+                }
                 Mode::Pick => self.pick_key(*key),
                 Mode::FileSearch => {
                     self.file_search_key(*key);
@@ -125,6 +129,10 @@ impl App {
                 self.reopen_picker();
                 return Ok(());
             }
+            Some(Action::ToggleLiveMode) if self.review_loop.is_some() => {
+                self.toggle_live_mode();
+                return Ok(());
+            }
             _ => {}
         }
         match self.focus {
@@ -179,6 +187,18 @@ impl App {
             _ => {}
         }
         Ok(())
+    }
+
+    /// The Live mode's question: only `yes` sends the drafts waiting, then turns it on.
+    fn confirm_live_mode_key(&mut self, key: KeyEvent) {
+        match self.keys.action(&key, keys::CONFIRM_LIVE_MODE) {
+            Some(Action::Yes) => self.confirm_live_mode(),
+            Some(Action::No | Action::Back) => {
+                self.mode = Mode::Browse;
+                self.status = Some("live mode stays off".into());
+            }
+            _ => {}
+        }
     }
 
     fn cycle_focus(&mut self) {
@@ -490,14 +510,16 @@ impl App {
                     | Mode::Browse
                     | Mode::ConfirmQuit
                     | Mode::ConfirmClearAll
+                    | Mode::ConfirmLiveOn
                     | Mode::Pick
                     | Mode::FileSearch
                     | Mode::Archive
                     | Mode::ReviewMenu => {
+                        // Saved as a draft, or gone at once in the review's Live mode (its status then).
                         if !body.is_empty()
                             && let Some(pending) = self.pending.take()
+                            && !self.annotate(pending.on, Kind::Comment, body)?
                         {
-                            self.annotate(pending.on, Kind::Comment, body)?;
                             self.status = Some("comment saved".into());
                         }
                         self.clear_selection();
