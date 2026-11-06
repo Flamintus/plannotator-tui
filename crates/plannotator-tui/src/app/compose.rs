@@ -1,11 +1,10 @@
 //! The comment box: a small multi-line editor, for a comment, a reply, an edit and a sub-thread
 //! alike.
 //!
-//! Enter and Ctrl+J insert a new line; Shift+Enter saves where the terminal's keyboard protocol
-//! tells it from Enter, and Alt+Enter saves everywhere, the one way to save where it does not
-//! (the title names the one that arrives: `App::compose_title`); Esc cancels. The buffer is a
-//! char vec with a cursor, wrapped to the box width for display only — the saved body keeps
-//! exactly the newlines the user typed.
+//! Enter saves; Shift+Enter (where the terminal's keyboard protocol distinguishes it),
+//! Alt+Enter and Ctrl+J insert a new line (the title names the one that arrives:
+//! `App::compose_titles`); Esc cancels. The buffer is a char vec with a cursor, wrapped to the
+//! box width for display only — the saved body keeps exactly the newlines the user typed.
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use unicode_width::UnicodeWidthChar;
@@ -47,9 +46,9 @@ impl Compose {
         match key.code {
             KeyCode::Esc => return ComposeAction::Cancel,
             KeyCode::Enter if key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::ALT) => {
-                return ComposeAction::Save;
+                self.insert('\n');
             }
-            KeyCode::Enter => self.insert('\n'),
+            KeyCode::Enter => return ComposeAction::Save,
             KeyCode::Char('j' | 'J') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                 self.insert('\n');
             }

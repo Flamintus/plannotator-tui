@@ -293,17 +293,17 @@ impl App {
 
     /// The titles of the field a comment, a reply or an edit is typed in, floating or in its box
     /// (`threads::field`), the one source of them: what is typed, on its top edge; the keys that
-    /// break a line, save and cancel (`compose`), on its bottom edge. Shift+Enter is named only
-    /// where the terminal tells it from Enter, else Alt+Enter, which saves everywhere, so the
-    /// title never names a key that cannot arrive.
+    /// save, break a line and cancel (`compose`), on its bottom edge. Shift+Enter is named only
+    /// where the terminal tells it from Enter, else Alt+Enter, so the title never names a key
+    /// that cannot arrive.
     pub(in crate::app) fn compose_titles(&self) -> (String, String) {
         let verb = match &self.mode {
             Mode::Reply(_) => "Reply",
             Mode::Edit(_) => "Edit",
             _ => "Comment",
         };
-        let save = if self.shift_enter { "shift+enter saves" } else { "alt+enter saves" };
-        (format!(" {verb} "), format!(" enter new line \u{b7} {save} \u{b7} esc cancels "))
+        let newline = if self.shift_enter { "shift+enter new line" } else { "alt+enter new line" };
+        (format!(" {verb} "), format!(" enter saves \u{b7} {newline} \u{b7} esc cancels "))
     }
 
     /// The compose box: in the box the person types about, when there is one

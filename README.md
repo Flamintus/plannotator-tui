@@ -100,7 +100,7 @@ dimmed. The keys also work without opening the menu.
 | gated review | `A` approve; `E` send and finish; `q` dismiss |
 | document | `j`/`k` block; `c` comment on the block; `x` clear its annotations; `X` clear every annotation on the document, after a `y`; `v` select with `hjkl` `w` `b` `0` `$`, `Enter` to finish; `i` move the cursor with those keys first, then `v` to select from there; `I`/`D` attach or remove an image on the block's note |
 | toolbar | `a` looks good · `c` comment · `d` delete · `y` copy · `Esc` |
-| comment, reply or edit | `Enter` or `Ctrl+J` new line · `Shift+Enter` saves where the terminal tells it from `Enter` (the kitty keyboard protocol), `Alt+Enter` everywhere · `Esc` cancels; the field's title names the key that saves here |
+| comment, reply or edit | `Enter` saves · `Shift+Enter` new line where the terminal tells it from `Enter` (the kitty keyboard protocol), `Alt+Enter` or `Ctrl+J` everywhere · `Esc` cancels; the field's bottom edge names the new-line key here |
 | notes | `j`/`k`; `e` edit; `x` remove; `I` attach an image, `D` remove the last; click a bubble |
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
