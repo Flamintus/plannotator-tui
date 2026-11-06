@@ -16,8 +16,8 @@
 //! Every box's border is grey at rest, at any depth, of any kind and in any state; the box the
 //! person is in, the innermost, the current note's, whose bubble the rail lights, is drawn in
 //! that bubble's lit colour (`draw::lit`): its kind's, green once resolved. A box holding it
-//! stays grey. On a line of the document, no box entered, every note on it is lit, boxes and
-//! bubbles alike (`lit_notes`).
+//! stays grey. On a line of the document, no box entered, every comment on it is lit, not the
+//! sub-threads in them, boxes and bubbles alike (`lit_notes`).
 //!
 //! The layout keeps the boxes' rows free under their blocks (`DocLayout::reserve_under`),
 //! so the document's own rows never move inside a block. The rows are rebuilt only when a
@@ -245,9 +245,9 @@ impl App {
     /// differ: in the rail, or in a box at any depth, the current note's alone (`current_note`),
     /// the innermost box's, not the threads on the line of words the cursor is on, and while a
     /// reply or an edit is typed in a box (`field`), that box's; on a line of the document, the
-    /// selected block, every note on it, the current note among them, as the rail lit them
-    /// before the boxes: each comment whose passage starts in it, the sub-threads under them,
-    /// and under the last block the comments whose words are no longer found.
+    /// selected block, every comment on it: each whose passage starts in it, and under the last
+    /// block the comments whose words are no longer found, not the sub-threads under them,
+    /// which are on a message's words, not on the line.
     pub(super) fn lit_notes(&self) -> Vec<String> {
         if let Mode::Reply(id) | Mode::Edit(id) = &self.mode {
             return vec![id.clone()];
@@ -255,9 +255,12 @@ impl App {
         if self.focus == Focus::Rail || self.thread_at_cursor().is_some() {
             return self.current_note().into_iter().collect();
         }
-        let doc = &self.open.doc;
-        let on_line = |placed: &&Placed<'_>| doc.block_containing(placed.range.start) == Some(self.selected);
-        self.open.store.notes().iter().filter(on_line).map(|placed| placed.annotation.id.clone()).collect()
+        let (doc, store) = (&self.open.doc, &self.open.store);
+        let on_line = |placed: &&Placed<'_>| {
+            doc.block_containing(placed.range.start) == Some(self.selected)
+                && !store.on_passage(&placed.annotation.id)
+        };
+        store.notes().iter().filter(on_line).map(|placed| placed.annotation.id.clone()).collect()
     }
 
     /// The boxes lit (`lit_notes`), each with the colour its border takes: its bubble's lit.

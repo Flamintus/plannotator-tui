@@ -383,9 +383,10 @@ impl App {
     /// The notes' bubbles. Under the review loop they stack from the top, in the document's
     /// order, a sub-thread's after its thread's note, as the column of Plannotator's screens
     /// lists its comments, and the ones lit are the boxes lit (`lit_notes`): the current note's,
-    /// which the keys act on, in the rail or in a box at any depth, every note of the selected
-    /// block on a line of the document; without it each sits level with its passage, as it
-    /// always did, and every note of the selected block is lit.
+    /// which the keys act on, in the rail or in a box at any depth, every comment of the
+    /// selected block on a line of the document, not the sub-threads under them; without it
+    /// each sits level with its passage, as it always did, and every note of the selected block
+    /// is lit.
     fn draw_rail(&mut self, frame: &mut Frame, rail: Rect) {
         let view_end = self.scroll + usize::from(rail.height);
         let rail_focused = self.focus == Focus::Rail;

@@ -248,7 +248,7 @@ impl Store {
 
     /// Whether note `id` is on a passage of a message in a thread's box, a sub-thread, rather
     /// than on the document's words.
-    pub(super) fn on_passage(&self, id: &str) -> bool {
+    pub(crate) fn on_passage(&self, id: &str) -> bool {
         matches!(&self.backing, Backing::Journal(kept) if kept.passages.contains_key(id))
     }
 
