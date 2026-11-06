@@ -105,6 +105,7 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
 
     // Round 2: the person's reply, a sub-thread on the agent's words, a resolution.
     app.select_block(1);
+    press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('C'));
     app.handle_event(&Input::Paste("And on weekends?".into())).expect("typed");
     press(&mut app, KeyCode::Enter);
@@ -113,6 +114,7 @@ fn real_cli_two_rounds_and_a_pane_opened_again() {
     press(&mut app, KeyCode::Esc);
     app.poll_journal();
     app.select_block(2);
+    press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('V'));
     press(&mut app, KeyCode::Char('E'));
     let second = delivery.calls.borrow().last().cloned().expect("pasted");

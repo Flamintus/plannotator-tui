@@ -19,7 +19,8 @@ const IMAGE_EXTENSIONS: [&str; 7] = ["png", "jpg", "jpeg", "gif", "webp", "bmp",
 impl App {
     /// The note `attach-image`, `remove-image` and the thread keys act on: the rail's selected
     /// note; in the document, the thread whose box the cursor is in, at any depth, else the
-    /// selected block's note (the rail's selection when it is in the block).
+    /// selected block's note (the rail's selection when it is in the block), which under the
+    /// review loop the keys do not reach: a comment's keys act in its box (`journal::help`).
     pub(super) fn current_note(&self) -> Option<String> {
         let placed = self.open.store.notes();
         if self.focus == Focus::Rail {

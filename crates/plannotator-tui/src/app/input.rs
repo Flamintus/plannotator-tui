@@ -210,7 +210,8 @@ impl App {
 
     fn rail_key(&mut self, key: KeyEvent) -> Result<()> {
         let len = self.open.store.notes().len();
-        match self.keys.action(&key, keys::RAIL) {
+        // A key the bubble decides acts only where the footer names it (`journal::help`).
+        match self.keys.action(&key, keys::RAIL).filter(|&action| self.applies(action)) {
             Some(Action::Down) => {
                 self.rail_cursor = (self.rail_cursor + 1).min(len.saturating_sub(1));
             }
@@ -264,7 +265,9 @@ impl App {
                 return Ok(());
             }
         }
-        match self.keys.action(&key, keys::DOCUMENT) {
+        // A key the line decides acts only where the footer names it (`journal::help`): under the
+        // review loop a comment's keys act in its box, never from a line of the document.
+        match self.keys.action(&key, keys::DOCUMENT).filter(|&action| self.applies(action)) {
             Some(Action::Back) => {
                 if self.pending.is_some() || self.selection.is_some() {
                     self.clear_selection();

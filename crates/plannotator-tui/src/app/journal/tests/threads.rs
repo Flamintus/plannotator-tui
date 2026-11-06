@@ -27,7 +27,9 @@ pub(super) fn commented() -> (App, Rc<StandIn>) {
     (app, journal)
 }
 
+/// A reply typed in c1's box: `j` from its block onto the box's head, where a comment's keys act.
 pub(super) fn reply_with(app: &mut App, text: &str) {
+    press(app, KeyCode::Char('j'));
     press(app, KeyCode::Char('C'));
     app.handle_event(&Input::Paste(text.into())).expect("typed");
     press(app, KeyCode::Enter);
@@ -92,6 +94,8 @@ fn the_persons_reply_is_a_draft_that_e_sends() {
 #[test]
 fn resolve_folds_the_thread_and_opens_it_again() {
     let (mut app, journal) = commented();
+    // A comment's keys act in its box, not from its block.
+    press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('V'));
     assert!(journal.state.borrow().comments[0].resolved);
     let screen = draw(&mut app, 80, 30);
@@ -109,6 +113,8 @@ fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
     app.poll_journal();
     // Under 80 columns the rail is gone: what is left is the document's own column.
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded");
+    // On the box's folded line: a comment's keys act in its box, not from its block.
+    press(&mut app, KeyCode::Char('j'));
     press(&mut app, KeyCode::Char('z'));
     let screen = draw(&mut app, 70, 30);
     assert!(screen.contains("Who watches at night?"), "{screen}");

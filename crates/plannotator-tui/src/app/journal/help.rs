@@ -1,15 +1,24 @@
-//! The footer's key help over a document the review's journal keeps: only what the selection
-//! lets the keys do, first, then, past a wider `·`, the keys that do not change with it (send
-//! the round, approve, Tab, send and close, quit, find). The selection is the line the cursor
-//! is on in the document (a block, a line of a box's words, a draft's or not, a box's head or
-//! folded line), the bubble in the rail, or the tree's row. Whether a key may act there is
-//! decided by what the key acts by: the draft whose box the cursor is in (`draft_box`), a
-//! thread sent or not (`act::sent`), a note the journal still takes changes to
-//! (`Store::journal_waits`), its draft to send at once (`tree::now_drafts`), the fold line
-//! selected (`selected_fold`), what `toggle-thread` does here (`toggle_folds`), a draft's words
-//! (`words_of_draft`); so the footer names no key that would refuse. The labels say what the key
-//! does there: `V reopen` on a resolved thread, `z unfold` where it draws folded threads open.
-//! A selection waiting for its action keeps the toolbar's help.
+//! The keys over a document the review's journal keeps: what the selection lets them do, one
+//! list (`selection_keys`) that the footer names first and that every key whose action depends
+//! on the selection (`DECIDED`) consults before acting (`applies`), so the footer and the keys
+//! never differ: such a key the footer does not name does nothing, says nothing, opens nothing;
+//! the others (moves, `clear-block`…) act as they always did. Past a wider `·`, the footer
+//! names the keys that do not change with the selection (send the round, approve, Tab, send
+//! and close, quit, find). The selection is the line the cursor is on in the document (a block,
+//! a line of a box's words, a draft's or not, a box's head or folded line), the bubble in the
+//! rail, or the tree's row.
+//!
+//! A comment's keys (its edit, removal and images, a reply, resolving it, sending it at once,
+//! folding) act only on the box the cursor is in, at any depth, or on the bubble in the rail,
+//! never from a line of the document, which is not a comment: a reply answers a passage sent,
+//! not the words that hold it. Whether a key may act there is decided by what it acts by: the
+//! draft whose box the cursor is in (`draft_box`), a thread sent or not (`act::sent`), a note
+//! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
+//! (`tree::now_drafts`), the fold line selected (`selected_fold`), what `toggle-thread` does
+//! here (`toggle_folds`), a draft's words (`words_of_draft`). The labels say what the key does
+//! there: `V reopen` on a resolved thread, `z unfold` where it draws folded threads open. A
+//! selection waiting for its action keeps the toolbar's help, the keys still deciding as the
+//! selection lets them.
 
 use plannotator_tui_journal::State as ThreadState;
 
@@ -19,6 +28,37 @@ use crate::gate::Gate;
 use crate::journal::tree;
 use crate::keys::Action;
 
+/// A key the selection lets act, as the footer names it.
+enum Offer {
+    /// `action`, named by what it does on the selection.
+    Key(Action, &'static str),
+    /// The keys that move, named together (`j/k`, the cursor's directions).
+    Moves(Option<String>),
+    /// `action`, acting as a key the footer names, not named itself: `confirm` as `edit`, as
+    /// the unfold of a folded line or as `comment`; `left` and `right` as `move-cursor`.
+    Alias(Action),
+}
+
+/// The keys whose action depends on the selection: over a document the journal keeps, each
+/// acts only where the selection's keys name it, or as an alias of one; every other key acts
+/// as it always did.
+const DECIDED: &[Action] = &[
+    Action::Edit,
+    Action::Remove,
+    Action::AttachImage,
+    Action::RemoveImage,
+    Action::Reply,
+    Action::Resolve,
+    Action::SendNow,
+    Action::ToggleThread,
+    Action::MoveCursor,
+    Action::Visual,
+    Action::Comment,
+    Action::Confirm,
+    Action::Left,
+    Action::Right,
+];
+
 impl App {
     /// The footer's two groups under the review loop: the selection's keys, then the keys that
     /// do not change with it. `None` over a document the journal does not keep, or with a
@@ -27,17 +67,39 @@ impl App {
         if !self.open.store.is_journal() || self.pending.is_some() {
             return None;
         }
-        let here = match self.focus {
+        let here = self.selection_keys().into_iter().filter_map(|offer| match offer {
+            Offer::Key(action, label) => self.keys.labelled(action, label),
+            Offer::Moves(hint) => hint,
+            Offer::Alias(_) => None,
+        });
+        Some([here.collect(), self.steady_help().into_iter().flatten().collect()])
+    }
+
+    /// Whether `action` may act on the selection: over a document the journal keeps, a key
+    /// whose action depends on the selection acts only where the footer names it, or as an
+    /// alias of one; any other key, and every key over another document, as it always did.
+    pub(in crate::app) fn applies(&self, action: Action) -> bool {
+        if !DECIDED.contains(&action) || !self.open.store.is_journal() {
+            return true;
+        }
+        self.selection_keys().iter().any(|offer| match offer {
+            Offer::Key(named, _) | Offer::Alias(named) => *named == action,
+            Offer::Moves(_) => false,
+        })
+    }
+
+    /// What the selection lets the keys do, in the order the footer names them.
+    fn selection_keys(&self) -> Vec<Offer> {
+        match self.focus {
             Focus::Tree => vec![
-                self.up_down_hint(),
-                self.keys.labelled(Action::Confirm, "open"),
-                self.keys.labelled(Action::ToggleHidden, "hidden"),
-                self.keys.labelled(Action::ToggleTree, "hide"),
+                Offer::Moves(self.up_down_hint()),
+                Offer::Key(Action::Confirm, "open"),
+                Offer::Key(Action::ToggleHidden, "hidden"),
+                Offer::Key(Action::ToggleTree, "hide"),
             ],
-            Focus::Rail => self.bubble_help(),
-            Focus::Document => self.line_help(),
-        };
-        Some([here.into_iter().flatten().collect(), self.steady_help().into_iter().flatten().collect()])
+            Focus::Rail => self.bubble_keys(),
+            Focus::Document => self.line_keys(),
+        }
     }
 
     /// The keys that do not change with the selection, in the order the panes' help names them.
@@ -56,62 +118,80 @@ impl App {
         ]
     }
 
-    /// The rail's bubble: moving, then what its note takes: its words, images and removal while
-    /// the journal takes them, then its thread's keys.
-    fn bubble_help(&self) -> Vec<Option<String>> {
-        let key = |action, label| self.keys.labelled(action, label);
+    /// The rail's bubble: moving, then what its note takes: its words (`confirm` too), images
+    /// and removal while the journal takes them, then its thread's keys.
+    fn bubble_keys(&self) -> Vec<Offer> {
         let note = self.current_note();
         let (waits, images) = self.note_changes(note.as_deref());
-        let mut help = vec![
-            self.up_down_hint(),
-            waits.then(|| key(Action::Edit, "edit")).flatten(),
-            waits.then(|| key(Action::Remove, "remove")).flatten(),
-            waits.then(|| key(Action::AttachImage, "image")).flatten(),
-            images.then(|| key(Action::RemoveImage, "remove image")).flatten(),
-        ];
-        help.extend(self.thread_help(note.as_deref()));
-        help
+        let mut keys = vec![Offer::Moves(self.up_down_hint())];
+        if waits {
+            keys.extend([
+                Offer::Key(Action::Edit, "edit"),
+                Offer::Alias(Action::Confirm),
+                Offer::Key(Action::Remove, "remove"),
+                Offer::Key(Action::AttachImage, "image"),
+            ]);
+        }
+        if images {
+            keys.push(Offer::Key(Action::RemoveImage, "remove image"));
+        }
+        keys.extend(self.thread_keys(note.as_deref()));
+        keys
     }
 
     /// The document's selected line: on a box's fold line the arrow that folds or unfolds it;
     /// the cursor and a selection where there are words that take one (the document's, a sent
-    /// message's); the edit of the draft whose box it is; the images of the current note; its
-    /// thread's keys. While the cursor roams, its motions and the way back to the blocks.
-    fn line_help(&self) -> Vec<Option<String>> {
-        let key = |action, label| self.keys.labelled(action, label);
+    /// message's), while the cursor roams its motions and the way back to the blocks; then, in
+    /// a box only, its note's keys: the edit of the draft whose box it is, its images, its
+    /// thread's keys. `confirm` acts as the first of edit, unfold and comment the line takes.
+    fn line_keys(&self) -> Vec<Offer> {
         let row = self.cursor.0;
         let fold_line = self.on_box_line() && self.fold_line(row).is_some();
         // A box's fold line has no words; a draft's words take no selection.
         let text = !fold_line;
         let takes = text && !self.words_of_draft(row);
-        let fold = self.selected_fold().and_then(|(_, folded)| {
-            if folded { key(Action::Right, "unfold") } else { key(Action::Left, "fold") }
-        });
-        let mut help = vec![fold];
+        let fold = self.selected_fold().map(|(_, folded)| folded);
+        let draft = self.draft_box().is_some();
+        let mut keys = Vec::new();
+        match fold {
+            Some(true) => keys.push(Offer::Key(Action::Right, "unfold")),
+            Some(false) => keys.push(Offer::Key(Action::Left, "fold")),
+            None => {}
+        }
         if self.roam {
             let directions = self.keys.directions_hint();
-            help.extend([
-                (!directions.is_empty()).then(|| format!("{directions} move")),
-                takes.then(|| key(Action::Visual, "select")).flatten(),
-                takes.then(|| key(Action::Comment, "comment")).flatten(),
-                key(Action::Back, "blocks"),
-            ]);
-        } else {
-            help.extend([
-                text.then(|| key(Action::MoveCursor, "move")).flatten(),
-                takes.then(|| key(Action::Visual, "select")).flatten(),
-                takes.then(|| key(Action::Comment, "comment")).flatten(),
+            keys.push(Offer::Moves((!directions.is_empty()).then(|| format!("{directions} move"))));
+        } else if text {
+            // A column move in block mode starts the cursor, as `move-cursor` does.
+            keys.extend([
+                Offer::Key(Action::MoveCursor, "move"),
+                Offer::Alias(Action::Left),
+                Offer::Alias(Action::Right),
             ]);
         }
-        help.push(self.draft_box().and_then(|_| key(Action::Edit, "edit")));
-        let note = self.current_note();
-        if !self.roam {
-            let (waits, images) = self.note_changes(note.as_deref());
-            help.push(waits.then(|| key(Action::AttachImage, "image")).flatten());
-            help.push(images.then(|| key(Action::RemoveImage, "remove image")).flatten());
+        if takes {
+            keys.extend([Offer::Key(Action::Visual, "select"), Offer::Key(Action::Comment, "comment")]);
         }
-        help.extend(self.thread_help(note.as_deref()));
-        help
+        if self.roam {
+            keys.push(Offer::Key(Action::Back, "blocks"));
+        }
+        if draft || fold.unwrap_or(takes) {
+            keys.push(Offer::Alias(Action::Confirm));
+        }
+        // A comment's keys act on the box the cursor is in, never on a line of the document.
+        let Some(note) = self.thread_at_cursor() else { return keys };
+        if draft {
+            keys.push(Offer::Key(Action::Edit, "edit"));
+        }
+        let (waits, images) = self.note_changes(Some(&note));
+        if waits {
+            keys.push(Offer::Key(Action::AttachImage, "image"));
+        }
+        if images {
+            keys.push(Offer::Key(Action::RemoveImage, "remove image"));
+        }
+        keys.extend(self.thread_keys(Some(&note)));
+        keys
     }
 
     /// Whether note `id` takes changes, its words, its images and its removal, and whether it
@@ -123,20 +203,22 @@ impl App {
         (waits, waits && self.open.store.has_images(id))
     }
 
-    /// The keys on the current note's thread: its draft sent at once, a reply, resolving or
-    /// opening it again once sent; then folding or unfolding the threads here.
-    fn thread_help(&self, note: Option<&str>) -> Vec<Option<String>> {
-        let key = |action, label| self.keys.labelled(action, label);
+    /// The keys on note `note`'s thread: its draft sent at once, a reply, resolving or opening
+    /// it again once sent; then folding or unfolding the threads here.
+    fn thread_keys(&self, note: Option<&str>) -> Vec<Offer> {
         let thread = note.and_then(|id| self.node(id));
-        let is_sent = thread.is_some_and(sent);
-        let resolved = thread.is_some_and(|thread| thread.state == ThreadState::Resolved);
-        let now = thread.is_some_and(|thread| !tree::now_drafts(thread).is_empty());
-        vec![
-            now.then(|| key(Action::SendNow, "send now")).flatten(),
-            is_sent.then(|| key(Action::Reply, "reply")).flatten(),
-            is_sent.then(|| key(Action::Resolve, if resolved { "reopen" } else { "resolve" })).flatten(),
-            self.toggle_folds()
-                .and_then(|fold| key(Action::ToggleThread, if fold { "fold" } else { "unfold" })),
-        ]
+        let mut keys = Vec::new();
+        if thread.is_some_and(|thread| !tree::now_drafts(thread).is_empty()) {
+            keys.push(Offer::Key(Action::SendNow, "send now"));
+        }
+        if let Some(thread) = thread.filter(|thread| sent(thread)) {
+            let resolved = thread.state == ThreadState::Resolved;
+            keys.push(Offer::Key(Action::Reply, "reply"));
+            keys.push(Offer::Key(Action::Resolve, if resolved { "reopen" } else { "resolve" }));
+        }
+        if let Some(fold) = self.toggle_folds() {
+            keys.push(Offer::Key(Action::ToggleThread, if fold { "fold" } else { "unfold" }));
+        }
+        keys
     }
 }

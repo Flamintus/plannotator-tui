@@ -14,15 +14,16 @@ use super::super::{App, Mode};
 use crate::journal::{Review, tree};
 use crate::keys::Action;
 
-/// Whether thread `node` takes a reply and a resolution: once its comment is sent. A draft's are
-/// refused, here for a reply (`begin_reply`), by the journal for a resolution: it is sent first.
+/// Whether thread `node` takes a reply and a resolution: once its comment is sent. On a draft
+/// the keys offer neither (`help`), and do nothing: it is sent first.
 pub(super) fn sent(node: &ThreadNode) -> bool {
     !node.draft
 }
 
 impl App {
-    /// The thread actions, on the current note: the rail's, or the selected block's. Without
-    /// the review loop they do nothing.
+    /// The thread actions, on the current note: the rail's, or the box the cursor is in (the
+    /// keys act nowhere else over the journal's document: `help`). Without the review loop
+    /// they do nothing.
     pub(in crate::app) fn thread_action(&mut self, action: Action) {
         if self.review_loop.is_none() {
             return;
@@ -37,34 +38,26 @@ impl App {
     }
 
     /// The current note's thread in the review's view, with the review (`current_note`: the
-    /// box the cursor is in, the rail's note or the selected block's). The footer says why when
-    /// there is none.
+    /// box the cursor is in or the rail's note, where the keys offer it). The footer says why
+    /// when the journal does not keep the document's notes.
     fn current_thread(&mut self) -> Option<(Review, ThreadNode)> {
         let found = self.open.store.journal_view().and_then(|(review, view)| {
             let id = self.current_note()?;
             Some((review.clone(), tree::find(&view.threads, &id)?.clone()))
         });
-        if found.is_none() {
-            self.status = Some(if self.open.store.is_journal() {
-                "no comment here".to_owned()
-            } else {
+        if found.is_none() && !self.open.store.is_journal() {
+            self.status = Some(
                 "replies, resolving, sending at once and sub-threads go through the review's journal, which does not keep this document's notes"
-                    .to_owned()
-            });
+                    .to_owned(),
+            );
         }
         found
     }
 
+    /// A reply typed at the bottom of the current note's box: only a sent thread's, where the
+    /// keys offer it (`help`).
     fn begin_reply(&mut self) {
         let Some((_, node)) = self.current_thread() else { return };
-        if !sent(&node) {
-            self.status = Some(format!(
-                "a draft takes no reply: {} sends it now, {} with the round",
-                self.keys.hint(Action::SendNow),
-                self.keys.hint(Action::Send)
-            ));
-            return;
-        }
         self.compose = super::super::compose::Compose::default();
         self.status = None;
         self.mode = Mode::Reply(node.id);

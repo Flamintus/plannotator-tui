@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · `s` send the current note's draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold an open one · `l` or `Enter` on a box's folded line (`▸`) draws it open, `h` on its head (`▾`) folds it, a click on either does the same · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold an open one · `I`/`D` its images · `l` or `Enter` on a box's folded line (`▸`) draws it open, `h` on its head (`▾`) folds it, a click on either does the same · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -295,15 +295,15 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `resend-all` `finish-review` `undo-finish` `archive` | `R` `F` `U` `H` | file and folder review actions |
 | `toggle-hidden` | `.` | show/hide dot-prefixed entries in the tree |
 | `edit` `remove` | `e` `x`, `Delete` | the selected note; in the review loop, `edit` also on any line of a draft's box |
-| `attach-image` `remove-image` | `I` `D` | an image on the selected note, or the selected block's |
+| `attach-image` `remove-image` | `I` `D` | an image on the selected note, or the selected block's; in the review loop, the box the cursor is in, never the block's |
 | `visual` `move-cursor` | `v` `i` | select with the cursor; move it first |
 | `comment` `clear-block` | `c` `x` | on the block; clear its annotations |
 | `clear-all` | `X` | every annotation on the document, after `yes` |
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
-| `reply` `resolve` | `C` `V` | the current note's thread in the review loop: reply under it, resolve it or open it again (keys provisional) |
-| `toggle-thread` | `z` | in the review loop, draw the folded threads in the box the cursor is in, else the selected block's, open, or, none folded, fold that box or the block's threads (key provisional) |
-| `send-now` | `s` | in the review loop, send the current note's draft alone, at once, the round going on (key provisional) |
+| `reply` `resolve` | `C` `V` | in the review loop, the thread of the box the cursor is in or of the bubble: reply under it, resolve it or open it again (keys provisional) |
+| `toggle-thread` | `z` | in the review loop, draw the folded threads in the box the cursor is in, or from a bubble its block's, open, or, none folded, fold that box or the block's threads (key provisional) |
+| `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -378,8 +378,8 @@ the agent answers with too:
   once it went. A round carries every draft of the review, drafts left by an earlier pane
   included, which the footer counts when the pane opens.
 - `s` sends the current note's draft alone, at once, as a box's Send does on Plannotator's
-  screens: on its bubble in the rail, or with the cursor on its block or in its box, a
-  sub-thread's at any depth; on a sent comment, the replies of yours waiting under it. The
+  screens: on its bubble in the rail, or with the cursor in its box, a sub-thread's at any
+  depth, never from its block; on a sent comment, the replies of yours waiting under it. The
   round goes on: the journal sends it in `now` mode, the text it composes is pasted into the
   agent's pane as a round's is, the thread is `Live` from then on, and the footer says
   `Sent now · Round 2 still open · 1 comment(s) → claude in w1:p2`. A paste the agent did not
@@ -447,14 +447,16 @@ the agent answers with too:
   lit are the boxes lit, in the same colour (its kind's, `looks-good` once its thread is
   resolved): the current note's, the one the keys act on, in the rail or in the box the cursor
   is in at any depth (a sub-thread's alone, not its thread's); on a line of the document, every
-  comment of the selected block, not the sub-threads under them, the keys acting on its first,
-  or on the rail's when it is one of them. The rail scrolls only as far as keeps the first lit
-  in full. Without the loop each
+  comment of the selected block, not the sub-threads under them, the keys acting on none. The
+  rail scrolls only as far as keeps the first lit in full. Without the loop each
   bubble sits level with its passage, and every note of the selected block is lit, as before.
-- `C` replies under the current note's comment (the box the cursor is in, else the rail's or the
-  block's note, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves
-  it or opens it again. `z` draws the folded threads open, in the box the cursor is in or under
-  the block, or, none folded there, folds that box or the block's threads. These keys answer
+- `C` replies under the current note's comment (the box the cursor is in, or the rail's
+  bubble, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves it or
+  opens it again. `z` draws the folded threads open, in the box the cursor is in, or from a
+  bubble under its block, or, none folded there, folds that box or the block's threads. A
+  comment's keys (`e`, `I`, `D`, `s`, `C`, `V`, `z`, and `x` on its bubble) act only in its
+  box, at any depth, or on its bubble, never from a line of the document: a reply answers a
+  passage sent, not the words that hold it. These keys answer
   only while the loop runs, and are provisional, to be confirmed in use; like every key they can
   be rebound under `[keys]`.
 - The footer names only what can be done on the selection, the line the cursor is on (a block,
@@ -463,9 +465,12 @@ the agent answers with too:
   in a gated review, `Tab`, `S`, `q`, `ctrl+p`): `l unfold` or `h fold` on a fold line, `e edit`
   and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` on a sent thread,
   `z fold` or `z unfold` as it would act, no `c comment` or `v select` where there are no words
-  to take one, no edit, removal or image on a sent note, which the journal would refuse. A
-  selection waiting for its action keeps the toolbar's help, and without the loop the footer
-  is as it was.
+  to take one, no edit, removal or image on a sent note, which the journal would refuse, no
+  comment's key on a line of the document. Of the keys the selection decides (a comment's,
+  `i`, `v`, `c`, `h`/`l` and `Enter`), one it does not name does nothing there, says nothing
+  and opens nothing: the keys and the footer read one list; the others (`j`/`k`, `g`, `x`, `X`,
+  ...) act as they always did. A selection waiting for its action keeps the toolbar's help, and
+  without the loop the footer and the keys are as they were.
 
 While the loop runs, the feedback plannotator-tui still composes for a reply the journal could
 not list names each note by its own id: `## Annotation 1 (line 12) (id local_…)`. An approval's

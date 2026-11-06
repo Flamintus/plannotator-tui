@@ -87,23 +87,19 @@ impl App {
     }
 
     /// `comment` with the cursor on a line of a box's words and nothing selected: a sub-thread
-    /// on the line's words, as a block takes a comment; the footer says why there is none (a
-    /// draft's words).
+    /// on the line's words, as a block takes a comment. The keys offer it only on words that
+    /// take one, a sent message's (`journal::help`).
     pub(in crate::app) fn sub_thread_on_line(&mut self) -> Result<()> {
         let row = self.cursor.0;
         let Some(words) = self.box_words(row) else { return Ok(()) };
         let first = words.iter().position(Option::is_some).unwrap_or(0);
         let last = words.iter().rposition(Option::is_some).unwrap_or(first);
         let line = Selection::finished((row, first), (row, last));
-        match self.box_passage(&line) {
-            Some(Ok(passage)) => {
-                self.selection = Some(line);
-                self.status = None;
-                self.pending = Some(Pending { on: Selected::Passage(passage), at: (row, first) });
-                self.act(Kind::Comment)?;
-            }
-            Some(Err(why)) => self.status = Some(why),
-            None => {}
+        if let Some(Ok(passage)) = self.box_passage(&line) {
+            self.selection = Some(line);
+            self.status = None;
+            self.pending = Some(Pending { on: Selected::Passage(passage), at: (row, first) });
+            self.act(Kind::Comment)?;
         }
         Ok(())
     }
