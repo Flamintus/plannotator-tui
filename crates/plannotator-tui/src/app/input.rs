@@ -2,9 +2,7 @@
 
 use anyhow::Result;
 use plannotator_tui_schema::Kind;
-use ratatui::crossterm::event::{
-    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
-};
+use ratatui::crossterm::event::{Event, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
 
 use super::compose::ComposeAction;
 use super::menu::ReviewAction;
@@ -473,11 +471,6 @@ impl App {
     }
 
     fn text_key(&mut self, key: KeyEvent) -> Result<()> {
-        // A Shift+Enter that arrives as such tells the terminal speaks the keyboard protocol,
-        // though it did not answer the query: the field names Shift+Enter from now on.
-        if key.code == KeyCode::Enter && key.modifiers.contains(KeyModifiers::SHIFT) {
-            self.shift_enter = true;
-        }
         match self.compose.handle_key(key) {
             ComposeAction::Cancel => self.mode = Mode::Browse,
             ComposeAction::Save => {
