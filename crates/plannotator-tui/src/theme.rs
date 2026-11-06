@@ -116,6 +116,8 @@ pub(crate) struct Palette {
     pub(crate) approve_bg: Color,
     /// A key in the footer's help under the review loop, beside what it does, dim.
     pub(crate) key: Color,
+    /// A Live thread's mark, the lightning's yellow.
+    pub(crate) live: Color,
     /// The keyboard cursor cell.
     pub(crate) cursor: Style,
     /// A character selection, a picker row, a review-menu row.
@@ -136,6 +138,7 @@ pub(crate) static DARK: Palette = Palette {
     comment_bg: Color::Indexed(58),
     approve_bg: Color::Indexed(22),
     key: Color::Red,
+    live: Color::Yellow,
     cursor: Style::new().bg(Color::Indexed(240)),
     selection: Style::new().add_modifier(Modifier::REVERSED),
 };
@@ -157,6 +160,7 @@ pub(crate) static LIGHT: Palette = Palette {
     comment_bg: Color::Indexed(222),
     approve_bg: Color::Indexed(157),
     key: DARK.key,
+    live: DARK.live,
     // A dark cell with its own light foreground, so the glyph under the cursor stays legible.
     cursor: Style::new().bg(Color::Indexed(238)).fg(Color::White),
     selection: Style::new().bg(Color::Indexed(153)),

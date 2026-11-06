@@ -13,6 +13,7 @@ use plannotator_tui_journal::{Author, ReplyNode, State as ThreadState, Status, T
 use plannotator_tui_schema::Kind;
 
 use super::super::App;
+use super::head::LIVE;
 use super::{Message, Thread};
 use crate::journal::{passage, tree};
 use crate::store::kind_of;
@@ -34,13 +35,14 @@ fn status_word(status: Status) -> Option<&'static str> {
 }
 
 /// What a comment's state is, as its box's head and its bubble in the rail both say it: while
-/// it is open, what became of its send and Live; then its round, or Not sent for a draft. The
-/// round goes last, so a narrow head gives it up first.
+/// it is open, Live first (`LIVE`), then what became of its send; then its round, or Not sent
+/// for a draft. Live goes first, so a narrow head keeps it longest; the round goes last, so it
+/// is given up first.
 pub(in crate::app) fn state_marks(node: &ThreadNode) -> Vec<String> {
     let mut marks = Vec::new();
     if node.state != ThreadState::Resolved {
+        marks.extend(node.live.then(|| LIVE.to_owned()));
         marks.extend(node.status.and_then(status_word).map(str::to_owned));
-        marks.extend(node.live.then(|| "Live".to_owned()));
     }
     marks.push(if node.draft { "Not sent".to_owned() } else { format!("Round {}", node.round) });
     marks
@@ -103,10 +105,12 @@ impl Thread {
             threads: threads(&reply.sub_threads, &reply.text),
         });
         let kind = kind_of(node);
-        let mut marks: Vec<String> = kind_word(kind).map(str::to_owned).into_iter().collect();
-        marks.extend(range.is_none().then(|| "Unanchored".to_owned()));
-        // A resolved thread's last send is history: its head says resolved and its round.
-        marks.extend(state_marks(node));
+        // A resolved thread's last send is history: its head says resolved and its round. Its
+        // kind and Unanchored come after Live, which leads the marks.
+        let mut marks = state_marks(node);
+        let after_live = usize::from(marks.first().is_some_and(|mark| mark == LIVE));
+        let named = kind_word(kind).map(str::to_owned).into_iter();
+        marks.splice(after_live..after_live, named.chain(range.is_none().then(|| "Unanchored".to_owned())));
         Self {
             id: node.id.clone(),
             kind,

@@ -29,6 +29,20 @@ pub(in crate::app) fn resolved_style() -> Style {
     Style::new().fg(palette().looks_good).add_modifier(Modifier::BOLD)
 }
 
+/// The mark of a Live thread, first of its marks: at its box's head, on its folded line, in its
+/// bubble's title.
+pub(in crate::app) const LIVE: &str = "\u{26a1} Live";
+
+/// How a mark is drawn on a head or a folded line: the resolved mark in its colour, the Live
+/// mark in the lightning's yellow, the others grey.
+fn mark_style(mark: &str) -> Style {
+    match mark {
+        RESOLVED => resolved_style(),
+        LIVE => Style::new().fg(palette().live).add_modifier(Modifier::BOLD),
+        _ => Style::new().fg(Color::DarkGray),
+    }
+}
+
 /// The border of every box at rest, its head's and its folded line's mark and rule with it, at
 /// every depth, of every kind and in every state: grey, as a bubble's in the rail that is not
 /// lit. The box the person is in, the current note's, is drawn in its bubble's lit colour over
@@ -91,8 +105,7 @@ fn chips_spans(chips: &[&str]) -> Vec<Span<'static>> {
         if index > 0 {
             spans.push(Span::styled(" \u{b7} ", grey));
         }
-        let style = if *chip == RESOLVED { resolved_style() } else { grey };
-        spans.push(Span::styled((*chip).to_owned(), style));
+        spans.push(Span::styled((*chip).to_owned(), mark_style(chip)));
     }
     if !chips.is_empty() {
         spans.push(Span::styled(" ", grey));
@@ -117,7 +130,7 @@ pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range
     let lead = format!("{start}{} ", glyph(thread.kind));
     let passage = one_line(&thread.quote);
     let new = thread.holds_new().then_some(NEW);
-    // The head's chips in the head's order, the resolved mark first, then what is new.
+    // The head's chips in the head's order (Live, else the resolved mark, first), then what is new.
     let resolved = thread.resolved.then_some(RESOLVED);
     let marks: String = resolved
         .into_iter()
@@ -148,20 +161,21 @@ pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range
     let border = BORDER;
     let mut spans = vec![Span::styled(start, border)];
     let words = rest.trim_end_matches(['\u{2500}', '\u{2574}']);
-    // The resolved mark, right after the passage, in its colour as at the head.
-    let after_quote = lead.len() - start.len() + quote.len();
-    let mark = thread
-        .resolved
-        .then(|| words.get(after_quote..)?.find(RESOLVED).map(|at| after_quote + at))
-        .flatten();
-    match mark {
-        Some(at) => {
-            spans.push(Span::styled(words[..at].to_owned(), grey));
-            spans.push(Span::styled(RESOLVED, resolved_style()));
-            spans.push(Span::styled(words[at + RESOLVED.len()..].to_owned(), grey));
-        }
-        None => spans.push(Span::styled(words.to_owned(), grey)),
+    // The marks after the passage drawn as at the head: the Live and resolved marks in their
+    // colours (`mark_style`), the rest grey.
+    let mut from = 0;
+    let mut search = (lead.len() - start.len() + quote.len()).min(words.len());
+    while let Some((at, mark)) = [LIVE, RESOLVED]
+        .into_iter()
+        .filter_map(|mark| words.get(search..)?.find(mark).map(|at| (search + at, mark)))
+        .min_by_key(|(at, _)| *at)
+    {
+        spans.push(Span::styled(words[from..at].to_owned(), grey));
+        spans.push(Span::styled(mark, mark_style(mark)));
+        from = at + mark.len();
+        search = from;
     }
+    spans.push(Span::styled(words[from..].to_owned(), grey));
     let rule = start.width() + words.width();
     let end = start.width() + rest.width();
     spans.push(Span::styled(rest[words.len()..].to_owned(), border));

@@ -389,7 +389,8 @@ the agent answers with too:
 - `L` turns Live on or off on a sent comment, on its bubble in the rail or with the cursor in
   its box, a sub-thread's at any depth, which has its own, apart from its thread's; never on a
   draft or from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
-  head of the box, its folded line and its bubble say `Live` while it is on, and the footer
+  head of the box, its folded line and its bubble say `⚡ Live`, first of their marks and in
+  yellow, while it is on, and the footer
   says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of
   `s` itself: pasted into the agent's pane, then marked delivered. Under any other thread it
   waits, `Not sent`, for `s` or `E`. Sending at once does not turn a thread Live.
