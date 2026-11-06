@@ -12,7 +12,7 @@ use ratatui::crossterm::event::{Event as Input, KeyCode};
 use super::super::super::review_test_support::{drag, drag_over, draw, on_screen};
 use super::super::super::{App, Mode};
 use super::press;
-use super::threads::{commented, reply_with, row_with};
+use super::threads::{commented, reply_with};
 use crate::journal::stand_in::{Comment, StandIn};
 
 /// `commented`, the agent's reply `text` under c1, drawn once.
@@ -43,15 +43,20 @@ fn a_passage_selected_in_a_reply_in_its_box_takes_a_sub_thread_on_it() {
     let screen = draw(&mut app, 80, 30);
     drag_over(&mut app, &screen, "panel", 1);
     let footer = draw(&mut app, 80, 30).lines().last().unwrap_or_default().to_owned();
-    assert!(footer.contains("c comment") && !footer.contains("looks good"), "a comment alone: {footer}");
+    let toolbar = ["looks good", "c comment", "d delete"];
+    assert!(toolbar.iter().all(|kind| footer.contains(kind)), "the document's toolbar: {footer}");
     sub_thread_with(&mut app, "Which panel?");
     // The second one, counted as Plannotator counts it.
     assert_eq!(sub_threads(&journal), [(Some("rep_1".into()), "panel".into(), Some(25))]);
     assert!(journal.state.borrow().comments.last().is_some_and(|sub| sub.draft), "a draft");
-    assert_eq!(app.status.as_deref(), Some("sub-thread saved \u{b7} E sends it"));
+    assert_eq!(app.status.as_deref(), Some("comment saved"), "as a comment on the document's words");
+    // The event loop reads the view the write moved before it draws.
+    assert!(app.poll_journal());
     let screen = draw(&mut app, 80, 40);
-    let row = row_with(&screen, "Which panel?");
-    assert!(row.starts_with("  \u{2502} \u{2502}"), "a box in the box: {screen}");
+    // Its bubble in the rail says it too: the box's row is the one inside c1's box.
+    let boxed = screen.lines().filter(|row| row.contains("Which panel?"));
+    assert!(boxed.clone().any(|row| row.starts_with("  \u{2502} \u{2502}")), "a box in the box: {screen}");
+    assert_eq!(boxed.count(), 2, "the box and its bubble: {screen}");
 }
 
 #[test]
