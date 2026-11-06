@@ -104,7 +104,7 @@ dimmed. The keys also work without opening the menu.
 | file/folder review | `E` send new · `m` review menu (`R` resend all · `F` finish review · `U` undo · `H` archive) |
 | folder review | `Ctrl+P` open a file by name, including in collapsed folders: type, `↑`/`↓` or click, `Enter`, `Esc` |
 | tree | `j`/`k`; `Enter` open; `.` show/hide dot-prefixed entries (`.agents/`, `.github/`); `E` sends new notes across all reviewed files, including collapsed folders |
-| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `z` draw a folded thread open, or fold an open one · `I`/`D` its images · `x` remove a draft (`Not sent`) · `l` or `Enter` on a box's folded line (`▸`) draws it open, `h` on its head (`▾`) folds it, a click on either does the same · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
+| review loop | `E` send and end the round · in a box or on its bubble only, never from a line of the document: `s` send its draft now, the round going on · `C` reply · `V` resolve or open again · `f` fold the box, or draw it open · `I`/`D` its images · `x` remove a draft (`Not sent`) · on a box's fold line, the arrows do as `f` (`→` or `Enter` on its folded line `▸`, `←` on its head `▾`), and so does a click on either · `e` or `Enter` on any line of a draft's box (`Not sent`) edits it there; of these and `i`, `v`, `c`, a key the footer does not name does nothing (see [Review loop](#review-loop)) |
 
 These are the defaults; every key can be rebound under `[keys]` (see [Keys](#keys)).
 
@@ -302,7 +302,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
 | `reply` `resolve` | `C` `V` | in the review loop, the thread of the box the cursor is in or of the bubble: reply under it, resolve it or open it again (keys provisional) |
-| `toggle-thread` | `z` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded (key provisional) |
+| `toggle-thread` | `f` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded |
 | `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
@@ -452,10 +452,10 @@ the agent answers with too:
   bubble sits level with its passage, and every note of the selected block is lit, as before.
 - `C` replies under the current note's comment (the box the cursor is in, or the rail's
   bubble, as for the image keys), a draft the next `E` sends, or `s` at once; `V` resolves it or
-  opens it again. `z` draws the folded threads open, in the box the cursor is in or in the
-  bubble's thread, or, none folded there, folds that box. `x` in a draft's box removes it, as
+  opens it again. `f` folds the box the cursor is in, or the bubble's thread, or draws it open
+  when folded; on its fold line the arrows do the same. `x` in a draft's box removes it, as
   on its bubble; on a line of the document it still clears the block. A comment's keys (`e`,
-  `x`, `I`, `D`, `s`, `C`, `V`, `z`) act only in its box, at any depth, or on its bubble, that
+  `x`, `I`, `D`, `s`, `C`, `V`, `f`) act only in its box, at any depth, or on its bubble, that
   comment's alone, never from a line of the document: a reply answers a passage sent, not the
   words that hold it. These keys answer
   only while the loop runs, and are provisional, to be confirmed in use; like every key they can
@@ -463,10 +463,11 @@ the agent answers with too:
 - The footer names only what can be done on the selection, the line the cursor is on (a block,
   a line of a box's words, a draft's or not, a head, a folded line), the bubble in the rail or
   the tree's row, first, then, past a `|`, the keys that do not change with it (`E`, `A`
-  in a gated review, `Tab`, `S`, `q`, `ctrl+p`): `l/z unfold` or `h/z fold` on a fold line
-  (one effect, named once with the keys that do it), `e edit`
+  in a gated review, `Tab`, `S`, `q`, `ctrl+p`), each key in red and what it does in grey:
+  `f fold` or `f unfold` as it would act, one key per effect (the arrows of a fold line do as
+  `f`, unnamed), `e edit`
   and `s send now` on a draft but no `C reply`, `V resolve` or `V reopen` on a sent thread,
-  `z fold` or `z unfold` as it would act, no `c comment` or `v select` where there are no words
+  no `c comment` or `v select` where there are no words
   to take one, no edit, removal or image on a sent note, which the journal would refuse, no
   comment's key on a line of the document. Of the keys the selection decides (a comment's,
   `i`, `v`, `c`, `h`/`l` and `Enter`), one it does not name does nothing there, says nothing

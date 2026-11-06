@@ -315,7 +315,7 @@ mod tests {
             assert!(!screen.contains(gone), "{gone}: {screen}");
         }
         app.select_block(2);
-        app.handle_event(&Event::Key(KeyEvent::from(KeyCode::Char('z')))).expect("z");
+        app.handle_event(&Event::Key(KeyEvent::from(KeyCode::Char('f')))).expect("f");
         assert_eq!(app.status, None, "nothing to fold, and nothing said");
         std::fs::remove_dir_all(root).expect("cleanup");
     }

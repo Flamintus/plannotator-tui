@@ -16,11 +16,11 @@
 //! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
 //! (`tree::now_drafts`), the fold line selected (`selected_fold`), what `toggle-thread` does
 //! here (`fold_keys`), a draft's words (`words_of_draft`). The labels say what the key does
-//! there: `V reopen` on a resolved thread, `z unfold` on a folded box. One effect is one offer:
-//! the keys that fold the box here (`fold_keys`, `toggle-thread` and the arrow of its fold line)
-//! are named together, once (`h/z fold`). A
-//! selection waiting for its action keeps the toolbar's help, the keys still deciding as the
-//! selection lets them.
+//! there: `V reopen` on a resolved thread, `f unfold` on a folded box. One effect is one offer,
+//! named by one key (`f fold`), the other keys that do it there acting as its aliases (the
+//! arrow of a fold line). The footer draws each key in the key colour and what it does dim
+//! (`Hint`). A selection waiting for its action keeps the toolbar's help, the keys still
+//! deciding as the selection lets them.
 
 use plannotator_tui_journal::State as ThreadState;
 
@@ -30,17 +30,23 @@ use crate::gate::Gate;
 use crate::journal::tree;
 use crate::keys::Action;
 
+/// One entry of the footer's help under the review loop: the keys, in the user's binding, and
+/// what they do there, if the keys do not say it (`tab`, `j/k`).
+pub(in crate::app) struct Hint {
+    pub(in crate::app) keys: String,
+    pub(in crate::app) label: Option<&'static str>,
+}
+
 /// A key the selection lets act, as the footer names it.
 enum Offer {
     /// `action`, named by what it does on the selection.
     Key(Action, &'static str),
-    /// Several keys that do the same on the selection, named together by what they do.
-    Keys(Vec<Action>, &'static str),
-    /// The keys that move, named together (`j/k`, the cursor's directions).
-    Moves(Option<String>),
+    /// The keys that move, named together (`j/k`, the cursor's directions and `move`).
+    Moves(Option<Hint>),
     /// `action`, acting as a key the footer names, not named itself: `confirm` as `edit`, as
-    /// the unfold of a folded line or as `comment`; `left` and `right` as `move-cursor`; or
-    /// acting as it always did, unnamed: `clear-block` on a line of the document.
+    /// the unfold of a folded line or as `comment`; `left` and `right` as `move-cursor`, or as
+    /// the fold of a fold line; or acting as it always did, unnamed: `clear-block` on a line of
+    /// the document.
     Alias(Action),
 }
 
@@ -69,24 +75,22 @@ impl App {
     /// The footer's two groups under the review loop: the selection's keys, then the keys that
     /// do not change with it. `None` over a document the journal does not keep, or with a
     /// selection waiting for its action: the footer is the pane's, as it always was.
-    pub(in crate::app) fn loop_help(&self) -> Option<[Vec<String>; 2]> {
+    pub(in crate::app) fn loop_help(&self) -> Option<[Vec<Hint>; 2]> {
         if !self.open.store.is_journal() || self.pending.is_some() {
             return None;
         }
         let here = self.selection_keys().into_iter().filter_map(|offer| match offer {
-            Offer::Key(action, label) => self.keys.labelled(action, label),
-            Offer::Keys(actions, label) => {
-                let keys: Vec<String> = actions
-                    .iter()
-                    .map(|action| self.keys.hint(*action))
-                    .filter(|key| !key.is_empty())
-                    .collect();
-                (!keys.is_empty()).then(|| format!("{} {label}", keys.join("/")))
-            }
+            Offer::Key(action, label) => self.hint(action, label),
             Offer::Moves(hint) => hint,
             Offer::Alias(_) => None,
         });
         Some([here.collect(), self.steady_help().into_iter().flatten().collect()])
+    }
+
+    /// `action`'s first key and what it does, or none when it is unbound.
+    fn hint(&self, action: Action, label: &'static str) -> Option<Hint> {
+        let keys = self.keys.hint(action);
+        (!keys.is_empty()).then_some(Hint { keys, label: Some(label) })
     }
 
     /// Whether `action` may act on the selection: over a document the journal keeps, a key
@@ -98,7 +102,6 @@ impl App {
         }
         self.selection_keys().iter().any(|offer| match offer {
             Offer::Key(named, _) | Offer::Alias(named) => *named == action,
-            Offer::Keys(named, _) => named.contains(&action),
             Offer::Moves(_) => false,
         })
     }
@@ -107,7 +110,7 @@ impl App {
     fn selection_keys(&self) -> Vec<Offer> {
         match self.focus {
             Focus::Tree => vec![
-                Offer::Moves(self.up_down_hint()),
+                Offer::Moves(self.up_down_hint().map(|keys| Hint { keys, label: None })),
                 Offer::Key(Action::Confirm, "open"),
                 Offer::Key(Action::ToggleHidden, "hidden"),
                 Offer::Key(Action::ToggleTree, "hide"),
@@ -118,13 +121,13 @@ impl App {
     }
 
     /// The keys that do not change with the selection, in the order the panes' help names them.
-    fn steady_help(&self) -> Vec<Option<String>> {
-        let key = |action, label| self.keys.labelled(action, label);
+    fn steady_help(&self) -> Vec<Option<Hint>> {
+        let key = |action, label| self.hint(action, label);
         let tab = self.keys.hint(Action::CycleFocus);
         vec![
             key(Action::Send, "send"),
             (self.gate == Gate::Approve).then(|| key(Action::Approve, "approve")).flatten(),
-            (!tab.is_empty()).then_some(tab),
+            (!tab.is_empty()).then_some(Hint { keys: tab, label: None }),
             // `send-and-close` is bound only in a reply review.
             (!self.is_file_review()).then(|| key(Action::SendAndClose, "send+quit")).flatten(),
             key(Action::Quit, "quit"),
@@ -138,7 +141,7 @@ impl App {
     fn bubble_keys(&self) -> Vec<Offer> {
         let note = self.current_note();
         let (waits, images) = self.note_changes(note.as_deref());
-        let mut keys = vec![Offer::Moves(self.up_down_hint())];
+        let mut keys = vec![Offer::Moves(self.up_down_hint().map(|keys| Hint { keys, label: None }))];
         if waits {
             keys.extend([
                 Offer::Key(Action::Edit, "edit"),
@@ -170,7 +173,9 @@ impl App {
         let mut keys = Vec::new();
         if self.roam {
             let directions = self.keys.directions_hint();
-            keys.push(Offer::Moves((!directions.is_empty()).then(|| format!("{directions} move"))));
+            keys.push(Offer::Moves(
+                (!directions.is_empty()).then_some(Hint { keys: directions, label: Some("move") }),
+            ));
         } else if text {
             // A column move in block mode starts the cursor, as `move-cursor` does.
             keys.extend([
@@ -229,8 +234,9 @@ impl App {
             keys.push(Offer::Key(Action::Reply, "reply"));
             keys.push(Offer::Key(Action::Resolve, if resolved { "reopen" } else { "resolve" }));
         }
-        if let Some((fold_keys, folded)) = self.fold_keys() {
-            keys.push(Offer::Keys(fold_keys, if folded { "unfold" } else { "fold" }));
+        if let Some((fold, aliases, folded)) = self.fold_keys() {
+            keys.push(Offer::Key(fold, if folded { "unfold" } else { "fold" }));
+            keys.extend(aliases.into_iter().map(Offer::Alias));
         }
         keys
     }

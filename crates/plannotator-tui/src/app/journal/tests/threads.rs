@@ -115,14 +115,14 @@ fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded");
     // On the box's folded line: a comment's keys act in its box, not from its block.
     press(&mut app, KeyCode::Char('j'));
-    press(&mut app, KeyCode::Char('z'));
+    press(&mut app, KeyCode::Char('f'));
     let screen = draw(&mut app, 70, 30);
     assert!(screen.contains("Who watches at night?"), "{screen}");
     assert!(
         row_with(&screen, "\u{256d}").contains("\u{2713} Resolved"),
         "drawn open, still resolved: {screen}"
     );
-    press(&mut app, KeyCode::Char('z'));
+    press(&mut app, KeyCode::Char('f'));
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded again");
 }
 

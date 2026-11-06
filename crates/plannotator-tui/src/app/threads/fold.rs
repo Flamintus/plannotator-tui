@@ -72,16 +72,16 @@ impl App {
     }
 
     /// The keys that fold the box here, or draw it open, and whether it is folded: the one offer
-    /// the footer names (`toggle-thread`, and on its selected fold line the arrow that does the
-    /// same: `left` on its head, `right` on its folded line). `None` with no box here.
-    pub(in crate::app) fn fold_keys(&self) -> Option<(Vec<Action>, bool)> {
+    /// the footer names, `toggle-thread`, with the keys that do the same there as its aliases
+    /// (on its selected fold line, `left` on its head, `right` on its folded line). `None` with
+    /// no box here.
+    pub(in crate::app) fn fold_keys(&self) -> Option<(Action, Vec<Action>, bool)> {
         let (_, folded) = self.fold_here()?;
-        let mut keys = Vec::new();
+        let mut aliases = Vec::new();
         if self.focus == Focus::Document && self.selected_fold().is_some() {
-            keys.push(if folded { Action::Right } else { Action::Left });
+            aliases.push(if folded { Action::Right } else { Action::Left });
         }
-        keys.push(Action::ToggleThread);
-        Some((keys, folded))
+        Some((Action::ToggleThread, aliases, folded))
     }
 
     /// The fold line at document row `row`, while the boxes' words take a selection: its

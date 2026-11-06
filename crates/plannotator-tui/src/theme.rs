@@ -114,6 +114,8 @@ pub(crate) struct Palette {
     pub(crate) comment_bg: Color,
     /// Text marked as looking good.
     pub(crate) approve_bg: Color,
+    /// A key in the footer's help under the review loop, beside what it does, dim.
+    pub(crate) key: Color,
     /// The keyboard cursor cell.
     pub(crate) cursor: Style,
     /// A character selection, a picker row, a review-menu row.
@@ -133,6 +135,7 @@ pub(crate) static DARK: Palette = Palette {
     idle_fg: Color::Gray,
     comment_bg: Color::Indexed(58),
     approve_bg: Color::Indexed(22),
+    key: Color::Red,
     cursor: Style::new().bg(Color::Indexed(240)),
     selection: Style::new().add_modifier(Modifier::REVERSED),
 };
@@ -153,6 +156,7 @@ pub(crate) static LIGHT: Palette = Palette {
     idle_fg: Color::DarkGray,
     comment_bg: Color::Indexed(222),
     approve_bg: Color::Indexed(157),
+    key: DARK.key,
     // A dark cell with its own light foreground, so the glyph under the cursor stays legible.
     cursor: Style::new().bg(Color::Indexed(238)).fg(Color::White),
     selection: Style::new().bg(Color::Indexed(153)),

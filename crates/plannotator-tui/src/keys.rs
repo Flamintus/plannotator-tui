@@ -304,7 +304,7 @@ const DEFAULTS: &[(Action, &[Key])] = &[
     (CopySelection, &[ch('y')]),
     (Reply, &[ch('C')]),
     (Resolve, &[ch('V')]),
-    (ToggleThread, &[ch('z')]),
+    (ToggleThread, &[ch('f')]),
     (SendNow, &[ch('s')]),
     (Yes, &[ch('y'), ch('Y')]),
     (No, &[ch('n'), ch('N')]),

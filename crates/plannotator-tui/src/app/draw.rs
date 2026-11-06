@@ -551,17 +551,42 @@ impl App {
             Paragraph::new(Line::from(Span::raw(format!(" {}", parts.join(" · "))).dim())),
             left_area,
         );
-        frame.render_widget(Paragraph::new(Line::from(Span::raw(help).dim()).right_aligned()), right_area);
+        frame.render_widget(Paragraph::new(help.right_aligned()), right_area);
     }
 
     /// The key help, in the user's keys, a space after it: under the review loop what the
     /// selection lets the keys do, then, past a `|`, the keys that do not change with it
-    /// (`journal::help`); else the focused pane's, as it always was.
-    fn footer_help(&self) -> String {
-        let groups = self.loop_help().unwrap_or_else(|| [self.pane_help(), Vec::new()]);
-        let groups: Vec<String> =
-            groups.iter().filter(|group| !group.is_empty()).map(|group| group.join(" \u{b7} ")).collect();
-        if groups.is_empty() { String::new() } else { format!("{} ", groups.join(" | ")) }
+    /// (`journal::help`), each key in the key colour and what it does dim; else the focused
+    /// pane's, dim, as it always was.
+    fn footer_help(&self) -> Line<'static> {
+        let Some(groups) = self.loop_help() else {
+            let help = self.pane_help().join(" \u{b7} ");
+            return if help.is_empty() {
+                Line::default()
+            } else {
+                Line::from(Span::raw(format!("{help} ")).dim())
+            };
+        };
+        let key = Style::new().fg(palette().key);
+        let mut spans: Vec<Span<'static>> = Vec::new();
+        for (index, group) in groups.into_iter().filter(|group| !group.is_empty()).enumerate() {
+            if index > 0 {
+                spans.push(Span::raw(" | ").dim());
+            }
+            for (position, hint) in group.into_iter().enumerate() {
+                if position > 0 {
+                    spans.push(Span::raw(" \u{b7} ").dim());
+                }
+                spans.push(Span::styled(hint.keys, key));
+                if let Some(label) = hint.label {
+                    spans.push(Span::raw(format!(" {label}")).dim());
+                }
+            }
+        }
+        if !spans.is_empty() {
+            spans.push(Span::raw(" ").dim());
+        }
+        Line::from(spans)
     }
 
     /// `down` and `up`'s first keys run together, as the hints show them: `j/k`; none when
