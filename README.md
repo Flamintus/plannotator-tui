@@ -305,7 +305,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `reply` `resolve` | `C` `V` | in the review loop, the thread of the box the cursor is in or of the bubble: reply under it, resolve it or open it again (keys provisional) |
 | `toggle-thread` | `f` | in the review loop, fold the box the cursor is in, or the bubble's thread, or draw it open when folded |
 | `send-now` | `s` | in the review loop, send the draft of the box the cursor is in or of the bubble alone, at once, the round going on (key provisional) |
-| `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble, once sent: a reply saved under it goes at once, as `send-now` sends it |
+| `toggle-live` | `L` | in the review loop, turn Live on or off on the comment of the box the cursor is in or of the bubble; on a draft, send it at once and turn Live on: a reply saved under a Live comment goes at once, as `send-now` sends it |
 | `yes` `no` | `y` `n`, `Y` `N` | the send-before-quitting and clear-all questions |
 
 Actions forwarded by Herdr Mirror default to a split beside the invoking remote
@@ -388,8 +388,8 @@ the agent answers with too:
   get goes again first, with `s` or `E`, as for a round. The footer offers `s send now` where
   there is a draft to send.
 - `L` turns Live on or off on a sent comment, on its bubble in the rail or with the cursor in
-  its box, a sub-thread's at any depth, which has its own, apart from its thread's; never on a
-  draft or from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
+  its box, a sub-thread's at any depth, which has its own, apart from its thread's; on a draft
+  it sends it at once, as `s` does, then turns Live on; never from its block. The journal keeps it (`plannotator threads live <id> on|off`), the
   head of the box, its folded line and its bubble say `⚡ Live`, after the passage and in
   yellow, while it is on, and the footer
   says `live on` or `live off`. A reply saved under a Live thread goes at once, by the send of

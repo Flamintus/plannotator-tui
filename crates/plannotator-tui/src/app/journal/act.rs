@@ -1,6 +1,7 @@
 //! Acting on the current note's thread through the journal: `reply` under it, `resolve` it or
 //! open it again, `send-now` sends its draft at once (`send`), `toggle-live` turns Live on or
-//! off on it once sent, a reply saved under a Live thread going at once by `send-now`'s own
+//! off on it once sent, or, on a draft, sends it at once and turns Live on, a reply saved
+//! under a Live thread going at once by `send-now`'s own
 //! send, `toggle-thread` draws a folded thread open, or folds an open one, as `right` and
 //! `left` do on its fold line, whatever the box (`threads::fold`). These keys answer only
 //! while the review loop runs. A sub-thread has one way in: a passage selected in a message's
@@ -141,13 +142,23 @@ impl App {
     /// (`help`): the view read again says it, at its head, on its folded line and in its bubble.
     fn toggle_live(&mut self) {
         let Some((review, node)) = self.current_thread() else { return };
-        let on = !node.live;
-        self.status = Some(match review.journal.live(&review.target, &node.id, on) {
-            Ok(()) if on => "live on".to_owned(),
-            Ok(()) => "live off".to_owned(),
-            Err(err) => format!("review loop: {err}"),
-        });
         self.saw(&node);
+        // Live is a sent thread's: a draft turned Live is sent at once first, by the send of
+        // `send-now` itself; when it did not go, the status says why and Live stays off.
+        let mut sent = String::new();
+        if node.draft {
+            self.send_journal_now(&node.id);
+            if self.node(&node.id).is_none_or(|now| now.draft) {
+                return;
+            }
+            sent = self.status.take().map(|status| format!("{status} \u{b7} ")).unwrap_or_default();
+        }
+        let on = node.draft || !node.live;
+        self.status = Some(match review.journal.live(&review.target, &node.id, on) {
+            Ok(()) if on => format!("{sent}live on"),
+            Ok(()) => "live off".to_owned(),
+            Err(err) => format!("{sent}review loop: {err}"),
+        });
         self.refresh_journal();
     }
 

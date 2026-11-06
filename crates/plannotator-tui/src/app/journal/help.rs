@@ -224,8 +224,8 @@ impl App {
     }
 
     /// The keys on note `note`'s thread: its draft sent at once, a reply, resolving or opening
-    /// it again and turning Live on or off once sent; then folding or unfolding the threads
-    /// here.
+    /// it again and turning Live on or off once sent, or Live on a draft, which sends it; then
+    /// folding or unfolding the threads here.
     fn thread_keys(&self, note: Option<&str>) -> Vec<Offer> {
         let thread = note.and_then(|id| self.node(id));
         let mut keys = Vec::new();
@@ -237,6 +237,9 @@ impl App {
             keys.push(Offer::Key(Action::Reply, "reply"));
             keys.push(Offer::Key(Action::Resolve, if resolved { "reopen" } else { "resolve" }));
             keys.push(Offer::Key(Action::ToggleLive, if thread.live { "unlive" } else { "live" }));
+        } else if thread.is_some_and(|thread| thread.draft) {
+            // A draft turned Live is sent at once (`act::toggle_live`).
+            keys.push(Offer::Key(Action::ToggleLive, "live"));
         }
         if let Some((fold, aliases, folded)) = self.fold_keys() {
             keys.push(Offer::Key(fold, if folded { "unfold" } else { "fold" }));
