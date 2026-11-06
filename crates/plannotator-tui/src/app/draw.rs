@@ -399,7 +399,9 @@ impl App {
         // Under the review loop the replies are under the passage, in a box or a folded line.
         let in_loop = self.open.store.is_journal();
         let inner_width = usize::from(rail.width.saturating_sub(4));
-        let mut next_y = rail.y;
+        // Under the review loop the bubbles are stacked from the top, one blank row above them.
+        let top = u16::from(in_loop);
+        let mut next_y = rail.y + top;
         let notes = self.open.store.notes();
         // The bubbles lit are the boxes lit (`lit_notes`): in a box, a sub-thread's alone, though
         // its note is on its thread's block.
@@ -410,7 +412,9 @@ impl App {
             bubble::lines(placed.annotation, label(placed.kind()), inner_width, held(placed).as_deref())
         };
         let first = if in_loop {
-            first_stacked(&notes, first_lit, rail.height, |placed| lines_of(placed).len() + 2)
+            first_stacked(&notes, first_lit, rail.height.saturating_sub(top), |placed| {
+                lines_of(placed).len() + 2
+            })
         } else {
             0
         };
