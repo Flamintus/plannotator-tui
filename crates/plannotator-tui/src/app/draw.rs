@@ -203,13 +203,23 @@ impl App {
             let on_selected = self.mark_selected(buf, (gutter, doc), (row_index, screen_y), &selected);
 
             let mut row_has_annotation = false;
-            for (col, cell) in row.cells.iter().enumerate().take(usize::from(doc.width)) {
-                let Some(offset) = cell else { continue };
-                let kind = placed
-                    .iter()
-                    .filter(|p| p.range.contains(offset))
-                    .map(crate::store::Placed::kind)
-                    .max_by_key(|&k| priority(k));
+            let cells = &row.cells;
+            for (col, cell) in cells.iter().enumerate().take(usize::from(doc.width)) {
+                // A cell with no source byte, such as the space a soft line break is drawn as
+                // between two sentences, is marked as the passage it lies inside: the one that
+                // holds the source bytes on both sides of it on the row.
+                let bounds = cell.map(|offset| (offset, offset)).or_else(|| {
+                    let before = cells.iter().take(col).rev().find_map(|cell| *cell);
+                    let after = cells.iter().skip(col + 1).find_map(|cell| *cell);
+                    before.zip(after)
+                });
+                let kind = bounds.and_then(|(before, after)| {
+                    placed
+                        .iter()
+                        .filter(|p| p.range.contains(&before) && p.range.contains(&after))
+                        .map(crate::store::Placed::kind)
+                        .max_by_key(|&k| priority(k))
+                });
                 let Some(kind) = kind else { continue };
                 row_has_annotation = true;
                 buf.set_style(Rect { x: doc.x + col as u16, y: screen_y, width: 1, height: 1 }, marked(kind));
