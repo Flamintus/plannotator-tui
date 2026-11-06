@@ -16,7 +16,8 @@
 //! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
 //! (`tree::now_drafts`), the fold line selected (`selected_fold`), what `toggle-thread` does
 //! here (`toggle_folds`), a draft's words (`words_of_draft`). The labels say what the key does
-//! there: `V reopen` on a resolved thread, `z unfold` where it draws folded threads open. A
+//! there: `V reopen` on a resolved thread, `z unfold` where it draws folded threads open; two
+//! keys that do the same there are named once, together (`h/z fold`). A
 //! selection waiting for its action keeps the toolbar's help, the keys still deciding as the
 //! selection lets them.
 
@@ -69,10 +70,30 @@ impl App {
         if !self.open.store.is_journal() || self.pending.is_some() {
             return None;
         }
-        let here = self.selection_keys().into_iter().filter_map(|offer| match offer {
-            Offer::Key(action, label) => self.keys.labelled(action, label),
-            Offer::Moves(hint) => hint,
-            Offer::Alias(_) => None,
+        // Two keys that do the same here are named once, together: `h/z fold`.
+        let mut here: Vec<(String, Option<&str>)> = Vec::new();
+        for offer in self.selection_keys() {
+            match offer {
+                Offer::Key(action, label) => {
+                    let key = self.keys.hint(action);
+                    if key.is_empty() {
+                        continue;
+                    }
+                    match here.iter_mut().find(|(_, named)| *named == Some(label)) {
+                        Some((keys, _)) => {
+                            keys.push('/');
+                            keys.push_str(&key);
+                        }
+                        None => here.push((key, Some(label))),
+                    }
+                }
+                Offer::Moves(Some(hint)) => here.push((hint, None)),
+                Offer::Moves(None) | Offer::Alias(_) => {}
+            }
+        }
+        let here = here.into_iter().map(|(keys, label)| match label {
+            Some(label) => format!("{keys} {label}"),
+            None => keys,
         });
         Some([here.collect(), self.steady_help().into_iter().flatten().collect()])
     }
