@@ -150,7 +150,7 @@ fn box_of(thread: &Thread, width: usize, said: &mut Vec<Said>) -> Vec<BoxRow> {
     let mut rows = vec![BoxRow::own(head, &thread.id, columns)];
     for (index, message) in thread.messages.iter().enumerate() {
         if index > 0 {
-            rows.push(rule('├', '┤', width, &thread.id));
+            rows.push(separator(width, &thread.id));
         }
         // Who wrote it, then the state it is still in, in that state's colour (`mark_style`).
         let name = one_line(&message.author);
@@ -269,6 +269,17 @@ fn under_lines<'t>(
 /// Thread `id`'s rule from `left` to `right`, `width` columns, all of them its border.
 fn rule(left: char, right: char, width: usize, id: &str) -> BoxRow {
     BoxRow::own(edge(left, right, width, BORDER), id, std::iter::once(0..width))
+}
+
+/// The separator between two messages of a box, as discreet as can be: its junctions are the
+/// box's border, lit with it on the current box; the dotted rule between them stays dim grey.
+fn separator(width: usize, id: &str) -> BoxRow {
+    let line = Line::from(vec![
+        Span::styled("\u{251c}", BORDER),
+        Span::styled("\u{2508}".repeat(width.saturating_sub(2)), BORDER.add_modifier(Modifier::DIM)),
+        Span::styled("\u{2524}", BORDER),
+    ]);
+    BoxRow::own(line, id, [0..1, width.saturating_sub(1)..width])
 }
 
 /// `left` and `right` with a rule between them, `width` columns in all.
