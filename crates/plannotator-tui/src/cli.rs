@@ -481,10 +481,12 @@ fn run_review(build: impl FnOnce(usize) -> Result<App>) -> Result<Option<Decisio
     let mut terminal = ratatui::init();
     execute!(stdout(), EnableMouseCapture)?;
     // Shift+Enter is only distinguishable from Enter where the kitty keyboard protocol
-    // holds end to end (terminal, and any multiplexer in between). Ask for it; the flag
-    // gates the compose box's hint so it never advertises a key that cannot arrive.
+    // holds end to end (terminal, and any multiplexer in between). It is asked for always: a
+    // multiplexer such as Herdr may speak it without answering the query, and a terminal that
+    // does not speak it ignores the request. The query only says, up front, whether the
+    // compose box may name Shift+Enter; the first Shift+Enter that arrives says it too.
     let shift_enter = ratatui::crossterm::terminal::supports_keyboard_enhancement().unwrap_or(false);
-    claim_input(shift_enter);
+    claim_input();
     let width = doc_width(terminal.size().map_or(120, |s| s.width));
     let result = build(width).and_then(|mut app| {
         app.shift_enter = shift_enter;
@@ -495,28 +497,22 @@ fn run_review(build: impl FnOnce(usize) -> Result<App>) -> Result<Option<Decisio
         app.editor = crate::editor::from_env(|key| std::env::var(key).ok());
         event_loop(&mut terminal, app)
     });
-    release_input(shift_enter);
+    release_input();
     ratatui::restore();
     result
 }
 
 /// Bracketed paste and, where the terminal has it, the kitty keyboard protocol. Mouse
 /// capture is the caller's: the first claim turns it on before the keyboard query.
-fn claim_input(shift_enter: bool) {
+fn claim_input() {
     let _ = execute!(stdout(), EnableBracketedPaste);
-    if shift_enter {
-        let _ = execute!(
-            stdout(),
-            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-        );
-    }
+    let _ =
+        execute!(stdout(), PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES));
 }
 
 /// Undo `claim_input` and mouse capture, in reverse order.
-fn release_input(shift_enter: bool) {
-    if shift_enter {
-        let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
-    }
+fn release_input() {
+    let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
     let _ = execute!(stdout(), DisableBracketedPaste);
     let _ = execute!(stdout(), DisableMouseCapture);
 }
@@ -526,11 +522,10 @@ fn release_input(shift_enter: bool) {
 /// editor failing to start, which the app reports and survives.
 fn run_editor(
     terminal: &mut ratatui::DefaultTerminal,
-    shift_enter: bool,
     request: &crate::editor::EditorRequest,
 ) -> Result<std::io::Result<std::process::ExitStatus>> {
     use ratatui::crossterm::{cursor, terminal as term};
-    release_input(shift_enter);
+    release_input();
     ratatui::restore();
     let _ = execute!(stdout(), cursor::Show);
     let outcome = match crate::editor::command(request) {
@@ -540,7 +535,7 @@ fn run_editor(
     term::enable_raw_mode().context("taking the terminal back from the editor")?;
     execute!(stdout(), term::EnterAlternateScreen, EnableMouseCapture)
         .context("taking the terminal back from the editor")?;
-    claim_input(shift_enter);
+    claim_input();
     // The editor drew over the screen ratatui remembers; draw the next frame in full.
     terminal.clear()?;
     Ok(outcome)
@@ -551,7 +546,7 @@ fn event_loop(terminal: &mut ratatui::DefaultTerminal, mut app: App) -> Result<O
     let mut dirty = true;
     while !app.quit {
         if let Some(request) = app.take_editor_request() {
-            let outcome = run_editor(terminal, app.shift_enter, &request)?;
+            let outcome = run_editor(terminal, &request)?;
             app.editor_returned(&request, outcome);
             dirty = true;
         }
