@@ -4,13 +4,13 @@
 //! line (`▸`) draws it open (on a draft's, `confirm` edits it: `draft_box`), `left` on the head
 //! of its box (`▾`) folds it, with the boxes in it back to how they are drawn by default; a
 //! click on either does the same, the cursor standing on it as the arrows leave it. The cursor
-//! stays on the thread's first row, which turns from one to the other (`boxes_moved`). `toggle-thread`: the folded threads seen on the selected
-//! block's passages drawn open, or, when none is folded there, the block's threads folded;
-//! with the cursor in a box, the folded threads seen in that box, or that box. `left` on a line
-//! of a box's words keeps its meaning: the cursor starts there. Folding resolves nothing and
-//! opening reopens nothing.
+//! stays on the thread's first row, which turns from one to the other (`boxes_moved`).
+//! `toggle-thread`, on the box the cursor is in or on the bubble's thread in the rail: the
+//! folded threads seen in that box drawn open, or, when none is folded there, that box folded.
+//! `left` on a line of a box's words keeps its meaning: the cursor starts there. Folding
+//! resolves nothing and opening reopens nothing.
 
-use super::super::App;
+use super::super::{App, Focus};
 use super::{Flow, Thread};
 use crate::keys::Action;
 
@@ -72,33 +72,16 @@ impl Flow {
 }
 
 impl App {
-    /// What `toggle-thread` does here, on the box the cursor is in, else on the selected block's
-    /// threads: the folded threads seen there it draws open, or, none folded, those threads it
-    /// folds (`true`). `None` with no thread here.
+    /// What `toggle-thread` does here, on the bubble's thread in the rail, else on the box the
+    /// cursor is in: the folded threads seen in it it draws open, or, none folded, that thread
+    /// it folds (`true`). `None` with no thread here: a comment's keys act in its box or on its
+    /// bubble, never from a line of the document.
     fn toggled(&self) -> Option<(Vec<String>, bool)> {
-        let inside = self.thread_at_cursor();
-        let flow = &self.open.flow;
-        let here: Vec<&Thread> = match &inside {
-            Some(id) => flow.thread(id).into_iter().collect(),
-            None => flow
-                .threads
-                .iter()
-                .filter(|(block, _)| *block == self.selected)
-                .map(|(_, thread)| thread)
-                .collect(),
-        };
-        if here.is_empty() {
-            return None;
-        }
+        let id = if self.focus == Focus::Rail { self.current_note() } else { self.thread_at_cursor() };
+        let thread = self.open.flow.thread(&id?)?;
         let mut folded = Vec::new();
-        for thread in &here {
-            thread.visible_folded(&mut folded);
-        }
-        Some(if folded.is_empty() {
-            (here.iter().map(|thread| thread.id.clone()).collect(), true)
-        } else {
-            (folded, false)
-        })
+        thread.visible_folded(&mut folded);
+        Some(if folded.is_empty() { (vec![thread.id.clone()], true) } else { (folded, false) })
     }
 
     /// Whether `toggle-thread` folds here (`true`) or draws folded threads open, as the footer
@@ -107,8 +90,8 @@ impl App {
         self.toggled().map(|(_, fold)| fold)
     }
 
-    /// `toggle-thread`: on the box the cursor is in, else on the selected block's threads, the
-    /// folded threads seen there drawn open, or, none folded, those threads folded.
+    /// `toggle-thread`: on the bubble's thread in the rail, else on the box the cursor is in,
+    /// the folded threads seen in it drawn open, or, none folded, that thread folded.
     pub(in crate::app) fn toggle_threads(&mut self) {
         let Some((ids, fold)) = self.toggled() else {
             self.status = Some("no thread on this block".to_owned());

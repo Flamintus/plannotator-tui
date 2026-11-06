@@ -103,7 +103,8 @@ pub(crate) const RAIL: &[Action] =
     &[Down, Up, Confirm, Edit, Remove, AttachImage, RemoveImage, Reply, Resolve, ToggleThread, SendNow, Back];
 /// `attach-image` and `remove-image` act on the selected block's note here, under the review
 /// loop on the note whose box the cursor is in, as the thread keys; `edit`, under the review
-/// loop, on the draft whose box the cursor is in.
+/// loop, on the draft whose box the cursor is in, and `clear-block` there removes that draft,
+/// as `remove` on its bubble.
 pub(crate) const DOCUMENT: &[Action] = &[
     Back,
     Visual,

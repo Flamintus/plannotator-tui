@@ -545,7 +545,13 @@ impl App {
     fn remove_selected_annotation(&mut self) -> Result<()> {
         let id = self.open.store.notes().get(self.rail_cursor).map(|p| p.annotation.id.clone());
         let Some(id) = id else { return Ok(()) };
-        if self.open.store.remove(&id)? {
+        self.remove_note(&id)
+    }
+
+    /// Remove note `id`: the rail's, or, under the review loop, the draft whose box the cursor
+    /// is in, by `clear-block` there, as `remove` on its bubble.
+    fn remove_note(&mut self, id: &str) -> Result<()> {
+        if self.open.store.remove(id)? {
             self.mark_unsent();
             self.status = Some("annotation removed".into());
             self.rail_cursor = self.rail_cursor.min(self.open.store.notes().len().saturating_sub(1));

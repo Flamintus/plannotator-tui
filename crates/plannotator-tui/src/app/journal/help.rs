@@ -2,7 +2,7 @@
 //! list (`selection_keys`) that the footer names first and that every key whose action depends
 //! on the selection (`DECIDED`) consults before acting (`applies`), so the footer and the keys
 //! never differ: such a key the footer does not name does nothing, says nothing, opens nothing;
-//! the others (moves, `clear-block`…) act as they always did. Past a wider `·`, the footer
+//! the others (moves, `clear-all`…) act as they always did. Past a wider `·`, the footer
 //! names the keys that do not change with the selection (send the round, approve, Tab, send
 //! and close, quit, find). The selection is the line the cursor is on in the document (a block,
 //! a line of a box's words, a draft's or not, a box's head or folded line), the bubble in the
@@ -10,7 +10,7 @@
 //!
 //! A comment's keys (its edit, removal and images, a reply, resolving it, sending it at once,
 //! folding) act only on the box the cursor is in, at any depth, or on the bubble in the rail,
-//! never from a line of the document, which is not a comment: a reply answers a passage sent,
+//! that comment's alone, never from a line of the document, which is not a comment: a reply answers a passage sent,
 //! not the words that hold it. Whether a key may act there is decided by what it acts by: the
 //! draft whose box the cursor is in (`draft_box`), a thread sent or not (`act::sent`), a note
 //! the journal still takes changes to (`Store::journal_waits`), its draft to send at once
@@ -35,7 +35,8 @@ enum Offer {
     /// The keys that move, named together (`j/k`, the cursor's directions).
     Moves(Option<String>),
     /// `action`, acting as a key the footer names, not named itself: `confirm` as `edit`, as
-    /// the unfold of a folded line or as `comment`; `left` and `right` as `move-cursor`.
+    /// the unfold of a folded line or as `comment`; `left` and `right` as `move-cursor`; or
+    /// acting as it always did, unnamed: `clear-block` on a line of the document.
     Alias(Action),
 }
 
@@ -45,6 +46,7 @@ enum Offer {
 const DECIDED: &[Action] = &[
     Action::Edit,
     Action::Remove,
+    Action::ClearBlock,
     Action::AttachImage,
     Action::RemoveImage,
     Action::Reply,
@@ -142,8 +144,9 @@ impl App {
     /// The document's selected line: on a box's fold line the arrow that folds or unfolds it;
     /// the cursor and a selection where there are words that take one (the document's, a sent
     /// message's), while the cursor roams its motions and the way back to the blocks; then, in
-    /// a box only, its note's keys: the edit of the draft whose box it is, its images, its
-    /// thread's keys. `confirm` acts as the first of edit, unfold and comment the line takes.
+    /// a box only, its note's keys: the edit of the draft whose box it is, its removal by
+    /// `clear-block` while the journal takes it, its images, its thread's keys; on a line of
+    /// the document `clear-block` clears the block, as it always did. `confirm` acts as the first of edit, unfold and comment the line takes.
     fn line_keys(&self) -> Vec<Offer> {
         let row = self.cursor.0;
         let fold_line = self.on_box_line() && self.fold_line(row).is_some();
@@ -179,13 +182,16 @@ impl App {
             keys.push(Offer::Alias(Action::Confirm));
         }
         // A comment's keys act on the box the cursor is in, never on a line of the document.
-        let Some(note) = self.thread_at_cursor() else { return keys };
+        let Some(note) = self.thread_at_cursor() else {
+            keys.push(Offer::Alias(Action::ClearBlock));
+            return keys;
+        };
         if draft {
             keys.push(Offer::Key(Action::Edit, "edit"));
         }
         let (waits, images) = self.note_changes(Some(&note));
         if waits {
-            keys.push(Offer::Key(Action::AttachImage, "image"));
+            keys.extend([Offer::Key(Action::ClearBlock, "remove"), Offer::Key(Action::AttachImage, "image")]);
         }
         if images {
             keys.push(Offer::Key(Action::RemoveImage, "remove image"));

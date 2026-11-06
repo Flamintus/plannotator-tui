@@ -327,6 +327,13 @@ impl App {
                     self.act(Kind::Comment)?;
                 }
             }
+            // In a box, under the review loop, `clear-block` removes that box's draft, as
+            // `remove` on its bubble; the footer names it only on a draft's box.
+            Some(Action::ClearBlock) if self.thread_at_cursor().is_some() => {
+                if let Some(id) = self.thread_at_cursor() {
+                    self.remove_note(&id)?;
+                }
+            }
             Some(Action::ClearBlock) => {
                 let removed = self.open.store.remove_in_block(&self.open.doc, self.selected)?;
                 if removed > 0 {
