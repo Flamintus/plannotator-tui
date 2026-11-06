@@ -188,10 +188,10 @@ pub(super) fn counts(messages: usize, sub_threads: usize, images: usize) -> Vec<
 struct Shape {
     /// What opens it, its box's border.
     lead: &'static str,
-    /// Whether its kind's glyph and its passage are its box's border too, lit with it, the
-    /// passage in italics: at its head and in its bubble's title; on its folded line they are
-    /// grey.
-    passage_lit: bool,
+    /// Whether its passage is in italics: at its head and in its bubble's title, not on its
+    /// folded line. The glyph and the passage are never its box's border: grey, they keep their
+    /// colour when the box is lit with its state's.
+    passage_italic: bool,
     /// What closes it, its box's border.
     end: &'static str,
     /// Columns of the passage kept before the indicators give way (`Mark::gives_way`).
@@ -203,11 +203,11 @@ struct Shape {
 
 /// `╭ ▾ ✗ "passage" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`: `▾`, where `left` or a click
 /// folds the box, its kind's glyph, the passage cut to fit, the indicators. With the columns of
-/// its border: all but the indicators.
+/// its border: all but the glyph, the passage and the indicators, which keep their own colours.
 pub(super) fn head(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<usize>>) {
     let shape = Shape {
         lead: "\u{256d} \u{25be} ",
-        passage_lit: true,
+        passage_italic: true,
         end: "\u{256e}",
         min_quote: MIN_QUOTE_WIDTH,
         round: true,
@@ -222,8 +222,13 @@ pub(super) fn head(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<u
 /// give way, the counts stay. `▸` and the rule are its box's border, with their columns.
 pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range<usize>>) {
     let lead = if thread.is_folded() { "\u{25b8} " } else { "\u{2576} " };
-    let shape =
-        Shape { lead, passage_lit: false, end: "\u{2500}\u{2574}", min_quote: MIN_QUOTE_WIDTH, round: true };
+    let shape = Shape {
+        lead,
+        passage_italic: false,
+        end: "\u{2500}\u{2574}",
+        min_quote: MIN_QUOTE_WIDTH,
+        round: true,
+    };
     line(&shape, (thread.kind, &thread.quote), &thread.marks_and_new(), &thread.counts(), width, BORDER)
 }
 
@@ -233,7 +238,7 @@ pub(super) fn folded(thread: &Thread, width: usize) -> (Line<'static>, Vec<Range
 pub(super) fn title(kind: Kind, quote: &str, marks: &[Mark], width: usize, border: Style) -> Line<'static> {
     let shape = Shape {
         lead: "\u{256d} ",
-        passage_lit: true,
+        passage_italic: true,
         end: "\u{256e}",
         min_quote: MIN_TITLE_QUOTE_WIDTH,
         round: false,
@@ -287,12 +292,12 @@ fn line(
     }
     let quote = format!("\"{}\"", fit(&passage, width.saturating_sub(around(&kept))));
     let fill = width.saturating_sub(around(&kept) + quote.width() - 3).max(1);
-    let (glyph_style, quote_style) =
-        if shape.passage_lit { (border, border.add_modifier(Modifier::ITALIC)) } else { (GREY, GREY) };
+    // The quoted passage never takes the state's colour of a lit box: it stays grey.
+    let quote_style = if shape.passage_italic { GREY.add_modifier(Modifier::ITALIC) } else { GREY };
     let mut parts = vec![
         (Span::styled(shape.lead, border), true),
-        (Span::styled(glyph, glyph_style), shape.passage_lit),
-        (Span::styled(quote, quote_style), shape.passage_lit),
+        (Span::styled(glyph, GREY), false),
+        (Span::styled(quote, quote_style), false),
     ];
     for word in words(&kept, true) {
         let style = mark_style(&word);
