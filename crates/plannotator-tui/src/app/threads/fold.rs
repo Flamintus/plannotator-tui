@@ -24,6 +24,22 @@ impl Thread {
         self.sub_threads().find_map(|sub| sub.find(id))
     }
 
+    /// The ids of the threads from this one down to `id`, both included, outermost first;
+    /// empty when `id` is not under it.
+    fn path_to(&self, id: &str) -> Vec<String> {
+        if self.id == id {
+            return vec![self.id.clone()];
+        }
+        self.sub_threads()
+            .map(|sub| sub.path_to(id))
+            .find(|path| !path.is_empty())
+            .map(|mut path| {
+                path.insert(0, self.id.clone());
+                path
+            })
+            .unwrap_or_default()
+    }
+
     /// The ids of every thread under it, at any depth.
     fn ids_under(&self, out: &mut Vec<String>) {
         for sub in self.sub_threads() {
@@ -37,6 +53,21 @@ impl Flow {
     /// Thread `id`, at any depth.
     pub(super) fn thread(&self, id: &str) -> Option<&Thread> {
         self.threads.iter().find_map(|(_, thread)| thread.find(id))
+    }
+
+    /// Draw thread `id` open, and every thread it is in, outermost first: what the rail's bubble
+    /// of a folded box, or of a sub-thread in one, needs for its box to be seen. Whether any was
+    /// folded; the rows follow at the next `sync_threads`.
+    pub(in crate::app) fn unfold_to(&mut self, id: &str) -> bool {
+        let path = self.threads.iter().map(|(_, thread)| thread.path_to(id)).find(|path| !path.is_empty());
+        let mut unfolded = false;
+        for on in path.unwrap_or_default() {
+            if self.thread(&on).is_some_and(Thread::is_folded) {
+                self.fold_by_hand(&on, false);
+                unfolded = true;
+            }
+        }
+        unfolded
     }
 
     /// Fold thread `id` by hand, or draw it open: the one way for every box, at any depth, of

@@ -237,15 +237,18 @@ impl App {
     }
 
     /// The document follows the rail's bubble: its note's block is the selected block, in view,
-    /// as it always was; under the review loop its note's box is in view instead, at any depth,
-    /// when the flow draws it (`show_box`), and nothing moves while it is. The keys stay in the
-    /// rail.
+    /// as it always was; under the review loop its note's box is in view instead, at any depth
+    /// (`show_box`), drawn open first, and every box it is in, when folded (`unfold_to`), and
+    /// nothing moves while it is in view. The keys stay in the rail.
     fn follow_bubble(&mut self) {
         let notes = self.open.store.notes();
         let Some(target) = notes.get(self.rail_cursor) else { return };
         let id = target.annotation.id.clone();
         let Some(block) = self.open.doc.block_containing(target.range.start) else { return };
         self.selected = block;
+        if self.box_words_selectable() && self.open.flow.unfold_to(&id) {
+            self.sync_threads();
+        }
         if !(self.box_words_selectable() && self.show_box(&id)) {
             self.ensure_selected_visible();
         }
