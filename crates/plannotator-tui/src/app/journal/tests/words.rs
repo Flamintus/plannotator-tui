@@ -114,7 +114,7 @@ fn a_drafts_words_take_no_sub_thread() {
     reply_with(&mut app, "And the runbook?");
     let screen = draw(&mut app, 80, 30);
     drag_over(&mut app, &screen, "runbook", 0);
-    assert_eq!(app.status.as_deref(), Some("a draft takes no sub-thread: s sends it now, E with the round"));
+    assert_eq!(app.status.as_deref(), Some("a draft takes no sub-thread"));
     assert!(app.pending.is_none() && sub_threads(&journal).is_empty());
 }
 

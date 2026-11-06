@@ -367,10 +367,16 @@ impl App {
         }
     }
 
-    /// Enter roaming: the visual-mode motions move the cursor with nothing selected.
+    /// Enter roaming: the visual-mode motions move the cursor with nothing selected. Under the
+    /// review loop the footer's right names the keys (`journal::help`), so nothing is said
+    /// here; else the status names them, as it always did.
     fn start_roaming(&mut self) {
         self.clear_selection();
         self.roam = true;
+        if self.open.store.is_journal() {
+            self.status = None;
+            return;
+        }
         let hint = |action| self.keys.hint(action);
         self.status = Some(format!(
             "move: {} {} {} {} {} · {} select · {} back to blocks",

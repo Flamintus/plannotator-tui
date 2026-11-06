@@ -17,7 +17,6 @@ use super::super::selection::Selection;
 use super::super::{App, Focus, Mode, Selected};
 use super::rows::BoxRow;
 use crate::journal::{self, passage};
-use crate::keys::Action;
 use crate::theme::palette;
 
 /// A message whose words a box draws.
@@ -176,10 +175,8 @@ impl App {
         }
         let said = self.open.flow.said.get(message)?;
         if said.draft {
-            let (now, send) = (self.keys.hint(Action::SendNow), self.keys.hint(Action::Send));
-            return Some(Err(format!(
-                "a draft takes no sub-thread: {now} sends it now, {send} with the round"
-            )));
+            // The footer's right names what a draft takes (`journal::help`).
+            return Some(Err("a draft takes no sub-thread".to_owned()));
         }
         let first = spots.iter().map(|spot| spot.byte).min()?;
         let last = spots.iter().map(|spot| spot.byte).max()?;
