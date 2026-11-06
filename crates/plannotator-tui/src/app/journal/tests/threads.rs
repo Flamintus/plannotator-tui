@@ -1,16 +1,15 @@
 //! Threads through the journal: the agent's replies, statuses and what is new drawn in the
-//! boxes under the passage, the person's replies, resolving, folding by hand, and sub-threads
-//! from a thread opened as a document (from a passage selected in a box: `words`).
+//! boxes under the passage, the person's replies, resolving, folding by hand, and a sub-thread
+//! not saved across a reply (sub-threads from a passage selected in a box: `words`).
 
 #![allow(clippy::expect_used, clippy::indexing_slicing, reason = "tests assert by panicking")]
 
 use std::rc::Rc;
 
-use plannotator_tui_schema::{Kind, Provenance};
 use ratatui::crossterm::event::{Event as Input, KeyCode};
 
 use super::super::super::App;
-use super::super::super::review_test_support::{RecordingDelivery, draw};
+use super::super::super::review_test_support::{RecordingDelivery, drag_over, draw};
 use super::{loop_app_of, press};
 use crate::journal::stand_in::{Comment, StandIn};
 
@@ -64,7 +63,8 @@ fn the_agents_reply_comes_into_the_box_marked_new_once_its_journal_moves() {
     journal.state.borrow_mut().agent_replies("rep_1", "c1", "Nobody yet: a pager rotation.");
     assert!(app.poll_journal(), "the journal was written by another process");
     let screen = draw(&mut app, 80, 30);
-    assert!(row_with(&screen, "turns the new checkout off").contains("Replied"), "{screen}");
+    // The box's head, `▾` before its quote, which is cut to leave its round and state room.
+    assert!(row_with(&screen, "\u{256d} \u{25be}").contains("Replied"), "{screen}");
     assert!(row_with(&screen, "Claude Code").contains("Claude Code \u{b7} New"), "{screen}");
     assert!(screen.contains("Nobody yet: a pager rotation."), "{screen}");
     reply_with(&mut app, "OK for the rotation.");
@@ -121,36 +121,6 @@ fn a_folded_thread_is_drawn_open_by_hand_and_folded_again() {
     assert!(row_with(&screen, "\u{256d}").contains("Resolved"), "drawn open, still resolved: {screen}");
     press(&mut app, KeyCode::Char('f'));
     assert!(!draw(&mut app, 70, 30).contains("Who watches at night?"), "folded again");
-}
-
-#[test]
-fn a_thread_opened_as_a_document_takes_a_sub_thread_on_a_passage_of_a_reply() {
-    let (mut app, journal) = commented();
-    journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel. The panel is new.");
-    app.poll_journal();
-    press(&mut app, KeyCode::Char('O'));
-    assert_eq!(app.open.source.provenance, Provenance::Stdin, "a thread is no reply of the agent's");
-    assert!(app.open.doc.source.contains("Who watches at night?"));
-    app.add_quote_annotation_at("panel", 2, Kind::Comment, "Which panel?".into()).expect("sub-thread");
-    {
-        let state = journal.state.borrow();
-        let sub = state.comments.last().expect("a sub-thread");
-        assert_eq!((sub.parent.as_deref(), sub.quote.as_str()), (Some("rep_1"), "panel"));
-        assert_eq!(sub.quote_offset, Some(25), "the second one, counted as Plannotator counts it");
-    }
-    app.poll_journal();
-    assert_eq!(app.open.store.placed().len(), 1, "the sub-thread is a note of the thread's document");
-    press(&mut app, KeyCode::Esc);
-    assert!(
-        matches!(&app.open.source.provenance, Provenance::AgentMessage { message_id: Some(id), .. } if id == "m2")
-    );
-    assert_eq!(app.selected, 1, "back where it was left");
-    app.poll_journal();
-    let screen = draw(&mut app, 80, 40);
-    assert!(
-        row_with(&screen, "Which panel?").starts_with("  \u{2502} \u{2502}"),
-        "a box in the box: {screen}"
-    );
 }
 
 #[test]
@@ -218,17 +188,22 @@ fn a_note_not_saved_in_a_thread_survives_a_reply_rewriting_the_thread() {
     let (mut app, journal) = commented();
     journal.state.borrow_mut().agent_replies("rep_1", "c1", "Use the admin panel.");
     app.poll_journal();
-    press(&mut app, KeyCode::Char('O'));
+    let screen = draw(&mut app, 80, 30);
+    // A sub-thread on a passage selected in the reply, in its box.
+    drag_over(&mut app, &screen, "admin panel", 0);
     journal.state.borrow_mut().refused.push("comment");
-    app.add_quote_annotation("admin panel", Kind::Comment, "Which one?".into()).expect("sub-thread");
+    press(&mut app, KeyCode::Char('c'));
+    app.handle_event(&Input::Paste("Which one?".into())).expect("typed");
+    press(&mut app, KeyCode::Enter);
     app.poll_journal();
     journal.state.borrow_mut().agent_replies("rep_2", "c1", "And the runbook.");
     app.poll_journal();
-    assert!(app.open.doc.source.contains("And the runbook."), "the thread was written again");
-    let kept: Vec<String> = app.open.store.placed().iter().map(|p| p.annotation.body.clone()).collect();
-    assert_eq!(kept, ["Which one?"], "the person's words are not lost");
-    let id = app.open.store.placed()[0].annotation.id.clone();
-    assert!(app.open.store.journal_unsaved(&id), "its bubble says Not saved");
+    assert!(draw(&mut app, 80, 30).contains("And the runbook."), "the thread was drawn again");
+    // c1's note, then its sub-thread's.
+    let notes = app.open.store.notes();
+    let bodies: Vec<&str> = notes.iter().map(|note| note.annotation.body.as_str()).collect();
+    assert_eq!(bodies, ["Who watches at night?", "Which one?"], "the person's words are not lost");
+    assert!(app.open.store.journal_unsaved(&notes[1].annotation.id), "its bubble says Not saved");
 }
 
 #[test]
