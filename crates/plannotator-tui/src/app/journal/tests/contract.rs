@@ -36,7 +36,10 @@ fn the_view_plannotator_computes_is_drawn_as_it_says() {
         rows[0].contains("Round 2 \u{b7} Send Feedback (3) \u{25b8} test agent"),
         "the round under way, three drafts: {screen}"
     );
-    assert!(row("\"turns the new checkout off\"").contains("Replied"), "{screen}");
+    assert!(
+        row("\"turns the new checkout off\"").contains("Draft"),
+        "answered, then the person wrote again: the box is in the state of what they wrote: {screen}"
+    );
     assert!(screen.contains("The on-call engineer, from the runbook."), "the agent's reply: {screen}");
     let weekends = rows.iter().position(|row| row.contains("And on weekends?")).expect("the person's reply");
     assert!(rows[weekends - 1].contains("You \u{b7} Draft"), "the person's reply waits: {screen}");

@@ -4,9 +4,9 @@
 //! words are no longer found boxed at the end of the words it was on, marked so, in the words
 //! the Inbox's boxes use (`Orphaned`, `⚡ Live`, `Round 2`, `Draft`, `Sent`, `Replied`, `New`). One
 //! code at every depth: a sub-thread is built as its thread is (`Thread::of_node`), its kind
-//! and its marks with it, a draft's box `Draft` at any depth, each message of the person's,
-//! its comment included, saying beside "You" the state it is still in (`persons_tag`). The view
-//! decides what folds.
+//! and its marks with it, a box in the state of the person's last message in it (`box_state`),
+//! each message of the person's, its comment included, saying beside "You" the state it is
+//! still in (`persons_tag`). The view decides what folds.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -33,27 +33,34 @@ fn status_word(status: Status) -> Option<&'static str> {
 
 /// What a comment's head says of it, its box's, its folded line's and its bubble's alike
 /// (`head::Mark`, which places them): `Orphaned` once its words are no longer found
-/// (`anchored` false); `⚡ Live` while it is open; its round, but for a draft, which has none;
-/// and its state: `Resolved`, else `Draft`, else what became of its send. A resolved thread says
-/// neither what became of its last send nor Live.
+/// (`anchored` false); `⚡ Live` while it is open; its comment's round, but for a draft, which
+/// has none; and its box's state (`box_state`). A resolved thread says neither what became of
+/// its last send nor Live.
 fn marks(node: &ThreadNode, anchored: bool) -> Vec<Mark> {
     let resolved = node.state == ThreadState::Resolved;
-    let state = if resolved {
-        Some(RESOLVED)
-    } else if node.draft {
-        Some(DRAFT)
-    } else {
-        node.status.and_then(status_word)
-    };
     [
         (!anchored).then_some(Mark::Orphaned),
         (node.live && !resolved).then_some(Mark::Live),
         (!node.draft).then_some(Mark::Round(node.round)),
-        state.map(Mark::State),
+        box_state(node).map(Mark::State),
     ]
     .into_iter()
     .flatten()
     .collect()
+}
+
+/// The state of `node`'s box, the one its head, its folded line and its bubble say and its
+/// border takes lit: `Resolved` once the thread is; else the state of the person's last message
+/// in it, the comment or a reply of theirs under it, `Draft` until it is sent, then what became
+/// of its send, `Replied` once the agent answered after it. A box answered where the person
+/// wrote again is in the state of what they wrote, not of its comment.
+fn box_state(node: &ThreadNode) -> Option<&'static str> {
+    if node.state == ThreadState::Resolved {
+        return Some(RESOLVED);
+    }
+    let last = node.replies.iter().rev().find(|reply| matches!(reply.author, Author::Person));
+    let (draft, status) = last.map_or((node.draft, node.status), |reply| (reply.draft, reply.status));
+    if draft { Some(DRAFT) } else { status.and_then(status_word) }
 }
 
 /// What a message of the person's says beside "You", its comment or a reply, at any depth: its

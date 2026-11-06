@@ -409,10 +409,13 @@ the agent answers with too:
   marked `New` until that thread is acted on. Boxes and bubbles use the words of Plannotator's
   Inbox. The head of a box, at any depth, says on its left its kind's glyph (`💬`, `👍`, `✗`),
   the passage, `Orphaned` once its words are no longer found and `⚡ Live` (yellow) while it is
-  on; on its right its round (`Round 2`, grey), then its state, last: `Draft` (light blue) for
-  a draft, which has no round, what became of its send (`Queued`, `Read` and `Working` grey,
-  `Sent` orange, `Replied` violet), or `Resolved` (green), and then neither Live nor its send:
-  `╭ ▾ 💬 "…" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`. No id is shown. On a narrow head
+  on; on its right its comment's round (`Round 2`, grey), then the box's state, last: the state
+  of your last message in it, the comment or a reply of yours, `Draft` (light blue) until it is
+  sent (a draft comment has no round), then what became of its send (`Queued`, `Read` and
+  `Working` grey, `Sent` orange, `Replied` violet once the agent answered after it), or
+  `Resolved` (green), and then neither Live nor its send:
+  `╭ ▾ 💬 "…" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`. A box answered where you wrote again
+  is in the state of what you wrote: `Draft`, then `Sent`. No id is shown. On a narrow head
   the round gives way first and the state last, the passage keeping 16 columns. A message names
   its author, each of yours, the comment included, with the state it is still in, `Draft`
   until sent, then `Sent` until answered, then nothing, an agent's reply `New` (turquoise). A bubble's title

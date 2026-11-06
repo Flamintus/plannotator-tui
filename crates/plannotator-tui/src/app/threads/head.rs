@@ -37,14 +37,15 @@ pub(super) const LIVE: &str = "\u{26a1} Live";
 /// it.
 pub(super) const NOT_SAVED: &str = "Not saved";
 
-/// A comment not sent yet, at its box's head and beside the person's reply.
+/// A message of the person's not sent yet, beside "You" and, while it is their last in its box,
+/// at the box's head.
 pub(super) const DRAFT: &str = "Draft";
 
 /// A send not yet in the agent's session.
 pub(super) const QUEUED: &str = "Queued";
 
-/// A comment sent and waiting for its answer: what the journal calls delivered, at its box's
-/// head; beside the person's reply, any send not answered yet.
+/// A message of the person's sent and waiting for its answer: what the journal calls delivered,
+/// at its box's head; beside "You", any send not answered yet.
 pub(super) const SENT: &str = "Sent";
 
 /// A send the agent read.
@@ -53,7 +54,7 @@ pub(super) const READ: &str = "Read";
 /// A send the agent's session works on.
 pub(super) const WORKING: &str = "Working";
 
-/// A comment the agent answered, at its box's head.
+/// The person's last message in a box, once the agent answered after it, at the box's head.
 pub(super) const REPLIED: &str = "Replied";
 
 /// A resolved thread: its head says neither what became of its last send nor Live.
@@ -88,8 +89,8 @@ pub(super) enum Mark {
     New,
     /// The round its comment was sent in; a draft has none.
     Round(u64),
-    /// Its state: `Not saved` (its bubble alone says it), `Draft`, what became of its send,
-    /// `Resolved`.
+    /// Its box's state, the person's last message's (`journal::box_state`): `Not saved` (its
+    /// bubble alone says it), `Draft`, what became of its send, `Resolved`.
     State(&'static str),
 }
 
