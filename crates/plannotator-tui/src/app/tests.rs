@@ -429,7 +429,7 @@ fn the_tree_scrolls_to_keep_the_cursor_visible_and_hit_tests_through_the_offset(
     app.data_dir = scratch_data_dir();
     // 140 columns shows the tree; 20 rows leaves 18 for the body (header + footer).
     draw_sized(&mut app, 140, 20);
-    app.handle_event(&Event::Key(KeyEvent::from(KeyCode::Tab))).expect("tab");
+    // A folder of more than one file opens with the tree focused.
     for _ in 0..25 {
         app.handle_event(&Event::Key(KeyEvent::from(KeyCode::Char('j')))).expect("j");
     }
