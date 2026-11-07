@@ -554,9 +554,8 @@ impl App {
                 .collect::<Vec<_>>()
                 .join(" \u{b7} ");
             let waiting = self.live_mode_drafts();
-            let question = format!(
-                " {waiting} draft(s) go now, then every new note as it is saved \u{b7} {answers}"
-            );
+            let question =
+                format!(" {waiting} draft(s) go now, then every new note as it is saved \u{b7} {answers}");
             frame.render_widget(Paragraph::new(Line::from(Span::raw(question).bold())), area);
             return;
         }

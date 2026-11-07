@@ -15,10 +15,10 @@ use plannotator_tui_journal::{Error, IdempotencyKey, SendMode, Sent, ThreadView}
 use crate::journal::Review;
 use plannotator_tui_schema::{Annotation, Kind};
 
-use super::super::{App, Mode};
 use super::super::draw::short_id;
 use super::super::feedback::Feedback;
 use super::super::send::SendState;
+use super::super::{App, Mode};
 use crate::archive::AnnotationRecord;
 use crate::delivery::DeliveryError;
 use crate::journal::tree::{all_drafts, carried_by, find, now_drafts};

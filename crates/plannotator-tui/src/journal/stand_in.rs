@@ -142,7 +142,13 @@ impl Journal for StandIn {
         let view = state.view.clone().unwrap_or_else(|| {
             let mut threads = view(&state.comments);
             live_by_mode(&mut threads, &state);
-            ThreadView { v: 1, round: state.finished + 1, threads, live_mode: state.live_mode, other: serde_json::Map::new() }
+            ThreadView {
+                v: 1,
+                round: state.finished + 1,
+                threads,
+                live_mode: state.live_mode,
+                other: serde_json::Map::new(),
+            }
         });
         Ok(Viewed { review: REVIEW.to_owned(), view })
     }

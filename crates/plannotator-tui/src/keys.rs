@@ -339,7 +339,8 @@ const DEFAULTS: &[(Action, &[Key])] = &[
 
 /// Actions added after configs were written: `approve` (live only in a gated review),
 /// `copy` (on a waiting selection) and the thread actions.
-const LATE: &[Action] = &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow, ToggleLive, ToggleLiveMode];
+const LATE: &[Action] =
+    &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow, ToggleLive, ToggleLiveMode];
 
 /// The keys bound to each action. A `[keys]` entry replaces that action's keys and leaves the
 /// others at their defaults; an empty list unbinds the action.

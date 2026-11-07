@@ -223,3 +223,27 @@ fn only_a_plannotator_with_the_journals_actions_passes_the_probe() {
     assert!(matches!(cli.probe(), Err(Error::Usage { .. })));
     std::fs::remove_dir_all(dir).expect("cleanup");
 }
+
+#[test]
+fn the_live_mode_reads_off_from_an_older_view_and_as_the_view_says_it_otherwise() {
+    let viewed: crate::Viewed = serde_json::from_str(VIEW).expect("the fixture reads");
+    assert!(!viewed.view.live_mode, "a view from before the Live mode says nothing: off");
+    let mut value: Value = serde_json::from_str(VIEW).expect("JSON");
+    value["view"]["live_mode"] = json!(true);
+    let viewed: crate::Viewed = serde_json::from_value(value).expect("reads");
+    assert!(viewed.view.live_mode);
+    assert!(!viewed.view.other.contains_key("live_mode"), "read as the field, not kept aside");
+}
+
+#[cfg(unix)]
+#[test]
+fn the_live_mode_is_turned_on_and_off_by_its_own_verb() {
+    let (cli, dir) = stand_in("live-mode", "echo '{}'");
+    cli.live_mode(&target(), true).expect("on");
+    assert_eq!(read(&dir, "args"), "threads\nlive-mode\non\n-\n");
+    let sent: Value = serde_json::from_str(&read(&dir, "stdin")).expect("JSON on stdin");
+    assert_eq!(sent, json!({ "target": { "kind": "last", "host": "claude-code", "session": "ses_a" } }));
+    cli.live_mode(&target(), false).expect("off");
+    assert_eq!(read(&dir, "args"), "threads\nlive-mode\noff\n-\n");
+    std::fs::remove_dir_all(dir).expect("cleanup");
+}

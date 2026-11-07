@@ -1,6 +1,7 @@
 //! The review loop against a stand-in journal (`crate::journal::stand_in`): `last` with the
 //! loop off or on (`loop_on`), the comments the journal keeps (`kept`), sending them
-//! (`send`), the journal followed and the threads drawn and acted on (`threads`), from a view
+//! (`send`), the journal followed and the threads drawn and acted on (`threads`), the review's
+//! Live mode (`live_mode`), from a view
 //! Plannotator's own CLI computed too (`contract`); sub-threads on a passage selected in a
 //! box (`words`).
 
@@ -8,6 +9,7 @@
 
 mod contract;
 mod kept;
+mod live_mode;
 mod loop_on;
 mod paths;
 mod real;

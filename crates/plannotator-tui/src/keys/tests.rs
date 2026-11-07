@@ -145,3 +145,19 @@ fn copy_is_y_on_a_waiting_selection_and_yields_to_an_older_config() {
     assert_eq!(keymap.hint(Approve), "A");
     assert_eq!(parse("copy = [\"Y\"]\n").expect("rebinds").hint(CopySelection), "Y");
 }
+
+#[test]
+fn live_mode_is_ctrl_l_from_anywhere_and_yields_to_an_older_config() {
+    let keymap = Keymap::default();
+    assert_eq!(
+        keymap.action(&press(KeyCode::Char('l'), KeyModifiers::CONTROL), GLOBAL),
+        Some(ToggleLiveMode)
+    );
+    // Plain `l` keeps moving right in the document.
+    assert_eq!(keymap.action(&press(KeyCode::Char('l'), KeyModifiers::NONE), GLOBAL), None);
+    assert_eq!(keymap.action(&press(KeyCode::Char('l'), KeyModifiers::NONE), DOCUMENT), Some(Right));
+    // Written before `toggle-live-mode` existed: ctrl+l is the user's, and the Live mode's key is left unbound.
+    let keymap = parse("page-down = [\"ctrl+l\"]\n").expect("an older config keeps loading");
+    assert_eq!(keymap.action(&press(KeyCode::Char('l'), KeyModifiers::CONTROL), DOCUMENT), Some(PageDown));
+    assert_eq!(keymap.hint(ToggleLiveMode), "");
+}

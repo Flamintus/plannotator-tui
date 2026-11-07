@@ -10,10 +10,10 @@ use unicode_width::UnicodeWidthStr;
 
 use super::App;
 use super::send::SendState;
+use super::threads::{LIVE, mark_style};
 use crate::gate::Gate;
 use crate::keys::Action;
 use crate::theme::palette;
-use super::threads::{LIVE, mark_style};
 
 // These three set their own foreground as well as their background, so they read the same
 // on a light terminal as on a dark one; only the idle button borrows the theme's grey.
