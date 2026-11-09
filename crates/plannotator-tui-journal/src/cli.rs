@@ -20,6 +20,7 @@ use serde_json::{Map, Value, json};
 use crate::error::Error;
 use crate::records::{Commented, SendTo, Sent, Viewed};
 use crate::requests::{IdempotencyKey, NewComment, ReviewTarget, SendMode};
+use crate::view::Anchor;
 
 /// The thread view's contract this client reads: a `v` above it is refused, never guessed at.
 pub const CONTRACT: u64 = 1;
@@ -65,6 +66,10 @@ pub trait Journal {
     /// and a new comment or sub-thread going as soon as it is saved; off, each thread is back
     /// to its own Live. The drafts waiting are the client's to send first.
     fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error>;
+    /// Where a comment's words are now, as this client followed them after the file changed
+    /// (`plannotator_tui_schema::place`): its place (`on`, the same kind), and whether its words
+    /// are gone (`unanchored`). A comment or sub-thread, sent or not.
+    fn anchor(&self, target: &ReviewTarget, id: &str, on: &Anchor, unanchored: bool) -> Result<(), Error>;
     /// Send drafts to the agent's session: `now` the ones named, or `round` every draft left,
     /// ending the round. `to` is the session, which a review of a session's last messages
     /// names itself. `key` is the press's: the same press tried again goes under the same
@@ -297,6 +302,11 @@ impl Journal for Cli {
     fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error> {
         let state = if on { "on" } else { "off" };
         self.call_with::<Value>("live-mode", &[state], target, Map::new()).map(drop)
+    }
+
+    fn anchor(&self, target: &ReviewTarget, id: &str, on: &Anchor, unanchored: bool) -> Result<(), Error> {
+        let args = json!({ "id": id, "on": on, "unanchored": unanchored });
+        self.call::<Value>("anchor", target, fields(args)).map(drop)
     }
 
     fn send(

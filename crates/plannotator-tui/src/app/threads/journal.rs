@@ -164,11 +164,34 @@ impl App {
             };
             threads.push((block, Thread::of_node(node, seen, Some(placed.range.clone()), &images)));
         }
+        // A comment whose quote is not in its place is under the block its place starts in (the
+        // next one when it starts between two), its place marked, Orphaned when its words were
+        // not found (`plannotator_tui_schema::place`).
+        for (place, found) in open.store.kept_places() {
+            let start = place.range.start;
+            let block = open.doc.block_containing(start).or_else(|| {
+                open.doc.blocks.iter().position(|block| block.range.start >= start).or(open
+                    .doc
+                    .blocks
+                    .len()
+                    .checked_sub(1))
+            });
+            let (Some(block), Some(node)) = (block, node(&place.annotation.id)) else { continue };
+            let mut thread = Thread::of_node(node, seen, Some(place.range.clone()), &images);
+            if !found {
+                thread.marks.insert(0, Mark::Orphaned);
+            }
+            threads.push((block, thread));
+        }
         let last = open.doc.blocks.len().checked_sub(1);
         for orphan in open.store.orphaned() {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
             threads.push((block, Thread::of_node(node, seen, None, &images)));
         }
+        // In the document's order, as the flow places them under their blocks.
+        threads.sort_by_key(|(block, thread)| {
+            (*block, thread.range.as_ref().map_or(usize::MAX, |range| range.start))
+        });
         Some(threads)
     }
 }

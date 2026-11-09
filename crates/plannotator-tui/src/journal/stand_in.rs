@@ -9,8 +9,8 @@ mod comments;
 use std::cell::RefCell;
 
 use plannotator_tui_journal::{
-    Commented, Error, IdempotencyKey, Journal, NewComment, Placement, ReviewTarget, Send, SendMode, SendTo,
-    Sent, Stamp, Status, ThreadNode, ThreadView, Viewed,
+    Anchor, Commented, Error, IdempotencyKey, Journal, NewComment, Placement, ReviewTarget, Send, SendMode,
+    SendTo, Sent, Stamp, Status, ThreadNode, ThreadView, Viewed,
 };
 
 pub(crate) use comments::Comment;
@@ -262,6 +262,17 @@ impl Journal for StandIn {
 
     /// The review's Live mode on or off, as the journal keeps it: coming on again makes every
     /// thread live again.
+    fn anchor(&self, target: &ReviewTarget, id: &str, on: &Anchor, unanchored: bool) -> Result<(), Error> {
+        self.call("anchor", target)?;
+        let mut state = self.state.borrow_mut();
+        state.writes.push(format!("anchor {id} {unanchored}"));
+        if let Some(comment) = state.comments.iter_mut().find(|comment| comment.id == id) {
+            comment.on = on.clone();
+        }
+        state.written += 1;
+        Ok(())
+    }
+
     fn live_mode(&self, target: &ReviewTarget, on: bool) -> Result<(), Error> {
         self.call("live-mode", target)?;
         let mut state = self.state.borrow_mut();

@@ -14,7 +14,9 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
-use plannotator_tui_schema::{Anchor, Annotation, Kind, Resolution, State, resolve};
+use plannotator_tui_schema::{
+    Anchor, Annotation, Base, Kind, Resolution, State, place_base, resolve, text_hash, track_place,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::doc::Document;
@@ -35,6 +37,9 @@ pub(crate) struct Store {
     resolved: Vec<Resolution>,
     deliveries: Vec<Delivered>,
     archived: Vec<Annotation>,
+    /// The document's text shown before this one, when it was reloaded: a note's place counted
+    /// in it follows its lines from it (`plannotator_tui_schema::place`).
+    previous: Option<String>,
 }
 
 /// Where a store's record lives.
@@ -148,6 +153,7 @@ impl Store {
             resolved: Vec::new(),
             deliveries: record.deliveries,
             archived: record.archived,
+            previous: None,
         };
         store.resolve_all(doc);
         if imported && !store.annotations.is_empty() {
@@ -168,7 +174,37 @@ impl Store {
             resolved: Vec::new(),
             deliveries: Vec::new(),
             archived: Vec::new(),
+            previous: None,
         }
+    }
+
+    /// The document was reloaded from `previous`, the text shown before it: each note whose
+    /// place is counted in that text follows its lines to the document's text, counted in it
+    /// now, and a record on disk keeps where they went.
+    pub(crate) fn follow_from(&mut self, doc: &Document, previous: String) -> Result<()> {
+        if previous == doc.source {
+            return Ok(());
+        }
+        let mut moved = false;
+        for note in &mut self.annotations {
+            let rendered = note.anchor.rendered().to_owned();
+            let Some(extras) = note.anchor.plannotator_tui.as_mut() else { continue };
+            let quote = if extras.quote.is_empty() { rendered } else { extras.quote.clone() };
+            let Some(place) = extras.place.as_mut() else { continue };
+            if place_base(&place.text_hash, &doc.source, Some(&previous)) != Base::Previous {
+                continue;
+            }
+            let tracked = track_place(place.lines, &place.lines_text, &quote, &doc.source, Some(&previous));
+            place.lines = tracked.lines;
+            place.text_hash = text_hash(&doc.source);
+            moved = true;
+        }
+        self.previous = Some(previous);
+        self.resolve_all(doc);
+        if moved && matches!(self.backing, Backing::File(_)) {
+            self.save()?;
+        }
+        Ok(())
     }
 
     /// True when nothing about this store ever reaches disk.
@@ -272,7 +308,7 @@ impl Store {
             .annotations
             .iter()
             .zip(&self.resolved)
-            .filter(|(_, r)| matches!(r, Resolution::Range(range) if doc.block_containing(range.start) == Some(block)))
+            .filter(|(_, r)| matches!(r, Resolution::Range(range) | Resolution::Place { range, .. } if doc.block_containing(range.start) == Some(block)))
             .map(|(a, _)| a.id.clone())
             .collect();
         for id in &ids {
@@ -315,7 +351,7 @@ impl Store {
                 if self.on_passage(&a.id) {
                     return Resolution::Orphan;
                 }
-                resolve(&a.anchor, &doc.source, |o| doc.block_containing(o))
+                resolve(&a.anchor, &doc.source, |o| doc.block_containing(o), self.previous.as_deref())
             })
             .collect();
         self.resolved = resolved;
@@ -329,10 +365,26 @@ impl Store {
             .zip(&self.resolved)
             .filter_map(|(annotation, r)| match r {
                 Resolution::Range(range) => Some(Placed { annotation, range }),
-                Resolution::Orphan => None,
+                Resolution::Place { .. } | Resolution::Orphan => None,
             })
             .collect();
         out.sort_by_key(|p| p.range.start);
+        out
+    }
+
+    /// The notes whose quote is not in their place, in source order: the place (the bytes of
+    /// its lines, which is marked) and whether their words were found (else Orphaned there).
+    pub(crate) fn kept_places(&self) -> Vec<(Placed<'_>, bool)> {
+        let mut out: Vec<(Placed<'_>, bool)> = self
+            .annotations
+            .iter()
+            .zip(&self.resolved)
+            .filter_map(|(annotation, r)| match r {
+                Resolution::Place { range, found } => Some((Placed { annotation, range }, *found)),
+                Resolution::Range(_) | Resolution::Orphan => None,
+            })
+            .collect();
+        out.sort_by_key(|(p, _)| p.range.start);
         out
     }
 
@@ -383,8 +435,9 @@ impl Store {
         self.annotations.len()
     }
 
+    /// The notes whose words are no longer found: with no place, or Orphaned at theirs.
     pub(crate) fn orphans(&self) -> usize {
-        self.orphaned().len()
+        self.orphaned().len() + self.kept_places().iter().filter(|(_, found)| !found).count()
     }
 }
 

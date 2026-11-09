@@ -153,7 +153,7 @@ impl App {
         };
         let mut files: Vec<(PathBuf, Vec<Draft>)> = Vec::new();
         for node in &view.threads {
-            let (On::File { path, lines }, None) = (&node.place.on, &node.place.parent) else { continue };
+            let (On::File { path, lines, .. }, None) = (&node.place.on, &node.place.parent) else { continue };
             let file = real_path(Path::new(path));
             let lines = lines.map(|[first, last]| (first as usize, last as usize));
             let mut drafts = Vec::new();
@@ -235,8 +235,25 @@ impl App {
         } else {
             self.open.store.carry_over(&before, &self.open.doc);
             self.adopt_own_notes();
+            self.write_followed_places();
         }
         self.paths_changed();
+    }
+
+    /// The comments whose place the file's change moved, written to the journal where they
+    /// are now (`Journal::anchor`): counted in the file as it is, every client finds them there.
+    fn write_followed_places(&mut self) {
+        let moves = self.open.store.followed_places(&self.open.doc);
+        let Some(review) = self.open.store.journal_view().map(|(review, _)| review.clone()) else { return };
+        if moves.is_empty() {
+            return;
+        }
+        for (id, on, unanchored) in moves {
+            if let Err(err) = review.journal.anchor(&review.target, &id, &on, unanchored) {
+                self.status = Some(format!("review loop: {err}"));
+            }
+        }
+        self.open.store.mark_journal_stale();
     }
 }
 

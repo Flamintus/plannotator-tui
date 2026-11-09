@@ -142,6 +142,14 @@ pub enum Anchor {
         path: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         lines: Option<[u64; 2]>,
+        /// The lines' text when the comment was made, never refreshed: what they are checked
+        /// against when the file changes (`plannotator_tui_schema::place`).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        lines_text: Option<String>,
+        /// The fingerprint of the text the lines are counted in (`text_hash`), written again
+        /// when they move: a client follows them only from that text.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text_hash: Option<String>,
     },
     /// The plan under review: the version commented and the lines, when known.
     Plan {

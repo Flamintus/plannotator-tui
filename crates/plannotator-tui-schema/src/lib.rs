@@ -10,6 +10,7 @@
 pub mod anchor;
 pub mod annotation;
 pub mod datadir;
+pub mod place;
 pub mod resolve;
 pub mod source;
 pub mod version;
@@ -17,6 +18,7 @@ pub mod version;
 pub use anchor::{Anchor, CONTEXT_CHARS, Extras, Kind, SourceRange};
 pub use annotation::{Annotation, ApiError, CreateAnnotation, NoteExtras, PatchAnnotation, Reply, State};
 pub use datadir::{annotations_dir, data_dir, history_slug, project_name, sanitize_tag};
+pub use place::{Base, Place, Tracked, line_range, place_base, text_hash, track_place};
 pub use resolve::{Resolution, resolve, web_will_match};
 pub use source::{DocumentSource, Provenance};
 pub use version::blob_sha;

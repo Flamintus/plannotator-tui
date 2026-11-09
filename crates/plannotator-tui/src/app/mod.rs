@@ -692,6 +692,8 @@ impl App {
         };
         let path = path.clone();
         let disk = disk::DiskStamp::of(&path);
+        // The text shown until now: the notes' places follow their lines from it.
+        let previous = self.open.source.content.clone();
         self.open.source = read_file(&path)?;
         self.open.disk = disk;
         self.open.disk_noticed = None;
@@ -703,6 +705,7 @@ impl App {
         } else {
             self.open.store =
                 Store::load(&Location::for_file(&self.data_dir, &self.project, &path), &self.open.doc)?;
+            self.open.store.follow_from(&self.open.doc, previous)?;
         }
         self.refresh_review_counts();
         self.derive_send_state();

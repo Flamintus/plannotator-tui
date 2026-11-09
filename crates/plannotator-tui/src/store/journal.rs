@@ -23,8 +23,10 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 use anyhow::{Context, Result};
-use plannotator_tui_journal::{ThreadNode, ThreadView, Viewed};
-use plannotator_tui_schema::{Anchor, Annotation, Kind, Resolution};
+use plannotator_tui_journal::{Anchor as On, ThreadNode, ThreadView, Viewed};
+use plannotator_tui_schema::{
+    Anchor, Annotation, Base, Kind, Resolution, place_base, text_hash, track_place,
+};
 
 use super::{Backing, Placed, Store, local_id};
 use crate::doc::Document;
@@ -175,7 +177,9 @@ impl Store {
             .iter()
             .map(|node| Listed { id: node.id.clone(), text: node.text.clone(), draft: node.draft })
             .collect();
-        self.annotations = nodes.iter().map(|node| words::note(node, kept.anchor(node, doc))).collect();
+        let previous = self.previous.as_deref();
+        self.annotations =
+            nodes.iter().map(|node| words::note(node, kept.anchor(node, doc, previous))).collect();
         kept.view = Some(view);
         self.keep_unsaved(doc);
     }
@@ -207,7 +211,46 @@ impl Store {
             kept.anchors.entry(id.clone()).or_insert_with(|| anchor.clone());
         }
         kept.unsaved.clone_from(&old.unsaved);
+        // The text shown before this one: the comments' places counted in it follow their lines
+        // from it (`followed_places`), and the notes are taken again from the view with them.
+        if !old.source.is_empty() && old.source != doc.source {
+            self.previous = Some(old.source.clone());
+            if let Some(view) = kept.view.take() {
+                let previous = self.previous.as_deref();
+                let nodes = kept.comments(&view);
+                self.annotations =
+                    nodes.iter().map(|node| words::note(node, kept.anchor(node, doc, previous))).collect();
+                kept.view = Some(view);
+            }
+        }
         self.keep_unsaved(doc);
+    }
+
+    /// The document's comments whose place the journal counts in the text shown before this
+    /// one (`text_hash`): each with its place followed to this text, counted in it now, and
+    /// whether its words are gone, for the journal (`Journal::anchor`).
+    pub(crate) fn followed_places(&self, doc: &Document) -> Vec<(String, On, bool)> {
+        let Backing::Journal(kept) = &self.backing else { return Vec::new() };
+        let (Some(view), Some(previous)) = (&kept.view, self.previous.as_deref()) else { return Vec::new() };
+        let mut out = Vec::new();
+        for node in kept.comments(view) {
+            let On::File { path, lines_text, text_hash: Some(hash), .. } = &node.place.on else { continue };
+            let Some(place) = words::journal_place(node) else { continue };
+            if node.place.parent.is_some() || place_base(hash, &doc.source, Some(previous)) != Base::Previous
+            {
+                continue;
+            }
+            let tracked =
+                track_place(place.lines, &place.lines_text, &node.place.quote, &doc.source, Some(previous));
+            let on = On::File {
+                path: path.clone(),
+                lines: Some(tracked.lines.map(|line| line as u64)),
+                lines_text: lines_text.clone(),
+                text_hash: Some(text_hash(&doc.source)),
+            };
+            out.push((node.id.clone(), on, !tracked.found));
+        }
+        out
     }
 
     pub(crate) fn is_journal(&self) -> bool {
@@ -272,7 +315,10 @@ impl Store {
     /// their boxes are; each followed by the notes on the passages of its thread's messages at
     /// any depth (its sub-threads), in the order its box draws them, which take its range.
     pub(crate) fn notes(&self) -> Vec<Placed<'_>> {
-        let placed = self.placed();
+        // The notes whose quote is not in their place are at their place, as their boxes are.
+        let mut placed = self.placed();
+        placed.extend(self.kept_places().into_iter().map(|(place, _)| place));
+        placed.sort_by_key(|note| note.range.start);
         let Backing::Journal(kept) = &self.backing else { return placed };
         let Some(view) = &kept.view else { return placed };
         let lost = kept.last_block.as_ref().map_or_else(Vec::new, |range| {

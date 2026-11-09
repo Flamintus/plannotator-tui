@@ -189,6 +189,10 @@ impl App {
 
     fn draw_document(&self, frame: &mut Frame, gutter: Rect, doc: Rect) {
         let placed = self.open.store.placed();
+        // The places whose quote is gone: their rows marked in the gutter, grey, as the passage
+        // is not there to highlight (`plannotator_tui_schema::place`).
+        let kept_places: Vec<std::ops::Range<usize>> =
+            self.open.store.kept_places().into_iter().map(|(place, _)| place.range.clone()).collect();
         let doc_focused = self.focus == Focus::Document;
         // The selected unit's rows: a block's, or none here when it is a stop of the boxes
         // (`unit`), drawn selected by the same code there.
@@ -244,8 +248,15 @@ impl App {
             }
 
             if !on_selected {
+                let in_place = row
+                    .cells
+                    .iter()
+                    .flatten()
+                    .any(|offset| kept_places.iter().any(|range| range.contains(offset)));
                 let marker = if row_has_annotation {
                     Span::styled("▍", Style::new().fg(palette().comment))
+                } else if in_place {
+                    Span::styled("▍", Style::new().fg(palette().idle_fg))
                 } else {
                     Span::raw(" ")
                 };

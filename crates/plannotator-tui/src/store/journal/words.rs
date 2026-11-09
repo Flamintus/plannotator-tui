@@ -8,7 +8,10 @@ use anyhow::{Context, Result};
 use plannotator_tui_journal::{
     Anchor as On, CommentKind, NewComment, Placement, State as ThreadState, ThreadNode, ThreadView,
 };
-use plannotator_tui_schema::{Anchor, Annotation, Kind, NoteExtras, Reply, SourceRange, State, blob_sha};
+use plannotator_tui_schema::{
+    Anchor, Annotation, Base, Extras, Kind, NoteExtras, Place, Reply, SourceRange, State, blob_sha,
+    line_range, place_base, text_hash, track_place,
+};
 
 use super::Kept;
 use crate::doc::Document;
@@ -16,6 +19,8 @@ use crate::journal::{Target, on_file, passage, tree};
 
 /// How an attached image is named in a note's words, as the feedback names it.
 const IMAGE: &str = "Image: ";
+/// The most of a quote or of lines' text a journal record holds (Plannotator's `QUOTE_MAX`).
+const QUOTE_MAX: usize = 20_000;
 
 /// The words of a looks-good, as Plannotator's screens write it and read it back: the journal
 /// has no kind for it, these exact words are it.
@@ -70,7 +75,19 @@ impl Kept {
                 Placement::On { on: On::Message { message_id: message_id.clone() }, quote, deletion }
             }
             (Target::File { path }, None) => {
-                let on = On::File { path: path.display().to_string(), lines: self.lines(annotation) };
+                let lines = self.lines(annotation);
+                // The lines' text and the text's fingerprint: what lets the lines follow the file
+                // when it changes (`plannotator_tui_schema::place`), on every client.
+                let lines_text = lines
+                    .map(|[first, last]| {
+                        plannotator_tui_schema::place::lines_text(
+                            &self.source,
+                            [first as usize, last as usize],
+                        )
+                    })
+                    .filter(|words| !words.is_empty() && words.chars().count() <= QUOTE_MAX);
+                let text_hash = lines.map(|_| text_hash(&self.source));
+                let on = On::File { path: path.display().to_string(), lines, lines_text, text_hash };
                 Placement::On { on, quote, deletion }
             }
         };
@@ -115,17 +132,56 @@ impl Kept {
         }
     }
 
-    /// Where `node`'s quote is in the document: where this review put it, else the first
-    /// place the words as drawn hold it, else an anchor that resolves to nothing, as a
-    /// sub-thread on a box's passage has, of its kind.
-    pub(super) fn anchor(&self, node: &ThreadNode, doc: &Document) -> Anchor {
+    /// Where `node`'s quote is in the document: where this review put it, its place the
+    /// journal's (another client may have moved it); else, with a place, its lines followed
+    /// (from `previous`, the text shown before, when they are counted in it) and its words as
+    /// drawn searched there, the place itself when they are not; else the first place the
+    /// words as drawn hold it, else an anchor that resolves to nothing, as a sub-thread on a
+    /// box's passage has, of its kind.
+    pub(super) fn anchor(&self, node: &ThreadNode, doc: &Document, previous: Option<&str>) -> Anchor {
+        let place = journal_place(node);
         if let Some(anchor) = self.anchors.get(&node.id) {
-            return anchor.clone();
+            let mut anchor = anchor.clone();
+            if let (Some(extras), Some(place)) = (anchor.plannotator_tui.as_mut(), place) {
+                extras.place = Some(place);
+            }
+            return anchor;
         }
         if self.passages.contains_key(&node.id) {
             return quoted(&node.place.quote, kind_of(node));
         }
         let quote = node.place.quote.clone();
+        if let Some(place) = place {
+            let from = match place_base(&place.text_hash, &doc.source, previous) {
+                Base::Previous => previous,
+                Base::Current | Base::Unknown => None,
+            };
+            let tracked = track_place(place.lines, &place.lines_text, &quote, &doc.source, from);
+            let area = line_range(&doc.source, tracked.lines);
+            let followed = Place {
+                lines: tracked.lines,
+                lines_text: place.lines_text,
+                text_hash: text_hash(&doc.source),
+            };
+            let inside: Vec<(char, usize)> =
+                self.chars.iter().filter(|(_, at)| area.contains(at)).copied().collect();
+            let mut anchor = match passage::find(&inside, &doc.source, &quote, 0) {
+                Some(range) => {
+                    let block = doc.block_containing(range.start);
+                    let range = SourceRange {
+                        start: range.start,
+                        end: range.end,
+                        version: blob_sha(doc.source.as_bytes()),
+                    };
+                    Anchor::new(quote, &doc.source, range, kind_of(node), block)
+                }
+                None => quoted(&quote, kind_of(node)),
+            };
+            let kind = anchor.kind();
+            anchor.plannotator_tui.get_or_insert_with(|| Extras { kind, ..Extras::default() }).place =
+                Some(followed);
+            return anchor;
+        }
         match passage::find(&self.chars, &doc.source, &quote, 0) {
             Some(range) => {
                 let block = doc.block_containing(range.start);
@@ -139,6 +195,19 @@ impl Kept {
             None => quoted(&quote, kind_of(node)),
         }
     }
+}
+
+/// The place the journal keeps of a comment on a file's lines: its lines, their text when it
+/// was made, and the fingerprint of the text they are counted in.
+pub(super) fn journal_place(node: &ThreadNode) -> Option<Place> {
+    let On::File { lines: Some([first, last]), lines_text, text_hash, .. } = &node.place.on else {
+        return None;
+    };
+    Some(Place {
+        lines: [usize::try_from(*first).ok()?, usize::try_from(*last).ok()?],
+        lines_text: lines_text.clone().unwrap_or_default(),
+        text_hash: text_hash.clone().unwrap_or_default(),
+    })
 }
 
 /// The kind of note a comment of the view is, at any depth: a deletion stays one, so writing
@@ -159,8 +228,7 @@ fn kind_of_words(text: &str, deletion: bool) -> Kind {
 /// An anchor on `quote` with no place in the document's words, that keeps the note's kind: a
 /// note whose words are not found there, or one on a passage of a thread's box.
 pub(super) fn quoted(quote: &str, kind: Kind) -> Anchor {
-    let extras =
-        (kind != Kind::Comment).then(|| plannotator_tui_schema::Extras { kind, ..Default::default() });
+    let extras = (kind != Kind::Comment).then(|| Extras { kind, ..Default::default() });
     Anchor {
         original_text: quote.to_owned(),
         quote: quote.to_owned(),

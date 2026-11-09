@@ -17,6 +17,8 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use crate::place::Place;
+
 /// Characters of raw-source context captured on each side of the quote.
 pub const CONTEXT_CHARS: usize = 32;
 
@@ -60,6 +62,10 @@ pub struct Extras {
     /// Index of the top-level block the range starts in. A hint, never authority.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub block: Option<usize>,
+    /// The lines the range is on, their text, and the text's fingerprint: what lets the note
+    /// follow its lines when the document changes (`crate::place`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<Place>,
 }
 
 /// An annotation's target, in the Workspaces wire shape.
@@ -101,6 +107,7 @@ impl Anchor {
                 prefix,
                 suffix,
                 block,
+                place: Some(Place::of(source, &(start..end))),
             }),
             other: BTreeMap::new(),
         }

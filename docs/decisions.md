@@ -473,3 +473,26 @@ result path first so a taken name fails before anyone reviews.
 
 `approve` is a new rebindable action. Its default key yields when a config already gives
 `A` to an action that is live at the same time, so a config that loaded before still loads.
+
+## 18. A note keeps its place when its words change, as crit's comments do (2026-11-09)
+
+Revises 10 for an anchor that has a place. When the agent rewrites the passage a note is on,
+the note no longer leaves for the last block: it keeps the lines it was on, followed through
+the file's changes, as crit keeps a comment (`internal/session/watch.go`).
+
+- `Extras::place` holds the lines the range is on, their text when the note was made (never
+  refreshed), and the fingerprint (`text_hash`, FNV-1a) of the text they are counted in. The
+  journal's file anchors carry the same (`lines_text`, `text_hash`), written by every client.
+- `plannotator_tui_schema::place::track_place`: the lines follow a line-by-line difference
+  from the text they were counted in (a removed line goes to the most alike added line of its
+  changed run, else to the next new line), are checked there (the same text, or close enough:
+  crit's `anchorSimilar`, or the quote among them), else looked for elsewhere (the lines'
+  text, then the quote), else kept as followed, not found. Plannotator's
+  `packages/core/place.ts` is the same rule.
+- The quote is then searched in that place only. Found: `Resolution::Range`, highlighted.
+  Not there: `Resolution::Place`, the place itself is marked (a grey gutter mark), and the
+  box stays under its block, Orphaned when the words were found nowhere.
+- A client follows lines only from the text the fingerprint names (the one it showed before
+  the reload), then writes the new place to the journal (`threads anchor`), counted in the text
+  as it is now: no client moves a place twice, and a client started later reads it as written.
+- An anchor with no place (older records, a sub-thread on a box's passage) resolves as 10 says.
