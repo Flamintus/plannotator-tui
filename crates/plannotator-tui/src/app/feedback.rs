@@ -31,7 +31,9 @@ pub(super) struct ReviewCounts {
 
 impl ReviewCounts {
     pub(super) fn for_store(store: &Store) -> Self {
-        let placed = store.placed();
+        // The comments on the whole document count as the notes on its words do.
+        let mut placed = store.general();
+        placed.extend(store.placed());
         let pending = placed.iter().filter(|p| store.is_pending(p.annotation)).count();
         Self { pending, sent: placed.len() - pending, archived: store.archived().len() }
     }
@@ -74,7 +76,14 @@ impl Feedback {
         if let Some(path) = &path {
             self.counts.insert(path.clone(), ReviewCounts::for_store(&store));
         }
-        let entries: Vec<export::Entry<'_>> = store
+        // The comments on the whole document first, with no quote and no lines; then the notes
+        // in the document's order.
+        let general = store
+            .general()
+            .into_iter()
+            .filter(|p| scope == SendScope::All || store.is_pending(p.annotation))
+            .map(|p| export::Entry { annotation: p.annotation, lines: None, quote: String::new() });
+        let placed = store
             .placed()
             .into_iter()
             .filter(|p| scope == SendScope::All || store.is_pending(p.annotation))
@@ -86,8 +95,8 @@ impl Feedback {
                     p.range,
                     self.terminal_breaks.as_deref().unwrap_or_default(),
                 ),
-            })
-            .collect();
+            });
+        let entries: Vec<export::Entry<'_>> = general.chain(placed).collect();
         if entries.is_empty() {
             return;
         }

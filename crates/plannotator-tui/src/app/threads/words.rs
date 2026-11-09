@@ -78,12 +78,7 @@ impl App {
 
     /// The block whose boxes are drawn at document row `row`, and the row of them there.
     pub(super) fn box_row(&self, row: usize) -> Option<(usize, &BoxRow)> {
-        let layout = &self.open.layout;
-        self.open.flow.rows.iter().find_map(|(block, rows)| {
-            let rendered = layout.blocks.get(*block)?;
-            let top = rendered.first_row + rendered.rows.len();
-            rows.get(row.checked_sub(top)?).map(|drawn| (*block, drawn))
-        })
+        self.box_groups().find_map(|(block, top, rows)| rows.get(row.checked_sub(top)?).map(|drawn| (block, drawn)))
     }
 
     /// The words of the box row at document row `row`, per column, when it shows some and the
@@ -259,10 +254,7 @@ impl App {
     /// Where the fold line of thread `id` is drawn: its document row, and the column the
     /// cursor stands on there.
     pub(super) fn find_fold(&self, id: &str) -> Option<(usize, usize)> {
-        let layout = &self.open.layout;
-        self.open.flow.rows.iter().find_map(|(block, rows)| {
-            let rendered = layout.blocks.get(*block)?;
-            let top = rendered.first_row + rendered.rows.len();
+        self.box_groups().find_map(|(_, top, rows)| {
             let index =
                 rows.iter().position(|drawn| drawn.fold.is_some() && drawn.thread.as_deref() == Some(id))?;
             Some((top + index, 0))
@@ -274,10 +266,7 @@ impl App {
         let said = &self.open.flow.said;
         let here =
             |spot: &Spot| spot.byte == byte && said.get(spot.message).is_some_and(|said| said.id == id);
-        let layout = &self.open.layout;
-        self.open.flow.rows.iter().find_map(|(block, rows)| {
-            let rendered = layout.blocks.get(*block)?;
-            let top = rendered.first_row + rendered.rows.len();
+        self.box_groups().find_map(|(_, top, rows)| {
             rows.iter().enumerate().find_map(|(index, drawn)| {
                 let column = drawn.words.iter().position(|spot| spot.as_ref().is_some_and(here))?;
                 Some((top + index, column))

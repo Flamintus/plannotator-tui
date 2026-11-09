@@ -1,7 +1,8 @@
 //! Feedback export: annotations as numbered Markdown a coding agent reads without a schema.
 //!
 //! `# Annotations on <name>`, then one `## Annotation N (line X)` per annotation in document
-//! order: what kind of note it is, the quoted text, the body as a blockquote, and one
+//! order, a comment on the whole document first: what kind of note it is (`General comment`
+//! for one on the whole document), the quoted text, the body as a blockquote, and one
 //! `Image: <absolute path>` line per attached image. Deleted text is fenced so quoted
 //! markdown cannot escape. The number is the note's place in this export. With the review
 //! loop on (`crate::journal`), each heading also ends with the note's own id,
@@ -49,6 +50,11 @@ pub(crate) fn feedback(name: &str, entries: &[Entry<'_>], ids: bool) -> String {
                 if !body.is_empty() {
                     let _ = writeln!(out, "> {}", quote_lines(body));
                 }
+            }
+            // A comment on the whole document has no quote: it says so, as Plannotator's does.
+            Kind::Comment if quoted.trim().is_empty() => {
+                out.push_str("General comment:\n");
+                let _ = writeln!(out, "> {}", quote_lines(body));
             }
             Kind::Comment => {
                 let _ = writeln!(out, "Comment on: \"{}\"", single_line(quoted));

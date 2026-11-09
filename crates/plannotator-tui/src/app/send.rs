@@ -207,7 +207,7 @@ impl App {
         } else {
             // Notes the journal keeps go through it, not with this feedback.
             let replies = self.replies().into_iter().filter(|(_, open)| !open.store.is_journal());
-            replies.map(|(_, open)| open.store.placed().len()).sum()
+            replies.map(|(_, open)| open.store.general().len() + open.store.placed().len()).sum()
         }
     }
 

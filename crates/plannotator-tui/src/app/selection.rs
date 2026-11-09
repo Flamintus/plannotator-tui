@@ -66,6 +66,8 @@ pub(super) enum Selected {
     Source(Range<usize>),
     /// A passage of a message's words in a thread's box, which takes a sub-thread.
     Passage(threads::Passage),
+    /// The whole document, which takes a general comment.
+    Document,
 }
 
 impl Pending {
@@ -77,7 +79,7 @@ impl Pending {
     pub(super) fn range(&self) -> Option<&Range<usize>> {
         match &self.on {
             Selected::Source(range) => Some(range),
-            Selected::Passage(_) => None,
+            Selected::Passage(_) | Selected::Document => None,
         }
     }
 }

@@ -141,6 +141,7 @@ impl Thread {
             images: images(&node.id),
             messages: std::iter::once(comment).chain(replies).collect(),
             field: None,
+            top: false,
         }
     }
 }
@@ -188,9 +189,19 @@ impl App {
             let (Some(block), Some(node)) = (last, node(&orphan.id)) else { continue };
             threads.push((block, Thread::of_node(node, seen, None, &images)));
         }
-        // In the document's order, as the flow places them under their blocks.
+        // A comment on the whole document is above the first block, as the web's is above the
+        // title: never Orphaned, it has no words to lose.
+        for general in open.store.general() {
+            let Some(node) = node(&general.annotation.id) else { continue };
+            let mut thread = Thread::of_node(node, seen, None, &images);
+            thread.marks.retain(|mark| *mark != Mark::Orphaned);
+            thread.top = true;
+            threads.push((0, thread));
+        }
+        // In the document's order, as the flow places them: the ones above the first block,
+        // then under their blocks.
         threads.sort_by_key(|(block, thread)| {
-            (*block, thread.range.as_ref().map_or(usize::MAX, |range| range.start))
+            (!thread.top, *block, thread.range.as_ref().map_or(usize::MAX, |range| range.start))
         });
         Some(threads)
     }

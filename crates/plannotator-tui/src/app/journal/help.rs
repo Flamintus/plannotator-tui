@@ -130,6 +130,7 @@ impl App {
         let live_mode = if self.journal_live_mode() { "unlive mode" } else { "live mode" };
         vec![
             key(Action::Send, "send"),
+            key(Action::GeneralComment, "general comment"),
             self.review_loop.is_some().then(|| key(Action::ToggleLiveMode, live_mode)).flatten(),
             (self.gate == Gate::Approve).then(|| key(Action::Approve, "approve")).flatten(),
             (!tab.is_empty()).then_some(Hint { keys: tab, label: None }),

@@ -40,6 +40,9 @@ pub(crate) struct Store {
     /// The document's text shown before this one, when it was reloaded: a note's place counted
     /// in it follows its lines from it (`plannotator_tui_schema::place`).
     previous: Option<String>,
+    /// The document's first block, as last resolved: where a note on the whole document is, its
+    /// box above it and its bubble first.
+    first_block: Option<Range<usize>>,
 }
 
 /// Where a store's record lives.
@@ -154,6 +157,7 @@ impl Store {
             deliveries: record.deliveries,
             archived: record.archived,
             previous: None,
+            first_block: None,
         };
         store.resolve_all(doc);
         if imported && !store.annotations.is_empty() {
@@ -175,6 +179,7 @@ impl Store {
             deliveries: Vec::new(),
             archived: Vec::new(),
             previous: None,
+            first_block: None,
         }
     }
 
@@ -355,6 +360,7 @@ impl Store {
             })
             .collect();
         self.resolved = resolved;
+        self.first_block = doc.blocks.first().map(|block| block.range.clone());
     }
 
     /// Every resolved annotation, in source order.
@@ -365,11 +371,29 @@ impl Store {
             .zip(&self.resolved)
             .filter_map(|(annotation, r)| match r {
                 Resolution::Range(range) => Some(Placed { annotation, range }),
-                Resolution::Place { .. } | Resolution::Orphan => None,
+                Resolution::Place { .. } | Resolution::Orphan | Resolution::Document => None,
             })
             .collect();
         out.sort_by_key(|p| p.range.start);
         out
+    }
+
+    /// The notes on the whole document (general comments), in the order written, on the
+    /// document's first block: their boxes go above it, their bubbles first.
+    pub(crate) fn general(&self) -> Vec<Placed<'_>> {
+        let Some(range) = &self.first_block else { return Vec::new() };
+        self.annotations
+            .iter()
+            .zip(&self.resolved)
+            .filter(|(_, r)| **r == Resolution::Document)
+            .map(|(annotation, _)| Placed { annotation, range })
+            .collect()
+    }
+
+    /// A new note on the whole document (a general comment), saved: the journal keeps it with
+    /// no quote and no lines, as the web writes one.
+    pub(crate) fn add_general(&mut self, body: String) -> Result<()> {
+        self.push(local_id(), Anchor::document(), body, Resolution::Document)
     }
 
     /// The notes whose quote is not in their place, in source order: the place (the bytes of
@@ -381,7 +405,7 @@ impl Store {
             .zip(&self.resolved)
             .filter_map(|(annotation, r)| match r {
                 Resolution::Place { range, found } => Some((Placed { annotation, range }, *found)),
-                Resolution::Range(_) | Resolution::Orphan => None,
+                Resolution::Range(_) | Resolution::Orphan | Resolution::Document => None,
             })
             .collect();
         out.sort_by_key(|(p, _)| p.range.start);

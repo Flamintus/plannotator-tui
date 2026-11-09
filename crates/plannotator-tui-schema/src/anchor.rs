@@ -113,6 +113,18 @@ impl Anchor {
         }
     }
 
+    /// An anchor on the whole document, a general comment's: no words, no place.
+    pub fn document() -> Self {
+        Self::default()
+    }
+
+    /// Whether the anchor is on the whole document: no words of its own, rendered or raw, and
+    /// no place (a general comment, as the web writes it: an empty quote and no lines).
+    pub fn on_document(&self) -> bool {
+        self.rendered().trim().is_empty()
+            && self.plannotator_tui.as_ref().is_none_or(|extras| extras.quote.trim().is_empty() && extras.place.is_none())
+    }
+
     /// The text the web client searches for, whichever key a client wrote.
     pub fn rendered(&self) -> &str {
         if self.original_text.is_empty() { &self.quote } else { &self.original_text }

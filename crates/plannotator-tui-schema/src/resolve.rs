@@ -26,6 +26,9 @@ pub enum Resolution {
     Place { range: Range<usize>, found: bool },
     /// The anchor's text is no longer in the document, and it has no place.
     Orphan,
+    /// A note on the whole document, with no words of its own (a general comment): its box
+    /// goes first, before the title.
+    Document,
 }
 
 /// Resolve `anchor` against `source`. `block_of` maps a byte offset to the index of the
@@ -38,6 +41,9 @@ pub fn resolve(
     block_of: impl Fn(usize) -> Option<usize>,
     previous: Option<&str>,
 ) -> Resolution {
+    if anchor.on_document() {
+        return Resolution::Document;
+    }
     if let Some((extras, place)) =
         anchor.plannotator_tui.as_ref().and_then(|e| e.place.as_ref().map(|place| (e, place)))
     {

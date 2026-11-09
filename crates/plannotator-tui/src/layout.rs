@@ -66,6 +66,9 @@ pub(crate) struct DocLayout {
     /// Rows kept free right under a block, as `(block, rows)` in block order: where the app
     /// draws the threads on that block's passages. Like a gap, they belong to no block.
     under: Vec<(usize, usize)>,
+    /// Rows kept free above the first block: where the app draws the comments on the whole
+    /// document. They belong to no block either.
+    top: usize,
 }
 
 fn render_block(doc: &Document, index: usize) -> (Text<'static>, Vec<LineOffsets>) {
@@ -102,7 +105,7 @@ impl DocLayout {
                 RenderedBlock { text, offsets, kind: block.kind, rows: Vec::new(), first_row: 0 }
             })
             .collect();
-        let mut layout = Self { width: 0, blocks, total_rows: 0, under: Vec::new() };
+        let mut layout = Self { width: 0, blocks, total_rows: 0, under: Vec::new(), top: 0 };
         layout.reflow(width);
         layout
     }
@@ -136,10 +139,22 @@ impl DocLayout {
         true
     }
 
-    /// Each block's first row, from the wrapped rows, the rows kept under blocks and the gaps.
+    /// Keep `rows` free above the first block and move every block down by as much, without
+    /// re-wrapping. Returns whether it moved anything.
+    pub(crate) fn reserve_top(&mut self, rows: usize) -> bool {
+        if self.top == rows {
+            return false;
+        }
+        self.top = rows;
+        self.place();
+        true
+    }
+
+    /// Each block's first row, from the rows kept above the first block, the wrapped rows, the
+    /// rows kept under blocks and the gaps.
     fn place(&mut self) {
         let mut under = self.under.iter().peekable();
-        let mut row = 0usize;
+        let mut row = self.top;
         for (index, block) in self.blocks.iter_mut().enumerate() {
             block.first_row = row;
             row += block.rows.len() + BLOCK_GAP;

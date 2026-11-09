@@ -84,6 +84,9 @@ pub(super) struct Thread {
     messages: Vec<Message>,
     /// The field the person types in its box, while they do, and where in it (`field`).
     field: Option<Field>,
+    /// A comment on the whole document: its box above the first block, as the web's is above
+    /// the title.
+    top: bool,
 }
 
 /// The note, or one reply under it.
@@ -167,6 +170,8 @@ pub(super) struct Flow {
     width: usize,
     /// Each thread with the block its passage starts in, in document order.
     threads: Vec<(usize, Thread)>,
+    /// The rows above the first block: the comments on the whole document.
+    top: Vec<BoxRow>,
     /// The rows under each block that has threads, in block order.
     rows: Vec<(usize, Vec<BoxRow>)>,
     /// The messages whose words the rows show, as their columns name them.
@@ -180,8 +185,13 @@ pub(super) struct Flow {
 impl Flow {
     fn new(threads: Vec<(usize, Thread)>, width: usize, by_hand: HashMap<String, bool>) -> Self {
         let mut said = Vec::new();
+        // The comments on the whole document first, above the first block: a blank row above
+        // each and one below the last, before the block.
+        let general = threads.iter().filter(|(_, thread)| thread.top).map(|(_, thread)| Under::Thread(thread));
+        let top = spaced(general, width, &mut said, false);
+        let under_blocks: Vec<(usize, Thread)> = threads.iter().filter(|(_, thread)| !thread.top).cloned().collect();
         let mut rows: Vec<(usize, Vec<BoxRow>)> = Vec::new();
-        for group in threads.chunk_by(|(one, _), (other, _)| one == other) {
+        for group in under_blocks.chunk_by(|(one, _), (other, _)| one == other) {
             let Some((block, _)) = group.first() else { continue };
             // The gap under the block is the blank row below the last box.
             let boxes = group.iter().map(|(_, thread)| Under::Thread(thread));
@@ -189,7 +199,23 @@ impl Flow {
             rows.push((*block, lines));
         }
         let under = rows.iter().map(|(block, lines)| (*block, lines.len())).collect();
-        Self { width, threads, rows, said, under, by_hand }
+        Self { width, threads, top, rows, said, under, by_hand }
+    }
+}
+
+impl App {
+    /// Each group of boxes as drawn: the block it belongs to, the document row it starts on and
+    /// its rows. The comments on the whole document first, at the top, belonging to the first
+    /// block (`k` from it goes up into them); then each block's, right under it.
+    pub(in crate::app::threads) fn box_groups(&self) -> impl Iterator<Item = (usize, usize, &Vec<BoxRow>)> {
+        let flow = &self.open.flow;
+        let layout = &self.open.layout;
+        let top = (!flow.top.is_empty()).then_some((0, 0, &flow.top));
+        let under = flow.rows.iter().filter_map(move |(block, rows)| {
+            let rendered = layout.blocks.get(*block)?;
+            Some((*block, rendered.first_row + rendered.rows.len(), rows))
+        });
+        top.into_iter().chain(under)
     }
 }
 
@@ -219,7 +245,8 @@ impl App {
             let by_hand = std::mem::take(&mut open.flow.by_hand);
             open.flow = Flow::new(threads, open.layout.width, by_hand);
         }
-        if open.layout.reserve_under(&open.flow.under) {
+        let top_moved = open.layout.reserve_top(open.flow.top.len());
+        if open.layout.reserve_under(&open.flow.under) || top_moved {
             // Rows below a changed box moved, as on a reflow: a selection drawn by rows no
             // longer covers what it did. The selection waiting for an action is a source
             // range, which has not moved: it only follows its first row. A passage of a box's
@@ -247,9 +274,7 @@ impl App {
         let view = self.scroll..self.scroll + usize::from(doc.height);
         let lit = self.lit_boxes();
         let selected = self.unit_rows(&self.selected_unit());
-        for (block, rows) in &self.open.flow.rows {
-            let Some(rendered) = self.open.layout.blocks.get(*block) else { continue };
-            let top = rendered.first_row + rendered.rows.len();
+        for (_, top, rows) in self.box_groups() {
             for row in view.start.max(top)..view.end.min(top + rows.len()) {
                 let Some(drawn) = rows.get(row - top) else { continue };
                 let y = doc.y + (row - self.scroll) as u16;

@@ -318,9 +318,11 @@ impl App {
     /// where the terminal tells it from Enter, else Alt+Enter, so the title never names a key
     /// that cannot arrive.
     pub(in crate::app) fn compose_titles(&self) -> (String, String) {
+        let general = self.pending.as_ref().is_some_and(|pending| matches!(pending.on, Selected::Document));
         let verb = match &self.mode {
             Mode::Reply(_) => "Reply",
             Mode::Edit(_) => "Edit",
+            Mode::Compose if general => "General comment",
             _ => "Comment",
         };
         let newline = if self.shift_enter { "shift+enter new line" } else { "alt+enter new line" };
@@ -598,6 +600,7 @@ impl App {
                             self.open.doc.source.get(range.clone()).map_or(0, |s| s.chars().count())
                         }
                         Selected::Passage(passage) => passage.on.quote.chars().count(),
+                        Selected::Document => 0,
                     };
                     format!("selected {chars} chars")
                 }
@@ -724,6 +727,7 @@ impl App {
                 key(Action::MoveCursor, "move"),
                 key(Action::Visual, "select"),
                 key(Action::Comment, "comment"),
+                key(Action::GeneralComment, "general comment"),
                 note.is_some().then(|| key(Action::AttachImage, "image")).flatten(),
                 remove_image,
                 key(Action::Send, "send"),

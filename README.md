@@ -95,7 +95,7 @@ dimmed. The keys also work without opening the menu.
 
 | Where | Keys |
 |---|---|
-| anywhere | `Tab` cycle tree · document · notes; `E` send; `t` tree; `r` reload; `o` open the file in `$EDITOR`; `q` quit |
+| anywhere | `Tab` cycle tree · document · notes; `E` send; `N` a general comment, on the whole document; `t` tree; `r` reload; `o` open the file in `$EDITOR`; `q` quit |
 | reply review | `S` send and close |
 | gated review | `A` approve; `E` send and finish; `q` dismiss |
 | document | `j`/`k` block; `c` comment on the block; `x` clear its annotations; `X` clear every annotation on the document, after a `y`; `v` select with `hjkl` `w` `b` `0` `$`, `Enter` to finish; `i` move the cursor with those keys first, then `v` to select from there; `I`/`D` attach or remove an image on the block's note |
@@ -305,6 +305,7 @@ screen show your keys. `plannotator-tui config` prints every action with its key
 | `attach-image` `remove-image` | `I` `D` | an image on the selected note, or the selected block's; in the review loop, the box the cursor is in, never the block's |
 | `visual` `move-cursor` | `v` `i` | select with the cursor; move it first |
 | `comment` `clear-block` | `c` `x` | on the block; clear its annotations; in the review loop, in a draft's box, remove that draft, as `remove` on its bubble |
+| `general-comment` | `N` | a comment on the whole document (a general comment), from any pane: its box above the first block, as Plannotator's Global comment's is above the title; the feedback names it `General comment`, first |
 | `clear-all` | `X` | every annotation on the document, after `yes` |
 | `looks-good` `delete` | `a` `d` | toolbar, with `comment` |
 | `copy` | `y` | copy the selection waiting in the toolbar |
@@ -435,7 +436,9 @@ the agent answers with too:
   (`2 messages · 1 sub-thread · 1 image`), its thread open or folded.
 - Each comment the journal has, a draft included (`Draft`), is a box right under the block
   its passage is in (under a whole list or table when the passage is inside one): the passage
-  at its head, then the comment and each reply by author. A resolved thread folds to one line
+  at its head, then the comment and each reply by author. A comment on the whole document (a
+  general comment, `N`, or Plannotator's Global comment) has its box above the first block,
+  `General comment` at its head, and its bubble first; `k` from the first block goes up into it. A resolved thread folds to one line
   (`▸ 💬 "…" · 2 messages ──── Round 1 · Resolved ─╴`) once nothing under it is open, its
   bubble dimmed; `Resolved` takes the `looks-good` colour (`[colors]`). Every other box is
   open, `▾` at its head. Every box's border is grey, its head's and its folded line's with it,

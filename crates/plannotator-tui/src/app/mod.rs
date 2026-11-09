@@ -496,10 +496,23 @@ impl App {
                 self.saw_message(&passage.on.parent);
                 self.open.store.add_on_passage(passage.on, kind, body)?;
             }
+            Selected::Document => self.open.store.add_general(body)?,
         }
         self.mark_unsent();
         self.sync_tree_counts();
         Ok(self.send_goes_now())
+    }
+
+    /// `general-comment`: a comment on the whole document typed, as `c` types one on a block;
+    /// its box goes above the first block once saved.
+    pub(super) fn general_comment(&mut self) {
+        if !matches!(self.mode, Mode::Browse) {
+            return;
+        }
+        self.clear_selection();
+        self.pending = Some(Pending { on: Selected::Document, at: (0, 0) });
+        self.mode = Mode::Compose;
+        self.compose = Compose::default();
     }
 
     /// Apply a toolbar action to the pending selection.
@@ -528,6 +541,7 @@ impl App {
         let text = match &pending.on {
             Selected::Source(range) => self.open.doc.source.get(range.clone()),
             Selected::Passage(passage) => Some(passage.on.quote.as_str()),
+            Selected::Document => None,
         };
         let Some(text) = text else { return };
         if self.clipboard {

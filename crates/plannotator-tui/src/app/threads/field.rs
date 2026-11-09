@@ -93,7 +93,7 @@ impl App {
             Mode::Edit(id) => Some(Target::Thread(id.clone(), Place::Words)),
             Mode::Compose => match &self.pending.as_ref()?.on {
                 Selected::Passage(passage) => Some(Target::Message(passage.on.parent.clone(), passage.start)),
-                Selected::Source(_) => None,
+                Selected::Source(_) | Selected::Document => None,
             },
             _ => None,
         }
@@ -106,10 +106,7 @@ impl App {
         if !matches!(self.mode, Mode::Reply(_) | Mode::Edit(_) | Mode::Compose) {
             return None;
         }
-        let layout = &self.open.layout;
-        self.open.flow.rows.iter().find_map(|(block, rows)| {
-            let rendered = layout.blocks.get(*block)?;
-            let top = rendered.first_row + rendered.rows.len();
+        self.box_groups().find_map(|(_, top, rows)| {
             let first = rows.iter().position(|row| row.field)?;
             let count = rows.iter().skip(first).take_while(|row| row.field).count();
             Some((top + first, count, rows.get(first)?.words.len()))

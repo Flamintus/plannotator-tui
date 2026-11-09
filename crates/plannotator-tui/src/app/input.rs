@@ -133,6 +133,10 @@ impl App {
                 self.toggle_live_mode();
                 return Ok(());
             }
+            Some(Action::GeneralComment) => {
+                self.general_comment();
+                return Ok(());
+            }
             _ => {}
         }
         match self.focus {

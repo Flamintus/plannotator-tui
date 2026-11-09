@@ -73,13 +73,16 @@ pub(crate) enum Action {
     /// The review's Live mode on or off, while the review loop runs: every thread live, and a
     /// new note sent as soon as it is saved; the drafts waiting go first, once confirmed.
     ToggleLiveMode,
+    /// A comment on the whole document (a general comment): its box above the first block, as
+    /// the web's Global comment's is above the title.
+    GeneralComment,
     Yes,
     No,
 }
 
 use Action::{
     Approve, Archive, AttachImage, Back, Bottom, ClearAll, ClearBlock, Comment, Confirm, CopySelection,
-    CycleFocus, Delete, Down, Edit, FinishReview, Interrupt, Left, LineEnd, LineStart, LooksGood, MoveCursor,
+    CycleFocus, Delete, Down, Edit, FinishReview, GeneralComment, Interrupt, Left, LineEnd, LineStart, LooksGood, MoveCursor,
     No, OpenInEditor, PageDown, PageUp, PickMessage, QuickOpen, Quit, Reload, Remove, RemoveImage, Reply,
     ResendAll, Resolve, ReviewMenu, Right, Send, SendAndClose, SendNow, ToggleHidden, ToggleLive,
     ToggleLiveMode, ToggleThread, ToggleTree, Top, UndoFinish, Up, Visual, WordBack, WordForward, Yes,
@@ -104,6 +107,7 @@ pub(crate) const GLOBAL: &[Action] = &[
     QuickOpen,
     PickMessage,
     ToggleLiveMode,
+    GeneralComment,
 ];
 pub(crate) const TREE: &[Action] = &[Down, Up, Confirm, Right, ToggleHidden, Back];
 pub(crate) const RAIL: &[Action] = &[
@@ -333,6 +337,7 @@ const DEFAULTS: &[(Action, &[Key])] = &[
     (SendNow, &[ch('s')]),
     (ToggleLive, &[ch('L')]),
     (ToggleLiveMode, &[ctrl('l')]),
+    (GeneralComment, &[ch('N')]),
     (Yes, &[ch('y'), ch('Y')]),
     (No, &[ch('n'), ch('N')]),
 ];
@@ -340,7 +345,7 @@ const DEFAULTS: &[(Action, &[Key])] = &[
 /// Actions added after configs were written: `approve` (live only in a gated review),
 /// `copy` (on a waiting selection) and the thread actions.
 const LATE: &[Action] =
-    &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow, ToggleLive, ToggleLiveMode];
+    &[Approve, CopySelection, Reply, Resolve, ToggleThread, SendNow, ToggleLive, ToggleLiveMode, GeneralComment];
 
 /// The keys bound to each action. A `[keys]` entry replaces that action's keys and leaves the
 /// others at their defaults; an empty list unbinds the action.
@@ -490,6 +495,7 @@ impl Action {
             Self::SendNow => "send-now",
             Self::ToggleLive => "toggle-live",
             Self::ToggleLiveMode => "toggle-live-mode",
+            Self::GeneralComment => "general-comment",
             Self::Yes => "yes",
             Self::No => "no",
         }

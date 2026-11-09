@@ -496,3 +496,19 @@ the file's changes, as crit keeps a comment (`internal/session/watch.go`).
   the reload), then writes the new place to the journal (`threads anchor`), counted in the text
   as it is now: no client moves a place twice, and a client started later reads it as written.
 - An anchor with no place (older records, a sub-thread on a box's passage) resolves as 10 says.
+
+## 19. A comment on the whole document is boxed above the first block (2026-11-09)
+
+Plannotator's screens and Inbox write a general comment (the Viewer's "Global comment"): an
+empty quote, `on` the file or message, no lines. The terminal had none, and one written on the
+web resolved to an orphan, boxed under the last block as Orphaned. Now:
+
+- An anchor with no words of its own and no place is on the whole document
+  (`Anchor::on_document`, `Resolution::Document`), never an orphan.
+- `general-comment` (`N`, from any pane) types one, as `comment` types one on a block; the
+  journal keeps it as the web writes it, and a record outside the loop keeps the empty anchor.
+- Its box goes above the first block, as the web draws it above the title (`Flow::top`,
+  `DocLayout::reserve_top`): those rows belong to no block, but a box there belongs to the
+  first block for selection, so `k` from it goes up into the box. Its head says `General
+  comment` where a passage would be; its bubble is first in the rail.
+- The feedback names it `General comment:`, first, with no line label.

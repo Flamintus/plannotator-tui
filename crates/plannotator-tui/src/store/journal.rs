@@ -315,10 +315,12 @@ impl Store {
     /// their boxes are; each followed by the notes on the passages of its thread's messages at
     /// any depth (its sub-threads), in the order its box draws them, which take its range.
     pub(crate) fn notes(&self) -> Vec<Placed<'_>> {
-        // The notes whose quote is not in their place are at their place, as their boxes are.
+        // The notes on the whole document first, as their boxes are above the first block; the
+        // notes whose quote is not in their place at their place, as their boxes are.
         let mut placed = self.placed();
         placed.extend(self.kept_places().into_iter().map(|(place, _)| place));
         placed.sort_by_key(|note| note.range.start);
+        let placed: Vec<Placed<'_>> = self.general().into_iter().chain(placed).collect();
         let Backing::Journal(kept) = &self.backing else { return placed };
         let Some(view) = &kept.view else { return placed };
         let lost = kept.last_block.as_ref().map_or_else(Vec::new, |range| {

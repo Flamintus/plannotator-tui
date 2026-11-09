@@ -202,6 +202,9 @@ struct Shape {
     round: bool,
 }
 
+/// What the head of a comment on the whole document says in place of a passage.
+const GENERAL: &str = "General comment";
+
 /// `╭ ▾ ✗ "passage" · Orphaned · ⚡ Live ──── Round 2 · Sent ╮`: `▾`, where `left` or a click
 /// folds the box, its kind's glyph, the passage cut to fit, the indicators. With the columns of
 /// its border: all but the glyph, the passage and the indicators, which keep their own colours.
@@ -291,7 +294,13 @@ fn line(
         let Some(first) = first else { break };
         kept.remove(first);
     }
-    let quote = format!("\"{}\"", fit(&passage, width.saturating_sub(around(&kept))));
+    // A comment on the whole document has no passage: its head names it, as the web's box does,
+    // between spaces where a passage has its quotes, so the line keeps its width.
+    let quote = if passage.is_empty() {
+        format!(" {} ", fit(GENERAL, width.saturating_sub(around(&kept))))
+    } else {
+        format!("\"{}\"", fit(&passage, width.saturating_sub(around(&kept))))
+    };
     let fill = width.saturating_sub(around(&kept) + quote.width() - 3).max(1);
     // The quoted passage never takes the state's colour of a lit box: it stays grey.
     let quote_style = if shape.passage_italic { GREY.add_modifier(Modifier::ITALIC) } else { GREY };
