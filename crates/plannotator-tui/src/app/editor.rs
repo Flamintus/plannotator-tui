@@ -2,8 +2,8 @@
 //!
 //! The app only asks; the event loop owns the terminal, so it suspends the screen, runs the
 //! editor and reports back through `editor_returned`. A file that did not change is left
-//! alone, so a GUI editor that returns at once does not cost a reload: the disk check says
-//! "File changed on disk" when it saves later, as it does for any other writer.
+//! alone, so a GUI editor that returns at once does not cost a reload: the disk check reloads
+//! the file when it saves later, as it does for any other writer.
 
 use std::process::ExitStatus;
 
@@ -183,10 +183,15 @@ mod tests {
         let request = app.take_editor_request().expect("request");
         app.editor_returned(&request, Ok(exited(0)));
         assert_eq!(app.status.as_deref(), Some("no changes from code"));
-        // A GUI editor that returned at once saves later: the usual hint covers it.
+        // A GUI editor that returned at once saves later: the file reloads by itself.
         save(&root, "# Plan\n\nedited later\n");
         assert!(app.check_disk());
-        assert_eq!(app.status.as_deref(), Some("File changed on disk. Press r to reload."));
+        assert!(app.open.doc.source.contains("edited later"));
+        assert!(
+            app.status
+                .as_deref()
+                .is_some_and(|status| status.starts_with("File changed on disk \u{b7} reloaded"))
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 

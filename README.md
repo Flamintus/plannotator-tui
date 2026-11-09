@@ -146,8 +146,14 @@ rather than capturing stdout. Each decision is also added to the feedback archiv
 on the open file, at the current line for vim, nvim, nano, helix, emacs, micro and kak. When
 the editor exits the viewer comes back and, if the file changed, reloads it as `r` does so
 notes re-anchor. A GUI editor without its wait flag returns at once; save later and the
-footer says the file changed. Reply and terminal reviews have no file, so `o` does nothing
+file reloads by itself. Reply and terminal reviews have no file, so `o` does nothing
 there.
+
+A file that changes on disk, an agent's edit for one, reloads by itself within a second: the
+notes are found again in the new text, a note whose words are gone is orphaned, and the footer
+says `File changed on disk · reloaded`. While you type, have a selection waiting for its kind,
+or have a menu or a question open, the reload waits until you are done. `r` still reloads by
+hand.
 
 Hidden folders are out of the tree until `.` asks for them, and `.git`, `.hg`, `.svn`,
 `.jj`, `.cache`, `.direnv`, `.venv`, `venv`, `__pycache__`, `node_modules`, `vendor`,

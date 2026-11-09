@@ -1,13 +1,14 @@
-//! Noticing that the reviewed file changed on disk, typically an agent editing it, so the
-//! footer can say a reload is due. Nothing reloads by itself: the reviewer decides when.
+//! Noticing that the reviewed file changed on disk, typically an agent editing it, and
+//! reloading it at once: the notes are found again in the new text, a note whose words are gone
+//! is orphaned. While the person types, chooses or answers a question, the reload waits for
+//! them to be done, the footer saying so; `reload` stays for a reload by hand.
 
 use std::path::Path;
 use std::time::{Duration, Instant, SystemTime};
 
 use plannotator_tui_schema::Provenance;
 
-use super::App;
-use crate::keys::Action;
+use super::{App, Mode};
 
 /// How often the event loop may stat the open file.
 const CHECK_EVERY: Duration = Duration::from_secs(1);
@@ -47,19 +48,31 @@ impl App {
         self.check_disk()
     }
 
-    /// Compare the open file with the stamp it had when it was loaded, and say so once per
-    /// change. A missing or unreadable file says nothing.
+    /// Compare the open file with the stamp it had when it was loaded and reload it when it
+    /// changed. While something is under way (typing, a selection waiting for its kind, a menu
+    /// or a question) the reload waits, said once per change, and happens on a later check. A
+    /// missing or unreadable file says nothing.
     pub(super) fn check_disk(&mut self) -> bool {
         let Some(loaded) = self.open.disk else { return false };
         let Some(now) = DiskStamp::of_source(&self.open.source.provenance) else { return false };
-        if now == loaded || self.open.disk_noticed == Some(now) {
+        if now == loaded {
             return false;
         }
-        self.open.disk_noticed = Some(now);
-        self.status = Some(match self.keys.hint(Action::Reload) {
-            key if key.is_empty() => "File changed on disk.".to_owned(),
-            key => format!("File changed on disk. Press {key} to reload."),
-        });
+        if self.mode != Mode::Browse || self.pending.is_some() {
+            if self.open.disk_noticed == Some(now) {
+                return false;
+            }
+            self.open.disk_noticed = Some(now);
+            self.status = Some("File changed on disk: it reloads once you are done.".to_owned());
+            return true;
+        }
+        if let Err(err) = self.reload() {
+            self.open.disk_noticed = Some(now);
+            self.status = Some(format!("File changed on disk; reload failed: {err:#}"));
+            return true;
+        }
+        let reloaded = self.status.take().unwrap_or_default();
+        self.status = Some(format!("File changed on disk \u{b7} {reloaded}"));
         true
     }
 }
@@ -71,9 +84,7 @@ mod tests {
     use std::path::Path;
     use std::time::Duration;
 
-    use crate::app::review_test_support::{file_app, press};
-
-    const HINT: &str = "File changed on disk. Press r to reload.";
+    use crate::app::review_test_support::file_app;
 
     /// Rewrite `file_app`'s document with different content and a later mtime.
     fn edit_on_disk(root: &Path, app: &crate::app::App) {
@@ -93,31 +104,29 @@ mod tests {
     }
 
     #[test]
-    fn a_change_on_disk_asks_for_a_reload_until_reloaded() {
+    fn a_change_on_disk_reloads_the_file_at_once() {
         let (root, mut app, _) = file_app("disk-changed");
         edit_on_disk(&root, &app);
         assert!(app.poll_disk());
-        assert_eq!(app.status.as_deref(), Some(HINT));
-        // Said once per change, and a cleared status is not put back for the same change.
-        app.status = None;
-        assert!(!app.check_disk());
-        assert_eq!(app.status, None);
-
-        press(&mut app, 'r');
+        assert!(app.open.doc.source.contains("four, from the agent"), "reloaded without a key");
         let status = app.status.clone().expect("reload status");
-        assert!(status.starts_with("reloaded"), "{status}");
-        assert!(!app.check_disk());
-        assert!(app.open.doc.source.contains("four, from the agent"));
+        assert!(status.starts_with("File changed on disk \u{b7} reloaded"), "{status}");
+        assert!(!app.check_disk(), "the new text is the loaded one now");
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
-    fn the_hint_names_the_bound_reload_key() {
-        let (root, mut app, _) = file_app("disk-key");
-        app.keys = toml::from_str("reload = [\"ctrl+l\"]\n").expect("keys");
+    fn a_change_waits_while_the_person_types_then_reloads() {
+        let (root, mut app, _) = file_app("disk-typing");
+        app.mode = super::super::Mode::Compose;
         edit_on_disk(&root, &app);
         assert!(app.check_disk());
-        assert_eq!(app.status.as_deref(), Some("File changed on disk. Press ctrl+l to reload."));
+        assert_eq!(app.status.as_deref(), Some("File changed on disk: it reloads once you are done."));
+        assert!(!app.open.doc.source.contains("four, from the agent"), "not under the person's typing");
+        assert!(!app.check_disk(), "said once for this change");
+        app.mode = super::super::Mode::Browse;
+        assert!(app.check_disk());
+        assert!(app.open.doc.source.contains("four, from the agent"));
         let _ = std::fs::remove_dir_all(root);
     }
 
